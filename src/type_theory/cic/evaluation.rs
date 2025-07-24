@@ -4,12 +4,12 @@ use super::cic::CicStm::{Axiom, Fun, Let, Theorem};
 use super::cic::CicTerm::{Abstraction, Application, Match, Product, Variable};
 use super::cic::{Cic, CicStm, CicTerm};
 use super::cic_utils::{eta_expand, make_multiarg_fun_type, substitute};
-use super::type_check::inductive_eliminator;
 use crate::misc::Union;
 use crate::parser::api::Tactic;
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function,
 };
+use crate::type_theory::cic::type_check_inductive::inductive_eliminator;
 use crate::type_theory::commons::evaluation::{
     generic_evaluate_axiom, generic_evaluate_let, generic_evaluate_theorem,
     generic_reduce_variable,
