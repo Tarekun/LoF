@@ -17,8 +17,8 @@ pub enum Expression {
     Arrow(Box<Expression>, Box<Expression>),
     /// function, args
     Application(Box<Expression>, Vec<Expression>),
-    /// (matched_term, [ branch: ([pattern], body) ])
-    Match(Box<Expression>, Vec<(Vec<Expression>, Expression)>),
+    /// (matched_term, [ branch: (pattern, body) ])
+    Match(Box<Expression>, Vec<(Expression, Expression)>),
     // Infer operator to be elaborated to metavariables
     Inferator(),
     /// [conjunted terms]

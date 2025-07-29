@@ -435,19 +435,23 @@ mod tests {
                     Box::new(Variable("test_list".to_string(), GLOBAL_INDEX)),
                     vec![
                         (
-                            vec![
-                                nil.clone(), 
-                                nat.clone()
-                            ],
+                            Application(
+                                Box::new(nil.clone()),
+                                Box::new(nat.clone()),
+                            ),
                             Variable("test_list".to_string(), GLOBAL_INDEX)
                         ),
                         (
-                            vec![
-                                cons.clone(),
-                                nat.clone(),
-                                Variable("n".to_string(), 0),
-                                Variable("l".to_string(), 1),
-                            ],
+                            Application(
+                                Box::new(Application(
+                                    Box::new(Application(
+                                        Box::new(cons.clone()),
+                                        Box::new(nat.clone()),
+                                    )),
+                                    Box::new(Variable("n".to_string(), 0))
+                                )),
+                                Box::new(Variable("l".to_string(), 1)),
+                            ),
                             Variable("test_list".to_string(), GLOBAL_INDEX)
                         ),
                     ]
@@ -525,14 +529,14 @@ mod tests {
                     Box::new(Variable("c".to_string(), GLOBAL_INDEX)),
                     vec![
                         (
-                            vec![Variable("o".to_string(), GLOBAL_INDEX)],
+                            Variable("o".to_string(), GLOBAL_INDEX),
                             Variable("o".to_string(), GLOBAL_INDEX)
                         ),
                         (
-                            vec![
-                                Variable("s".to_string(), GLOBAL_INDEX),
-                                Variable("n".to_string(), GLOBAL_INDEX)
-                            ],
+                            Application(
+                                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+                                Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                            ),
                             Variable("c".to_string(), GLOBAL_INDEX)
                         ),
                     ]
@@ -551,14 +555,14 @@ mod tests {
                     )),
                     vec![
                         (
-                            vec![Variable("o".to_string(), GLOBAL_INDEX)],
+                            Variable("o".to_string(), GLOBAL_INDEX),
                             Variable("o".to_string(), GLOBAL_INDEX)
                         ),
                         (
-                            vec![
-                                Variable("s".to_string(), GLOBAL_INDEX),
-                                Variable("n".to_string(), GLOBAL_INDEX)
-                            ],
+                            Application(
+                                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+                                Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                            ),
                             Variable("c".to_string(), GLOBAL_INDEX)
                         ),
                     ]
@@ -574,14 +578,14 @@ mod tests {
                     Box::new(Variable("c".to_string(), GLOBAL_INDEX)),
                     vec![
                         (
-                            vec![Variable("o".to_string(), GLOBAL_INDEX)],
+                            Variable("o".to_string(), GLOBAL_INDEX),
                             Variable("o".to_string(), GLOBAL_INDEX)
                         ),
                         (
-                            vec![
-                                Variable("s".to_string(), GLOBAL_INDEX),
-                                Variable("n".to_string(), GLOBAL_INDEX)
-                            ],
+                            Application(
+                                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+                                Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                            ),
                             Variable("true".to_string(), GLOBAL_INDEX) //this body has type : Bool
                         ),
                     ]
@@ -971,16 +975,16 @@ mod tests {
         ];
         let zerobranch = (
             //patter
-            vec![Variable("z".to_string(), GLOBAL_INDEX)],
+            Variable("z".to_string(), GLOBAL_INDEX),
             //body
             Variable("m".to_string(), GLOBAL_INDEX),
         );
         let succbranch = (
             //patter
-            vec![
-                Variable("s".to_string(), GLOBAL_INDEX),
-                Variable("nn".to_string(), GLOBAL_INDEX),
-            ],
+            Application(
+                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("nn".to_string(), GLOBAL_INDEX)),
+            ),
             //body
             Application(
                 Box::new(Variable("s".to_string(), GLOBAL_INDEX)),

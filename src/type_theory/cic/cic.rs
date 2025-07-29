@@ -38,8 +38,8 @@ pub enum CicTerm {
     Product(String, Box<CicTerm>, Box<CicTerm>), //add bodytype?
     /// (function, argument)
     Application(Box<CicTerm>, Box<CicTerm>),
-    /// (matched_term, [ branch: ([pattern], body) ])
-    Match(Box<CicTerm>, Vec<(Vec<CicTerm>, CicTerm)>),
+    /// (matched_term, [ branch: (pattern, body) ])
+    Match(Box<CicTerm>, Vec<(CicTerm, CicTerm)>),
     /// index
     Meta(i32),
 }

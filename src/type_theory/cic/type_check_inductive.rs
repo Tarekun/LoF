@@ -1,101 +1,134 @@
-use tracing::error;
-
-use crate::{misc::{simple_map, simple_map_indexed}, type_theory::{
-    cic::{
+use crate::{
+    misc::{simple_map, simple_map_indexed},
+    type_theory::{
         cic::{
-            Cic,
-            CicTerm::{
-                self, Application, Product, Sort, Variable,
-            }, GLOBAL_INDEX, PLACEHOLDER_DBI,
+            cic::{
+                Cic,
+                CicTerm::{
+                    self, Application, Product, Sort, Variable,
+                }, GLOBAL_INDEX, PLACEHOLDER_DBI,
+            },
+            cic_utils::{application_args, apply_arguments, check_positivity, clone_product_with_different_result, get_applied_function, get_arg_types, get_prod_innermost, get_variables_as_terms, index_variables, is_instance_of, make_multiarg_fun_type, substitute}, evaluation::evaluate_inductive,
         },
-        cic_utils::{application_args, apply_arguments, check_positivity, clone_product_with_different_result, get_arg_types, get_prod_innermost, get_variables_as_terms, index_variables, is_instance_of, make_multiarg_fun_type, substitute}, evaluation::evaluate_inductive,
-    },
-    environment::Environment,
-    interface::{Kernel, Refiner},
-}};
+        environment::Environment,
+        interface::{Kernel, Refiner},
+    }
+};
+use tracing::error;
 
 /// Returns the vector of type judgements for the variables provided if they match the constructor type
 fn type_constr_vars(
     constr_type: &CicTerm,
-    variables: Vec<CicTerm>,
+    pattern: &CicTerm,
 ) -> Result<Vec<(String, CicTerm)>, String> {
-    match variables.len() {
-        0 => Ok(vec![]),
-        1.. => match &variables[0] {
-            Variable(var_name, _dbi) => match constr_type {
-                Product(type_var, domain, codomain) => {
-                    let reduced_codomain =
-                        substitute(&codomain, type_var, &variables[0]);
-                    let mut typed_vars = type_constr_vars(
-                        &reduced_codomain,
-                        variables[1..].to_vec(),
-                    )?;
-                    typed_vars
-                        .insert(0, (var_name.to_string(), *(domain.clone())));
-                    Ok(typed_vars)
-                }
-                // i dont want to return results here
+    fn solver(
+        constr_type: &CicTerm,
+        variables: Vec<CicTerm>,
+    ) -> Result<Vec<(String, CicTerm)>, String> {
+        match variables.len() {
+            0 => Ok(vec![]),
+            1.. => match &variables[0] {
+                Variable(var_name, _) => match constr_type {
+                    Product(type_var, domain, codomain) => {
+                        let reduced_codomain =
+                            substitute(&codomain, type_var, &variables[0]);
+                        let mut typed_vars = solver(
+                            &reduced_codomain,
+                            variables[1..].to_vec(),
+                        )?;
+                        typed_vars
+                            .insert(0, (var_name.to_string(), *(domain.clone())));
+                        Ok(typed_vars)
+                    }
+                    _ => Err(format!(
+                        "Mismatch in number of variables for constructor"
+                    )),
+                },
                 _ => Err(format!(
-                    "Mismatch in number of variables for constructor"
+                    "Found illegal term in place of variable {:?}",
+                    variables[0]
                 )),
             },
-            _ => Err(format!(
-                "Found illegal term in place of variable {:?}",
-                variables[0]
-            )),
-        },
+        }
     }
+
+    let variables = application_args(pattern);
+    solver(constr_type, variables)
 }
 
 /// Type checks the provided terms with the constructor type and returns the actual instanciation
 /// type provided
 fn type_check_pattern(
-    constr_type: &CicTerm,
-    variables: Vec<CicTerm>,
     environment: &mut Environment<CicTerm, CicTerm>,
+    pattern: &CicTerm,
+    constr_type: &CicTerm,
 ) -> Result<CicTerm, String> {
-    match variables.len() {
-        0 => Ok(constr_type.clone()),
-        1.. => match variables[0] {
-            Variable(_, _) => match constr_type {
-                Product(var_name, _, codomain) => {
-                    let reduced_codomain =
-                        substitute(&codomain, var_name, &variables[0]);
-                    // doesnt need to update the context, here var_name is a type variable, not a term
-                    type_check_pattern(
-                        &reduced_codomain,
-                        variables[1..].to_vec(),
-                        environment,
-                    )
-                }
-                _ => Err("Mismatch in number of variables for constructor"
-                    .to_string()),
+    fn solver(
+        constr_type: &CicTerm,
+        variables: Vec<CicTerm>,
+        environment: &mut Environment<CicTerm, CicTerm>,
+    ) -> Result<CicTerm, String> {
+        match variables.len() {
+            0 => Ok(constr_type.clone()),
+            1.. => match variables[0] {
+                Variable(_, _) => match constr_type {
+                    Product(var_name, _, codomain) => {
+                        // TODO if the variable is an argument to the type it should be type checked
+                        // (if its constructor argument its simply a new binded variable)
+                        let reduced_codomain =
+                            substitute(&codomain, var_name, &variables[0]);
+                        // doesnt need to update the context, here var_name is a type variable, not a term
+                        solver(
+                            &reduced_codomain,
+                            variables[1..].to_vec(),
+                            environment,
+                        )
+                    }
+                    _ => Err("Mismatch in number of variables for constructor"
+                        .to_string()),
+                },
+                // TODO to extend functionality for constr argument expansion in the pattern
+                // simply support other cases here (eg nested applications)
+                _ => Err(format!(
+                    "Found illegal term in place of variable {:?}",
+                    variables[0],
+                )),
             },
-            _ => Err(format!(
-                "Found illegal term in place of variable {:?}",
-                variables[0],
-            )),
-        },
+        }
     }
+
+    let variables = application_args(pattern);
+    solver(constr_type, variables, environment)
 }
-//
-//
+
 pub fn type_check_match(
     environment: &mut Environment<CicTerm, CicTerm>,
     matched_term: &CicTerm,
-    branches: &Vec<(Vec<CicTerm>, CicTerm)>,
+    branches: &Vec<(CicTerm, CicTerm)>,
 ) -> Result<CicTerm, String> {
     let matching_type = Cic::type_check_term(matched_term, environment)?;
     let mut return_type = None;
 
     for (pattern, body) in branches {
         //pattern type checking
-        let constr_var = pattern[0].clone();
-        let constr_type = Cic::type_check_term(&constr_var, environment)?;
+        // let constr_var = pattern[0].clone();
+
+        let constructor = get_applied_function(pattern);
+        let constr_type = if let Variable(_, _) = constructor {
+            // Cic::type_check_term(&constr_var, environment)
+            Cic::type_check_term(&constructor, environment)
+        } else {
+            Err(format!(
+                "Pattern should start with constructor variable application, found {:?}",
+                constructor
+            ))
+        }?;
+        // let constr_type = Cic::type_check_term(&constr_var, environment)?;
         let result_type = type_check_pattern(
-            &constr_type,
-            pattern[1..].to_vec(),
             environment,
+            pattern,
+            &constr_type,
+            // pattern[1..].to_vec(),
         )?;
         if !Cic::terms_unify(environment, &result_type, &matching_type) {
             return Err(
@@ -109,7 +142,8 @@ pub fn type_check_match(
 
         //body type checking
         let pattern_assumptions =
-            type_constr_vars(&constr_type, pattern[1..].to_vec())?;
+            // type_constr_vars(&constr_type, pattern[1..].to_vec())?;
+            type_constr_vars(&constr_type, pattern)?;
         let body_type = environment
             .with_local_assumptions(&pattern_assumptions, |local_env| {
                 Cic::type_check_term(body, local_env)
@@ -230,7 +264,7 @@ pub fn inductive_eliminator(
             let mut hypotheses = vec![];
             for (arg_name, arg_type) in rec_args {
                 //assumption: arg_type is an instance (var/app) of the inductive type
-                let mut right_params = application_args(arg_type);
+                let mut right_params = application_args(&arg_type);
                 // drop left params used in instantiation of inductive type
                 right_params.drain(0..left_params_len); // da crab a drainer frfr
                 let result_with_rights =
@@ -249,7 +283,7 @@ pub fn inductive_eliminator(
 
         for (constr_name, constr_type) in constructors {
             let innermost = get_prod_innermost(&constr_type);
-            let mut right_params = application_args(innermost.clone());
+            let mut right_params = application_args(innermost);
             // drop left params used in instantiation of inductive type
             right_params.drain(0..left_params_len); // da crab a drainer frfr
             let result_with_rights = apply_arguments(&result_var, right_params);

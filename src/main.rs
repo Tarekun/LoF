@@ -14,7 +14,7 @@ mod parser {
 mod runtime {
     pub mod program;
 }
-mod type_theory {
+pub mod type_theory {
     // pub mod commons;
     pub mod environment;
     pub mod interface;
@@ -37,10 +37,6 @@ mod type_theory {
             pub mod type_check;
         }
     }
-    // pub mod stlc {
-    //     pub mod elaboration;
-    //     pub mod stlc;
-    // }
     pub mod fol {
         mod elaboration;
         mod evaluation;

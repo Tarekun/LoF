@@ -159,38 +159,39 @@ impl LofParser {
     fn parse_pattern<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, (Expression, Vec<Expression>)> {
+    ) -> IResult<&'a str, Expression> {
         let (input, construction) = alt((
             |input| self.parse_app(input),
+            |input| self.parse_custom(input),
             |input| self.parse_var(input),
         ))(input)?;
 
-        let (constructor, args) = match construction {
-            Application(fun, args) => (*fun, args),
-            VarUse(var_name) => (VarUse(var_name), vec![]),
-            _ => unreachable!(
-                "Why parse_app | parse_var return {:?} instead of a variable/application?",
-                construction
-            ),
-        };
+        // let (constructor, args) = match construction {
+        //     Application(fun, args) => (*fun, args),
+        //     VarUse(var_name) => (VarUse(var_name), vec![]),
+        //     _ => unreachable!(
+        //         "Why parse_app | parse_var return {:?} instead of a variable/application?",
+        //         construction
+        //     ),
+        // };
 
-        Ok((input, (constructor, args)))
+        Ok((input, construction))
     }
     //
     //
     pub fn parse_match_branch<'a>(
         &self,
-        input: &'a str,
-    ) -> IResult<&'a str, (Vec<Expression>, Expression)> {
+        input: &'a str, // "| h :: l => l,"
+    ) -> IResult<&'a str, (Expression, Expression)> {
         let (input, _) = preceded(multispace0, char('|'))(input)?;
-        let (input, (constructor, args)) = self.parse_pattern(input)?;
+        let (input, pattern) = self.parse_pattern(input)?;
         let (input, _) = preceded(multispace0, tag("=>"))(input)?;
         let (input, body) =
             preceded(multispace0, |input| self.parse_expression(input))(input)?;
         let (input, _) = preceded(multispace0, char(','))(input)?;
 
-        let mut pattern = vec![constructor];
-        pattern.extend(args);
+        // let mut pattern = vec![constructor];
+        // pattern.extend(args);
         Ok((input, (pattern, body)))
     }
     pub fn parse_pattern_match<'a>(
@@ -648,7 +649,7 @@ mod unit_tests {
         );
         assert_eq!(
             parser.parse_match_branch("| O => x,").unwrap(),
-            ("", (vec![VarUse("O".to_string())], VarUse("x".to_string()))),
+            ("", (VarUse("O".to_string()), VarUse("x".to_string()))),
             "Pattern match branch isnt properly constructed"
         );
         assert!(
@@ -661,17 +662,17 @@ mod unit_tests {
         );
     }
 
-    // #[test]
-    // fn test_pattern_on_custom() {
-    //     let parser = LofParser::new(Config::default());
-    //     let _ =
-    //         parser.parse_notation("notation \"_h :: _l\" := \"cons ? _h _l\"");
+    #[test]
+    fn test_pattern_on_custom() {
+        let parser = LofParser::new(Config::default());
+        let _ =
+            parser.parse_notation("notation \"_h :: _l\" := \"cons ? _h _l\"");
 
-    //     assert!(
-    //         parser.parse_match_branch("| h :: l => l,").is_ok(),
-    //         "Parser cant read pattern matching branches with custom notation"
-    //     );
-    // }
+        assert!(
+            parser.parse_match_branch("| h :: l => l,").is_ok(),
+            "Parser cant read pattern matching branches with custom notation"
+        );
+    }
 
     #[test]
     fn test_pattern_matching() {
@@ -685,10 +686,7 @@ mod unit_tests {
                 "",
                 Match(
                     Box::new(VarUse("x".to_string())),
-                    vec![(
-                        vec![VarUse("O".to_string())],
-                        VarUse("x".to_string())
-                    )]
+                    vec![(VarUse("O".to_string()), VarUse("x".to_string()))]
                 )
             ),
             "Pattern match expression isnt properly constructed"

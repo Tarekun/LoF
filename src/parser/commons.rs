@@ -10,13 +10,11 @@ use super::api::{
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{
-        alpha1, alphanumeric1, char, multispace0, multispace1,
-    },
+    character::complete::{alphanumeric1, char, multispace0, multispace1},
     combinator::{opt, recognize},
     error::{Error, ErrorKind},
     multi::{many0, many1},
-    sequence::{delimited, pair, preceded},
+    sequence::{delimited, preceded},
     IResult,
 };
 
@@ -192,9 +190,7 @@ impl LofParser {
                 //TODO avoid cloning
                 simple_map(branches.clone(), |(pattern, patter_body)| {
                     (
-                        simple_map(pattern, |term| {
-                            self.substitute(&term, target_name, body)
-                        }),
+                        self.substitute(&pattern, target_name, body),
                         self.substitute(&patter_body, target_name, body),
                     )
                 }),
