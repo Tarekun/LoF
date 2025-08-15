@@ -7,27 +7,19 @@ use super::{
     sup_utils::{get_arg_types, get_forall_innermost},
 };
 use crate::type_theory::{
-    commons::type_check::generic_type_check_variable, environment::Environment,
+    commons::type_check::type_check_variable, environment::Environment,
     interface::TypeTheory,
 };
 use crate::{
     misc::simple_map,
     type_theory::{
-        commons::type_check::generic_type_check_universal, interface::Kernel,
+        commons::type_check::type_check_universal, interface::Kernel,
     },
 };
 
 //########################### TERMS TYPE CHECKING
-pub fn type_check_variable(
-    environment: &mut Environment<SupTerm, SupFormula>,
-    var_name: &str,
-) -> Result<SupFormula, String> {
-    generic_type_check_variable::<Sup>(environment, var_name)
-}
-//
-//
 pub fn type_check_application(
-    environment: &mut Environment<SupTerm, SupFormula>,
+    environment: &mut Environment<Sup>,
     fun_name: &str,
     args: &Vec<SupTerm>,
 ) -> Result<SupFormula, String> {
@@ -40,7 +32,7 @@ pub fn type_check_application(
 //
 //########################### TYPES TYPE CHECKING
 pub fn type_check_atomic(
-    environment: &mut Environment<SupTerm, SupFormula>,
+    environment: &mut Environment<Sup>,
     pred_name: &str,
     args: &Vec<SupTerm>,
 ) -> Result<SupFormula, String> {
@@ -50,7 +42,7 @@ pub fn type_check_atomic(
 //
 //
 pub fn type_check_equality(
-    _: &mut Environment<SupTerm, SupFormula>,
+    _: &mut Environment<Sup>,
     t1: &SupTerm,
     t2: &SupTerm,
 ) -> Result<SupFormula, String> {
@@ -60,7 +52,7 @@ pub fn type_check_equality(
 //
 //
 pub fn type_check_not(
-    environment: &mut Environment<SupTerm, SupFormula>,
+    environment: &mut Environment<Sup>,
     ψ: &SupFormula,
 ) -> Result<SupFormula, String> {
     Sup::type_check_type(ψ, environment)?;
@@ -69,17 +61,12 @@ pub fn type_check_not(
 //
 //
 pub fn type_check_forall(
-    environment: &mut Environment<SupTerm, SupFormula>,
+    environment: &mut Environment<Sup>,
     var_name: &str,
     var_type: &SupFormula,
     ψ: &SupFormula,
 ) -> Result<SupFormula, String> {
-    let _ = generic_type_check_universal::<Sup>(
-        environment,
-        var_name,
-        var_type,
-        ψ,
-    )?;
+    let _ = type_check_universal::<Sup>(environment, var_name, var_type, ψ)?;
 
     Ok(ForAll(
         var_name.to_string(),
@@ -90,7 +77,7 @@ pub fn type_check_forall(
 //
 //
 pub fn type_check_clause(
-    environment: &mut Environment<SupTerm, SupFormula>,
+    environment: &mut Environment<Sup>,
     literals: &Vec<SupFormula>,
 ) -> Result<SupFormula, String> {
     fn is_literal(formula: &SupFormula) -> bool {
@@ -122,11 +109,11 @@ pub fn type_check_clause(
 //
 //########################### HELPER FUNCTIONS
 fn type_check_nary(
-    environment: &mut Environment<SupTerm, SupFormula>,
+    environment: &mut Environment<Sup>,
     applied: &str,
     args: &Vec<SupTerm>,
 ) -> Result<(), String> {
-    let applied_type = type_check_variable(environment, applied)?;
+    let applied_type = type_check_variable::<Sup>(environment, applied)?;
 
     // check actual arguments are well typed
     let actual_types_res =

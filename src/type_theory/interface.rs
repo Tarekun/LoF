@@ -6,6 +6,7 @@ use crate::runtime::program::{
 };
 use crate::type_theory::environment::Environment;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 /// Base trait for type systems. Requires a grammar for terms,
@@ -23,7 +24,9 @@ pub trait TypeTheory {
     type Exp: Debug + Clone;
 
     /// Create the default environment
-    fn default_environment() -> Environment<Self::Term, Self::Type>;
+    fn default_environment() -> Environment<Self>
+    where
+        Self: Sized;
 
     /// Computes default system equality. Returns Ok(()) if the check is
     /// successfull, an error message otherwise.
@@ -95,65 +98,107 @@ pub trait Kernel: TypeTheory {
     /// Type checks the term and returns its type.
     fn type_check_term(
         term: &Self::Term,
-        environment: &mut Environment<Self::Term, Self::Type>,
-    ) -> Result<Self::Type, String>;
+        environment: &mut Environment<Self>,
+    ) -> Result<Self::Type, String>
+    where
+        Self: Sized;
 
     /// Type checks the type and returns its type.
     fn type_check_type(
         typee: &Self::Type,
-        environment: &mut Environment<Self::Term, Self::Type>,
-    ) -> Result<Self::Type, String>;
+        environment: &mut Environment<Self>,
+    ) -> Result<Self::Type, String>
+    where
+        Self: Sized;
 
     // Type checks the expression and returns its type
     fn type_check_expression(
         exp: &Self::Exp,
-        environment: &mut Environment<Self::Term, Self::Type>,
-    ) -> Result<Self::Type, String>;
+        environment: &mut Environment<Self>,
+    ) -> Result<Self::Type, String>
+    where
+        Self: Sized;
 
     /// Type checks the statement components
     fn type_check_stm(
         term: &Self::Stm,
-        environment: &mut Environment<Self::Term, Self::Type>,
-    ) -> Result<Self::Type, String>;
+        environment: &mut Environment<Self>,
+    ) -> Result<Self::Type, String>
+    where
+        Self: Sized;
 }
 
 /// Refiner module, implements unification
 pub trait Refiner: TypeTheory {
+    /// Algorithm to compute the MCU given a set of constraints.
+    /// Returns a substitution for all solvable meta variables or an error
+    fn solve_unification(
+        constraints: Vec<(Self::Exp, Self::Exp)>,
+    ) -> Result<HashMap<i32, Self::Exp>, String>;
+
+    /// Given a term expression containing metavariables and a `substitution`,
+    /// returns the same expression where solved metavariables are substituted
+    /// with their body
+    fn term_solve_metas(
+        exp: &Self::Term,
+        substitution: &HashMap<i32, Self::Exp>,
+    ) -> Self::Term;
+    /// Given a type expression containing metavariables and a `substitution`,
+    /// returns the same expression where solved metavariables are substituted
+    /// with their body
+    fn type_solve_metas(
+        exp: &Self::Type,
+        substitution: &HashMap<i32, Self::Exp>,
+    ) -> Self::Type;
+
+    /// Given an expression, if it's a metavariable returns its index, None otherwise
+    fn meta_index(meta: &Self::Type) -> Option<i32>;
+
     /// Check if the two terms provided unify with one another
     /// ie they are structurally equal, given a unifier for metavariables
     fn terms_unify(
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Self>,
         term1: &Self::Term,
         term2: &Self::Term,
-    ) -> bool;
+    ) -> bool
+    where
+        Self: Sized;
 
     /// Check if the two types provided unify with one another
     /// ie they are structurally equal, given a unifier for metavariables
     fn types_unify(
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Self>,
         type1: &Self::Type,
         type2: &Self::Type,
-    ) -> bool;
+    ) -> bool
+    where
+        Self: Sized;
 }
 
 /// Reducer module, implements the execution of programs
 pub trait Reducer: TypeTheory {
     /// Reduces the given term to its normal form
     fn normalize_term(
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Self>,
         term: &Self::Term,
-    ) -> Self::Term;
+    ) -> Self::Term
+    where
+        Self: Sized;
 
     fn normalize_expression(
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Self>,
         exp: &Self::Exp,
-    ) -> Self::Exp;
+    ) -> Self::Exp
+    where
+        Self: Sized;
 
     /// Evaluates the statement, updating the context accordingly
     fn evaluate_statement(
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Self>,
         stm: &Self::Stm,
-    ) -> ();
+    ) -> ()
+    where
+        Self: Sized;
 }
 
 /// Interactive module, implements tactic checking for interactive theorem proving
@@ -166,11 +211,13 @@ pub trait Interactive: TypeTheory {
     /// Proof checking for the current `tactic` given a `target` and a `partial_proof`.
     /// Returns an updated (target, partial_proof) pair
     fn type_check_tactic(
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Self>,
         tactic: &Tactic<Self::Exp>,
         target: &Self::Type,
         partial_proof: &Self::Term,
-    ) -> Result<(Self::Type, Self::Term), String>;
+    ) -> Result<(Self::Type, Self::Term), String>
+    where
+        Self: Sized;
 }
 
 /// Automatic module, implements automatic theorem proving via satisfaction

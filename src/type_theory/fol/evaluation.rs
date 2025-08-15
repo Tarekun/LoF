@@ -18,7 +18,7 @@ use super::fol::{Fol, FolFormula, FolStm, FolTerm};
 
 //########################### TERM βδ-REDUCTION
 pub fn one_step_reduction(
-    environment: &mut Environment<FolTerm, FolFormula>,
+    environment: &mut Environment<Fol>,
     term: &FolTerm,
 ) -> FolTerm {
     match term {
@@ -32,7 +32,7 @@ pub fn one_step_reduction(
 //
 //
 fn reduce_variable(
-    environment: &Environment<FolTerm, FolFormula>,
+    environment: &Environment<Fol>,
     var_name: &str,
     og_term: &FolTerm,
 ) -> FolTerm {
@@ -43,7 +43,7 @@ fn reduce_variable(
 
 //########################### STATEMENTS EXECUTION
 pub fn evaluate_statement(
-    environment: &mut Environment<FolTerm, FolFormula>,
+    environment: &mut Environment<Fol>,
     stm: &FolStm,
 ) -> () {
     match stm {
@@ -64,7 +64,7 @@ pub fn evaluate_statement(
 //
 //
 pub fn evaluate_let(
-    environment: &mut Environment<FolTerm, FolFormula>,
+    environment: &mut Environment<Fol>,
     var_name: &str,
     var_type: &Option<FolFormula>,
     body: &FolTerm,
@@ -74,7 +74,7 @@ pub fn evaluate_let(
 //
 //
 pub fn evaluate_axiom(
-    environment: &mut Environment<FolTerm, FolFormula>,
+    environment: &mut Environment<Fol>,
     axiom_name: &str,
     formula: &FolFormula,
 ) -> () {
@@ -83,7 +83,7 @@ pub fn evaluate_axiom(
 //
 //
 pub fn evaluate_theorem(
-    environment: &mut Environment<FolTerm, FolFormula>,
+    environment: &mut Environment<Fol>,
     theorem_name: &str,
     formula: &FolFormula,
     proof: &Union<FolTerm, Vec<Tactic<Union<FolTerm, FolFormula>>>>,
@@ -98,7 +98,7 @@ pub fn evaluate_theorem(
 //
 //
 pub fn evaluate_fun(
-    environment: &mut Environment<FolTerm, FolFormula>,
+    environment: &mut Environment<Fol>,
     fun_name: &str,
     args: &Vec<(String, FolFormula)>,
     out_type: &FolFormula,
@@ -112,7 +112,7 @@ pub fn evaluate_fun(
         out_type,
         body,
         is_rec,
-        make_multiarg_fun_type,
+        |args, body_type| make_multiarg_fun_type(&args, &body_type),
     );
 }
 //########################### STATEMENTS EXECUTION

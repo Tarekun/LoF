@@ -1,0 +1,99 @@
+# This file is part of the LoF standard library
+# It contains list basics implementations
+
+import "library/nat"
+import "library/bool"
+
+!theory_block cic
+inductive List (T: TYPE) : TYPE {
+  | nil: List T 
+  | cons: T -> List T -> List T
+}
+!end_block
+
+fun rec len (T: TYPE) (l: List T) : Nat {
+  match l with 
+  | nil T => z,
+  | cons T e ll => s (len T ll),
+}
+
+fun rec map (A: TYPE) (B: TYPE) (l: List A) (mapper: A -> B) : List B {
+  match l with
+  | nil A => nil B,
+  | cons A e ll => cons B (mapper e) (map A B ll mapper),
+}
+
+fun rec fold (T: TYPE) (U: TYPE) (l: List T) (init: U) (acc: T -> U -> U) : U {
+  match l with 
+  | nil T => init,
+  | cons T e ll => acc e (fold T U ll init acc),
+}
+
+fun push (T: TYPE) (l: List T) (e: T): List T {
+  cons T e l
+}
+fun rec enqueue (T: TYPE) (l: List T) (e: T): List T {
+  match l with 
+  | nil T => cons T e l,
+  | cons T h ll => cons T h (enqueue T ll e),
+}
+
+fun rec reverse (T: TYPE) (l: List T) : List T {
+  match l with
+  | nil T => nil ?,
+  | cons T h ll => enqueue ? (reverse T ll) h,
+}
+
+fun rec append (T: TYPE) (l1: List T) (l2: List T) : List T {
+  match l1 with
+  | nil T => l2,
+  | cons T h ll => cons ? h (append ? ll l2),
+}
+
+fun rec filter (T: TYPE) (l: List T) (pred: T -> Bool) : List T {
+  match l with
+  | nil T => nil T,
+  | cons T h ll => if ? (pred h) (
+    \lambda i:Unit. cons ? h (filter T ll pred)
+  ) (
+    \lambda i:Unit. filter T ll pred
+  ),
+}
+
+
+############################################################################################
+## Proposed additional functions (stubs for future implementation)
+#
+## Concatenate two lists
+#fun rec append (T: TYPE) (l1: List T) (l2: List T) : List T {
+#  match l1 with 
+#  | nil T => l2,
+#  | cons T e ll => cons T e (append T ll l2),
+#}
+#
+## Reverse a list
+#fun rec reverse (T: TYPE) (l: List T) : List T {
+#  fold T (List T) l (nil T) (fun e acc => cons T e acc),
+#}
+#
+## Filter elements satisfying a predicate
+#fun rec filter (T: TYPE) (l: List T) (pred: T -> Bool) : List T {
+#  match l with 
+#  | nil T => nil T,
+#  | cons T e ll => if (pred e) then cons T e (filter T ll pred) else filter T ll pred,
+#}
+#
+## Check if all elements satisfy a predicate
+#fun rec all (T: TYPE) (l: List T) (pred: T -> Bool) : Bool {
+#  match l with 
+#  | nil T => true,
+#  | cons T e ll => pred e && all T ll pred,
+#}
+#
+## Check if any element satisfies a predicate
+#fun rec any (T: TYPE) (l: List T) (pred: T -> Bool) : Bool {
+#  match l with 
+#  | nil T => false,
+#  | cons T e ll => pred e || any T ll pred,
+#}
+#

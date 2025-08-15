@@ -11,9 +11,9 @@ use crate::{
 /// on its result.
 pub fn generic_term_normalization<
     T: TypeTheory,
-    F: Fn(&mut Environment<T::Term, T::Type>, &T::Term) -> T::Term,
+    F: Fn(&mut Environment<T>, &T::Term) -> T::Term,
 >(
-    environment: &mut Environment<T::Term, T::Type>,
+    environment: &mut Environment<T>,
     term: &T::Term,
     one_step_reduction: F,
 ) -> T::Term {
@@ -26,7 +26,7 @@ pub fn generic_term_normalization<
 
 //########################### TERM βδ-REDUCTION
 pub fn generic_reduce_variable<T: TypeTheory>(
-    environment: &Environment<T::Term, T::Type>,
+    environment: &Environment<T>,
     var_name: &str,
     og_term: &T::Term,
 ) -> T::Term {
@@ -43,7 +43,7 @@ pub fn generic_reduce_variable<T: TypeTheory>(
 
 //########################### STATEMENTS EXECUTION
 pub fn generic_evaluate_let<T: TypeTheory + Kernel>(
-    environment: &mut Environment<T::Term, T::Type>,
+    environment: &mut Environment<T>,
     var_name: &str,
     var_type: &Option<T::Type>,
     body: &T::Term,
@@ -64,17 +64,17 @@ pub fn generic_evaluate_let<T: TypeTheory + Kernel>(
 //
 pub fn generic_evaluate_fun<
     T: TypeTheory,
-    F: Fn(&[(String, T::Type)], &T::Type) -> T::Type,
+    C: Fn(Vec<(String, T::Type)>, T::Type) -> T::Type,
 >(
-    environment: &mut Environment<T::Term, T::Type>,
+    environment: &mut Environment<T>,
     fun_name: &str,
     args: &Vec<(String, T::Type)>,
     out_type: &T::Type,
     body: &T::Term,
     _is_rec: &bool,
-    make_fun_type: F,
+    constructor: C,
 ) -> () {
-    let fun_type = make_fun_type(args, out_type);
+    let fun_type = constructor(args.to_owned(), out_type.to_owned());
     // TODO η-expand body cuz this aint it yungblood
     // let full_body = eta_expand(args, body);
     // let body = T::eta_expand(body, ...) type shi
@@ -83,7 +83,7 @@ pub fn generic_evaluate_fun<
 //
 //
 pub fn generic_evaluate_axiom<T: TypeTheory>(
-    environment: &mut Environment<T::Term, T::Type>,
+    environment: &mut Environment<T>,
     axiom_name: &str,
     formula: &T::Type,
 ) -> () {
@@ -92,7 +92,7 @@ pub fn generic_evaluate_axiom<T: TypeTheory>(
 //
 //
 pub fn generic_evaluate_theorem<T: TypeTheory, E>(
-    environment: &mut Environment<T::Term, T::Type>,
+    environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
     _proof: &Union<T::Term, Vec<Tactic<E>>>,

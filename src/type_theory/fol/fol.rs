@@ -1,14 +1,16 @@
 use super::elaboration::{elaborate_expression, elaborate_statement};
 use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::type_check::{
-    type_check_abstraction, type_check_application, type_check_arrow,
-    type_check_axiom, type_check_forall, type_check_fun, type_check_let,
-    type_check_theorem, type_check_var,
+    type_check_application, type_check_arrow, type_check_forall,
 };
 use crate::misc::Union::{self, L, R};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
+use crate::type_theory::commons::type_check::{
+    type_check_abstraction, type_check_axiom, type_check_let,
+    type_check_theorem, type_check_variable,
+};
 use crate::type_theory::environment::Environment;
 use crate::type_theory::fol::fol::FolFormula::{
     Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
@@ -18,12 +20,10 @@ use crate::type_theory::fol::fol::FolTerm::{
     Abstraction, Application, Tuple, Variable,
 };
 use crate::type_theory::fol::type_check::{
-    type_check_conjunction, type_check_disjunction, type_check_not,
-    type_check_predicate, type_check_tuple,
+    fol_type_check_fun, type_check_conjunction, type_check_disjunction,
+    type_check_not, type_check_predicate, type_check_tuple,
 };
-use crate::type_theory::interface::{
-    Interactive, Kernel, Reducer, Refiner, TypeTheory,
-};
+use crate::type_theory::interface::{Interactive, Kernel, Reducer, TypeTheory};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FolTerm {
@@ -46,7 +46,7 @@ pub enum FolFormula {
 #[derive(Debug, PartialEq, Clone)]
 pub enum FolStm {
     /// axiom_name, formula
-    Axiom(String, Box<FolFormula>),
+    Axiom(String, FolFormula),
     /// theorem_name, formula, proof
     Theorem(
         String,
@@ -73,7 +73,7 @@ impl TypeTheory for Fol {
     type Stm = FolStm;
     type Exp = Union<FolTerm, FolFormula>;
 
-    fn default_environment() -> Environment<FolTerm, FolFormula> {
+    fn default_environment() -> Environment<Fol> {
         Environment::with_defaults(
             vec![],
             vec![],
@@ -114,7 +114,7 @@ impl TypeTheory for Fol {
 impl Kernel for Fol {
     fn type_check_expression(
         exp: &Union<FolTerm, FolFormula>,
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Fol>,
     ) -> Result<Self::Type, String> {
         match exp {
             L(term) => Fol::type_check_term(term, environment),
@@ -124,12 +124,22 @@ impl Kernel for Fol {
 
     fn type_check_term(
         term: &FolTerm,
-        environment: &mut Environment<FolTerm, FolFormula>,
+        environment: &mut Environment<Fol>,
     ) -> Result<FolFormula, String> {
         match term {
-            Variable(var_name) => type_check_var(environment, var_name),
+            Variable(var_name) => {
+                type_check_variable::<Fol>(environment, var_name)
+            }
             Abstraction(var_name, var_type, body) => {
-                type_check_abstraction(environment, var_name, var_type, body)
+                type_check_abstraction::<Fol, _>(
+                    environment,
+                    var_name,
+                    var_type,
+                    body,
+                    |_, var_type, body_type| {
+                        Arrow(Box::new(var_type), Box::new(body_type))
+                    },
+                )
             }
             Application(left, right) => {
                 type_check_application(environment, left, right)
@@ -141,7 +151,7 @@ impl Kernel for Fol {
     // TODO i need to decide what exact type to return here
     fn type_check_type(
         typee: &FolFormula,
-        environment: &mut Environment<Self::Term, FolFormula>,
+        environment: &mut Environment<Fol>,
     ) -> Result<FolFormula, String> {
         match typee {
             Predicate(type_name, args) => {
@@ -170,16 +180,16 @@ impl Kernel for Fol {
     // TODO i need to decide what exact type to return here
     fn type_check_stm(
         stm: &Self::Stm,
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Fol>,
     ) -> Result<Self::Type, String> {
         match stm {
             Axiom(axiom_name, predicate) => {
-                type_check_axiom(environment, axiom_name, predicate)
+                type_check_axiom::<Fol>(environment, axiom_name, predicate)
             }
-            Let(var_name, var_type, body) => {
-                type_check_let(environment, var_name, var_type, body)
+            Let(var_name, opt_type, body) => {
+                type_check_let::<Fol>(environment, var_name, opt_type, body)
             }
-            Fun(fun_name, args, out_type, body, is_rec) => type_check_fun(
+            Fun(fun_name, args, out_type, body, is_rec) => fol_type_check_fun(
                 environment,
                 fun_name,
                 args,
@@ -187,34 +197,19 @@ impl Kernel for Fol {
                 body,
                 is_rec,
             ),
-            Theorem(theorem_name, formula, proof) => {
-                type_check_theorem(environment, theorem_name, formula, proof)
-            }
+            Theorem(theorem_name, formula, proof) => type_check_theorem::<Fol>(
+                environment,
+                theorem_name,
+                formula,
+                proof,
+            ),
         }
-    }
-}
-
-impl Refiner for Fol {
-    fn terms_unify(
-        _environment: &mut Environment<FolTerm, FolFormula>,
-        term1: &FolTerm,
-        term2: &FolTerm,
-    ) -> bool {
-        term1 == term2
-    }
-
-    fn types_unify(
-        _environment: &mut Environment<FolTerm, FolFormula>,
-        type1: &FolFormula,
-        type2: &FolFormula,
-    ) -> bool {
-        type1 == type2
     }
 }
 
 impl Reducer for Fol {
     fn normalize_expression(
-        environment: &mut Environment<FolTerm, FolFormula>,
+        environment: &mut Environment<Fol>,
         exp: &Union<FolTerm, FolFormula>,
     ) -> Union<FolTerm, FolFormula> {
         match exp {
@@ -226,7 +221,7 @@ impl Reducer for Fol {
     }
 
     fn normalize_term(
-        environment: &mut Environment<FolTerm, FolFormula>,
+        environment: &mut Environment<Fol>,
         term: &FolTerm,
     ) -> FolTerm {
         generic_term_normalization::<Fol, _>(
@@ -237,7 +232,7 @@ impl Reducer for Fol {
     }
 
     fn evaluate_statement(
-        environment: &mut Environment<FolTerm, FolFormula>,
+        environment: &mut Environment<Fol>,
         stm: &FolStm,
     ) -> () {
         evaluate_statement(environment, stm)
@@ -256,7 +251,7 @@ impl Interactive for Fol {
     }
 
     fn type_check_tactic(
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Fol>,
         tactic: &Tactic<Self::Exp>,
         target: &Self::Type,
         partial_proof: &Self::Term,

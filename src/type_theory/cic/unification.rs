@@ -2,13 +2,13 @@ use super::cic::CicTerm;
 use super::cic::CicTerm::{
     Abstraction, Application, Match, Meta, Product, Sort, Variable,
 };
-use crate::type_theory::cic::cic::GLOBAL_INDEX;
+use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::substitute_meta;
 use crate::type_theory::environment::Environment;
 use std::collections::{HashMap, VecDeque};
 
 pub fn cic_unification(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     term1: &CicTerm,
     term2: &CicTerm,
 ) -> Result<bool, String> {
@@ -182,7 +182,7 @@ pub fn solve_unification(
 }
 
 pub fn equal_under_substitution(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     term1: &CicTerm,
     term2: &CicTerm,
 ) -> bool {

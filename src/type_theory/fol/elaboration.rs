@@ -268,9 +268,7 @@ pub fn elaborate_axiom(
 ) -> Result<FolStm, String> {
     let formula = elaborate_expression(formula)?;
     match formula {
-        Union::R(formula) => {
-            Ok(Axiom(axiom_name.to_string(), Box::new(formula)))
-        }
+        Union::R(formula) => Ok(Axiom(axiom_name.to_string(), formula)),
         Union::L(term) => {
             type_expected_error(&format!("axiom {}", axiom_name), &term)
         }

@@ -51,8 +51,7 @@ pub fn type_check<T: TypeTheory + Kernel + Reducer>(
 ) -> Result<Schedule<T>, String> {
     let schedule = parse_and_elaborate::<T>(config, workspace)?;
     debug!("Type checking of the program...");
-    let mut environment: Environment<T::Term, T::Type> =
-        T::default_environment();
+    let mut environment: Environment<T> = T::default_environment();
     let mut errors = vec![];
 
     for node in schedule.iter() {

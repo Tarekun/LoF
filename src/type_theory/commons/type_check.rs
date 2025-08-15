@@ -1,24 +1,22 @@
+use super::evaluation::{
+    generic_evaluate_axiom, generic_evaluate_fun, generic_evaluate_let,
+    generic_evaluate_theorem,
+};
 use crate::{
     misc::Union::{self, L, R},
     parser::api::Tactic,
     type_theory::{
         environment::Environment,
-        interface::{Interactive, Kernel, TypeTheory},
+        interface::{Interactive, Kernel, Refiner, TypeTheory},
     },
 };
 
-use super::evaluation::{
-    generic_evaluate_axiom, generic_evaluate_fun, generic_evaluate_let,
-    generic_evaluate_theorem,
-};
-
 //########################### EXPRESSIONS TYPE CHECKING
-//
 /// Generic variable type checking. Implements the classic VAR type checking
 /// rule of checking x:T ∈ Γ, where x is `var_name`, T the returned type, and
 /// Γ the `environment`
-pub fn generic_type_check_variable<T: TypeTheory>(
-    environment: &mut Environment<T::Term, T::Type>,
+pub fn type_check_variable<T: TypeTheory>(
+    environment: &mut Environment<T>,
     var_name: &str,
 ) -> Result<T::Type, String> {
     match environment.get_variable_type(var_name) {
@@ -30,17 +28,66 @@ pub fn generic_type_check_variable<T: TypeTheory>(
 /// Generic abstraction type checking. Implements classic ABS type checking
 /// rule of Γ ⊢ λa:A.b : A->B, where a is `var_name`, A is `var_type`, b is
 /// `body`, and B is the returned type.
-/// Creating the functional type A->B is left to type theories implementations
-pub fn generic_type_check_abstraction<T: TypeTheory + Kernel>(
-    environment: &mut Environment<T::Term, T::Type>,
+/// This function does not support unification solving for implicit types
+pub fn type_check_abstraction<
+    T: TypeTheory + Kernel,
+    C: Fn(String, T::Type, T::Type) -> T::Type,
+>(
+    environment: &mut Environment<T>,
     var_name: &str,
     var_type: &T::Type,
     body: &T::Term,
+    constructor: C,
 ) -> Result<T::Type, String> {
     let _ = T::type_check_type(var_type, environment)?;
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_term(body, local_env)?;
-        Ok(body_type)
+        Ok(constructor(
+            var_name.to_string(),
+            var_type.to_owned(),
+            body_type,
+        ))
+    })
+}
+
+pub fn u_type_check_abstraction<
+    T: TypeTheory + Kernel + Refiner,
+    C: Fn(String, T::Type, T::Type) -> T::Type,
+>(
+    environment: &mut Environment<T>,
+    var_name: &str,
+    var_type: &T::Type,
+    body: &T::Term,
+    constructor: C,
+) -> Result<T::Type, String> {
+    let _ = T::type_check_type(var_type, environment)?;
+    environment.with_local_assumption(var_name, var_type, |local_env| {
+        let body_type = T::type_check_term(body, local_env)?;
+        let meta_index = T::meta_index(&body_type);
+
+        let (var_type, body_type) = if meta_index.is_some() {
+            // let meta_index = meta_index.unwrap();
+            let substitution =
+                T::solve_unification(local_env.get_constraints())?;
+
+            let simplified_arg_type = T::type_solve_metas(
+                var_type,
+                // &meta_index,
+                // substitution.get(&meta_index).unwrap(),
+                &substitution,
+            );
+            let simplified_body_type = T::type_solve_metas(
+                &body_type,
+                &substitution, // &meta_index,
+                               // substitution.get(&meta_index).unwrap(),
+            );
+
+            (simplified_arg_type, simplified_body_type)
+        } else {
+            (var_type.to_owned(), body_type)
+        };
+
+        Ok(constructor(var_name.to_string(), var_type, body_type))
     })
 }
 
@@ -48,8 +95,8 @@ pub fn generic_type_check_abstraction<T: TypeTheory + Kernel>(
 /// universal quantification Γ ⊢ ∀a:A.P(a), where a is `var_name`, A is
 /// `var_type`, and P(a) is a dependent `predicate`.
 /// Creating the dependent type Πa:A.P a is left to type theories implementations
-pub fn generic_type_check_universal<T: TypeTheory + Kernel>(
-    environment: &mut Environment<T::Term, T::Type>,
+pub fn type_check_universal<T: TypeTheory + Kernel>(
+    environment: &mut Environment<T>,
     var_name: &str,
     var_type: &T::Type,
     predicate: &T::Type,
@@ -57,17 +104,18 @@ pub fn generic_type_check_universal<T: TypeTheory + Kernel>(
     let _ = T::type_check_type(var_type, environment)?;
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_type(predicate, local_env)?;
+        // TODO return the body type or the quantification itself via constructor?
         Ok(body_type)
     })
 }
 
 // pub fn type_check_application<T: TypeTheory>(
-//     environment: &mut Environment<T::Term, T::Type>,
+//     environment: &mut Environment<T>,
 //     left: T::Term,
 //     right: T::Term,
 // ) -> Result<T::Type, String> {
 //     fn type_check_nested_app<T: TypeTheory>(
-//         local_env: &mut Environment<T::Term, T::Type>,
+//         local_env: &mut Environment<T>,
 //         term: T::Term,
 //     ) -> Result<T::Type, String> {
 //         match term {
@@ -121,8 +169,8 @@ pub fn generic_type_check_universal<T: TypeTheory + Kernel>(
 //########################### STATEMENTS TYPE CHECKING
 //
 /// Generic let definition type checking. Uses `T::type_check_type` on the variable type
-pub fn generic_type_check_let<T: TypeTheory + Kernel>(
-    environment: &mut Environment<T::Term, T::Type>,
+pub fn type_check_let<T: TypeTheory + Kernel>(
+    environment: &mut Environment<T>,
     var_name: &str,
     opt_type: &Option<T::Type>,
     body: &T::Term,
@@ -149,19 +197,19 @@ pub fn generic_type_check_let<T: TypeTheory + Kernel>(
 }
 
 /// Generic function definition type checking
-pub fn generic_type_check_fun<
+pub fn type_check_function<
     T: TypeTheory + Kernel,
-    F: Fn(&[(String, T::Type)], &T::Type) -> T::Type,
+    C: Fn(Vec<(String, T::Type)>, T::Type) -> T::Type,
 >(
-    environment: &mut Environment<T::Term, T::Type>,
+    environment: &mut Environment<T>,
     fun_name: &str,
     args: &Vec<(String, T::Type)>,
     out_type: &T::Type,
     body: &T::Term,
     is_rec: &bool,
-    make_fun_type: F,
+    constructor: C,
 ) -> Result<T::Type, String> {
-    let fun_type = make_fun_type(&args, &out_type);
+    let fun_type = constructor(args.to_owned(), out_type.to_owned());
     let _ = T::type_check_type(&fun_type, environment);
     let mut assumptions = args.to_owned();
     if *is_rec {
@@ -187,15 +235,15 @@ pub fn generic_type_check_fun<
         out_type,
         body,
         is_rec,
-        make_fun_type,
+        constructor,
     );
     Ok(fun_type)
 }
 
-/// Geneirc axiom type checking. Uses `T::type_check_type` on `predicate` and
+/// Generic axiom type checking. Uses `T::type_check_type` on `predicate` and
 /// updates the environment with the axiom
-pub fn generic_type_check_axiom<T: TypeTheory + Kernel>(
-    environment: &mut Environment<T::Term, T::Type>,
+pub fn type_check_axiom<T: TypeTheory + Kernel>(
+    environment: &mut Environment<T>,
     axiom_name: &str,
     predicate: &T::Type,
 ) -> Result<T::Type, String> {
@@ -207,8 +255,8 @@ pub fn generic_type_check_axiom<T: TypeTheory + Kernel>(
 
 /// Generic theorem type checking. If `proof` is a term style proof it type checks
 /// the body and checks unification with the theorem `formula`;
-pub fn generic_type_check_theorem<T: TypeTheory + Kernel + Interactive, E>(
-    environment: &mut Environment<T::Term, T::Type>,
+pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
+    environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
     proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
@@ -253,7 +301,7 @@ pub fn generic_type_check_theorem<T: TypeTheory + Kernel + Interactive, E>(
 }
 
 fn type_check_interactive_proof<T: TypeTheory + Interactive>(
-    environment: &mut Environment<T::Term, T::Type>,
+    environment: &mut Environment<T>,
     interactive_proof: &[Tactic<T::Exp>],
     target: &T::Type,
     partial_proof: &T::Term,

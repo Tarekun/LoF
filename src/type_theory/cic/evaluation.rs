@@ -20,7 +20,7 @@ use crate::type_theory::interface::Reducer;
 
 //########################### TERM βδ-REDUCTION
 pub fn one_step_reduction(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     term: &CicTerm,
 ) -> CicTerm {
     match term {
@@ -37,7 +37,7 @@ pub fn one_step_reduction(
 //
 //
 fn reduce_variable(
-    environment: &Environment<CicTerm, CicTerm>,
+    environment: &Environment<Cic>,
     var_name: &str,
     og_term: &CicTerm,
 ) -> CicTerm {
@@ -53,7 +53,7 @@ fn get_body(reduced_function: &CicTerm) -> Option<CicTerm> {
     }
 }
 fn reduce_application(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     left: &CicTerm,
     right: &CicTerm,
 ) -> CicTerm {
@@ -91,7 +91,7 @@ fn reduce_application(
 //
 //
 fn reduce_match(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     matched_term: &CicTerm,
     branches: &Vec<(CicTerm, CicTerm)>,
 ) -> CicTerm {
@@ -111,7 +111,7 @@ fn reduce_match(
 
 //########################### STATEMENTS EXECUTION
 pub fn evaluate_statement(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     stm: &CicStm,
 ) -> () {
     match stm {
@@ -141,7 +141,7 @@ pub fn evaluate_statement(
 //
 //
 pub fn evaluate_axiom(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     axiom_name: &str,
     formula: &CicTerm,
 ) -> () {
@@ -150,7 +150,7 @@ pub fn evaluate_axiom(
 //
 //
 pub fn evaluate_let(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     var_name: &str,
     var_type: &Option<CicTerm>,
     body: &CicTerm,
@@ -160,7 +160,7 @@ pub fn evaluate_let(
 //
 //
 pub fn evaluate_fun(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     fun_name: &str,
     args: &Vec<(String, CicTerm)>,
     out_type: &CicTerm,
@@ -183,7 +183,7 @@ pub fn evaluate_fun(
 //
 //
 pub fn evaluate_theorem(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     theorem_name: &str,
     formula: &CicTerm,
     proof: &Union<CicTerm, Vec<Tactic<CicTerm>>>,
@@ -198,7 +198,7 @@ pub fn evaluate_theorem(
 //
 //
 pub fn evaluate_inductive(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     name: &str,
     params: &Vec<(String, CicTerm)>,
     ariety: &CicTerm,

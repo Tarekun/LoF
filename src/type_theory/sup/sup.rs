@@ -3,13 +3,13 @@ use super::{
     type_check::{
         type_check_application, type_check_atomic, type_check_clause,
         type_check_equality, type_check_forall, type_check_not,
-        type_check_variable,
     },
 };
 use crate::{
     misc::Union::{self, L, R},
     runtime::program::Schedule,
     type_theory::{
+        commons::type_check::type_check_variable,
         environment::Environment,
         interface::{Automatic, Kernel, TypeTheory},
         sup::{
@@ -51,7 +51,7 @@ impl TypeTheory for Sup {
     type Exp = Union<SupTerm, SupFormula>;
     type Stm = ();
 
-    fn default_environment() -> Environment<SupTerm, SupFormula> {
+    fn default_environment() -> Environment<Sup> {
         Environment::with_defaults(vec![], vec![], vec![])
     }
 
@@ -101,10 +101,10 @@ impl Kernel for Sup {
     /// 3) recursively its arguments are well‐formed.
     fn type_check_term(
         term: &Self::Term,
-        env: &mut Environment<Self::Term, Self::Type>,
+        env: &mut Environment<Sup>,
     ) -> Result<Self::Type, String> {
         match term {
-            Variable(var_name) => type_check_variable(env, var_name),
+            Variable(var_name) => type_check_variable::<Sup>(env, var_name),
             Application(fun_name, args) => {
                 type_check_application(env, fun_name, args)
             }
@@ -118,7 +118,7 @@ impl Kernel for Sup {
     /// - `Clause(lits)`: each literal is either an atomic formula or a negated atomic formula.
     fn type_check_type(
         φ: &Self::Type,
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Sup>,
     ) -> Result<Self::Type, String> {
         match φ {
             Atom(predicate, args) => {
@@ -135,7 +135,7 @@ impl Kernel for Sup {
 
     fn type_check_expression(
         exp: &Union<SupTerm, SupFormula>,
-        environment: &mut Environment<Self::Term, Self::Type>,
+        environment: &mut Environment<Sup>,
     ) -> Result<Self::Type, String> {
         match exp {
             L(term) => Sup::type_check_term(term, environment),
@@ -144,11 +144,10 @@ impl Kernel for Sup {
     }
 
     fn type_check_stm(
-        stm: &Self::Stm,
-        env: &mut Environment<Self::Term, Self::Type>,
+        _stm: &Self::Stm,
+        _env: &mut Environment<Sup>,
     ) -> Result<Self::Type, String> {
-        //TODO find something better
-        Ok(Atom("Unit".to_string(), vec![]))
+        Err("Statement type checking is not supported in SUP".to_string())
     }
 }
 

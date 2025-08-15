@@ -1,0 +1,8 @@
+inductive List (T: TYPE) : TYPE {| nil: List T | cons: T -> List T -> List T}
+inductive Bool : TYPE {| true : Bool | false : Bool}
+
+axiom l : List Bool;
+
+match l with
+| nil ? => l,
+| cons ? e ll => l,

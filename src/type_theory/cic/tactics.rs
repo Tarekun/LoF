@@ -7,7 +7,7 @@ use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{Interactive, Kernel, Refiner, TypeTheory};
 
 pub fn type_check_tactic(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     tactic: &Tactic<CicTerm>,
     target: &CicTerm,
     partial_proof: &CicTerm,
@@ -29,7 +29,7 @@ pub fn type_check_tactic(
 //
 //
 fn type_check_suppose(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     target: &CicTerm,
     partial_proof: &CicTerm,
     ass_name: &str,
@@ -63,7 +63,7 @@ fn type_check_suppose(
 //
 //
 fn type_check_by(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     target: &CicTerm,
     partial_proof: &CicTerm,
     proof_term: &CicTerm,
