@@ -19,6 +19,7 @@ use crate::type_theory::fol::fol::FolStm::{Axiom, Fun, Let, Theorem};
 use crate::type_theory::fol::fol::FolTerm::{
     Abstraction, Application, Tuple, Variable,
 };
+use crate::type_theory::fol::fol_utils::substitute_term;
 use crate::type_theory::fol::type_check::{
     fol_type_check_fun, type_check_conjunction, type_check_disjunction,
     type_check_not, type_check_predicate, type_check_tuple,
@@ -208,6 +209,14 @@ impl Kernel for Fol {
 }
 
 impl Reducer for Fol {
+    fn substitute(
+        term: &Self::Term,
+        var_name: &str,
+        body: &Self::Term,
+    ) -> Self::Term {
+        substitute_term(term, var_name, body)
+    }
+
     fn normalize_expression(
         environment: &mut Environment<Fol>,
         exp: &Union<FolTerm, FolFormula>,

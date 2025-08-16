@@ -1,11 +1,10 @@
-use super::evaluation::{
-    generic_evaluate_axiom, generic_evaluate_fun, generic_evaluate_let,
-    generic_evaluate_theorem,
-};
 use crate::{
     misc::Union::{self, L, R},
     parser::api::Tactic,
     type_theory::{
+        commons::evaluation::{
+            evaluate_axiom, evaluate_fun, evaluate_let, evaluate_theorem,
+        },
         environment::Environment,
         interface::{Interactive, Kernel, Refiner, TypeTheory},
     },
@@ -50,6 +49,10 @@ pub fn type_check_abstraction<
     })
 }
 
+/// Generic abstraction type checking. Implements classic ABS type checking
+/// rule of Γ ⊢ λa:A.b : A->B, where a is `var_name`, A is `var_type`, b is
+/// `body`, and B is the returned type.
+/// This function does support unification and requires implementation of `Refiner`
 pub fn u_type_check_abstraction<
     T: TypeTheory + Kernel + Refiner,
     C: Fn(String, T::Type, T::Type) -> T::Type,
@@ -63,24 +66,19 @@ pub fn u_type_check_abstraction<
     let _ = T::type_check_type(var_type, environment)?;
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_term(body, local_env)?;
-        let meta_index = T::meta_index(&body_type);
+        println!("pre meta index con body {:?}", body_type);
+        let meta_index = T::meta_index(var_type);
+        println!("meta index {:?}", meta_index);
 
         let (var_type, body_type) = if meta_index.is_some() {
-            // let meta_index = meta_index.unwrap();
             let substitution =
                 T::solve_unification(local_env.get_constraints())?;
+            println!("computed MCU {:?}", substitution);
 
-            let simplified_arg_type = T::type_solve_metas(
-                var_type,
-                // &meta_index,
-                // substitution.get(&meta_index).unwrap(),
-                &substitution,
-            );
-            let simplified_body_type = T::type_solve_metas(
-                &body_type,
-                &substitution, // &meta_index,
-                               // substitution.get(&meta_index).unwrap(),
-            );
+            let simplified_arg_type =
+                T::type_solve_metas(var_type, &substitution);
+            let simplified_body_type =
+                T::type_solve_metas(&body_type, &substitution);
 
             (simplified_arg_type, simplified_body_type)
         } else {
@@ -184,7 +182,7 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
     let _ = T::type_check_type(&var_type, environment)?;
 
     if T::base_type_equality(&var_type, &body_type).is_ok() {
-        generic_evaluate_let::<T>(environment, var_name, &Some(var_type), body);
+        evaluate_let::<T>(environment, var_name, &Some(var_type), body);
         Ok(body_type)
     } else {
         Err(format!(
@@ -200,6 +198,7 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
 pub fn type_check_function<
     T: TypeTheory + Kernel,
     C: Fn(Vec<(String, T::Type)>, T::Type) -> T::Type,
+    E: Fn((String, T::Type), T::Term) -> T::Term,
 >(
     environment: &mut Environment<T>,
     fun_name: &str,
@@ -208,6 +207,7 @@ pub fn type_check_function<
     body: &T::Term,
     is_rec: &bool,
     constructor: C,
+    eta_wrap: E,
 ) -> Result<T::Type, String> {
     let fun_type = constructor(args.to_owned(), out_type.to_owned());
     let _ = T::type_check_type(&fun_type, environment);
@@ -228,14 +228,15 @@ pub fn type_check_function<
         ));
     }
 
-    generic_evaluate_fun::<T, _>(
+    evaluate_fun::<T, _, _>(
         environment,
         fun_name,
         args,
         out_type,
         body,
         is_rec,
-        constructor,
+        |args, out_type| constructor(args.to_owned(), out_type.to_owned()),
+        eta_wrap,
     );
     Ok(fun_type)
 }
@@ -248,7 +249,7 @@ pub fn type_check_axiom<T: TypeTheory + Kernel>(
     predicate: &T::Type,
 ) -> Result<T::Type, String> {
     let _ = T::type_check_type(predicate, environment)?;
-    generic_evaluate_axiom::<T>(environment, axiom_name, predicate);
+    evaluate_axiom::<T>(environment, axiom_name, predicate);
 
     Ok(predicate.to_owned())
 }
@@ -271,7 +272,7 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
                     formula, proof_type
                 ));
             }
-            generic_evaluate_theorem::<T, T::Exp>(
+            evaluate_theorem::<T, T::Exp>(
                 environment,
                 theorem_name,
                 formula,

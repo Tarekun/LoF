@@ -1,7 +1,10 @@
 use super::fol::FolFormula::{
     Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
 };
-use super::fol::{Fol, FolFormula, FolTerm};
+use super::fol::{
+    Fol, FolFormula,
+    FolTerm::{self, Abstraction},
+};
 use super::fol_utils::make_multiarg_fun_type;
 use crate::type_theory::commons::type_check::{
     type_check_function, type_check_universal,
@@ -175,7 +178,7 @@ pub fn fol_type_check_fun(
     body: &FolTerm,
     is_rec: &bool,
 ) -> Result<FolFormula, String> {
-    type_check_function::<Fol, _>(
+    type_check_function::<Fol, _, _>(
         environment,
         fun_name,
         args,
@@ -183,6 +186,9 @@ pub fn fol_type_check_fun(
         body,
         is_rec,
         |args, body_type| make_multiarg_fun_type(&args, &body_type),
+        |(var_name, var_type), body| {
+            Abstraction(var_name, Box::new(var_type), Box::new(body))
+        },
     )
 }
 //
@@ -198,7 +204,7 @@ mod unit_tests {
                 Fol,
                 FolFormula::{self, Arrow, ForAll, Predicate},
                 FolStm::{Axiom, Fun, Let},
-                FolTerm::{self, Abstraction, Application, Variable},
+                FolTerm::{Abstraction, Application, Variable},
             },
             type_check::{
                 type_check_application, type_check_arrow, type_check_forall,

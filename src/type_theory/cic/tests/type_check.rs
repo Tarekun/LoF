@@ -1530,6 +1530,14 @@ mod tests {
                 Box::new(nat.clone())
             )
         );
+        test_env.add_to_context(
+            "id", 
+            &Product(
+                "x".to_string(),
+                Box::new(Meta(1)),
+                Box::new(Meta(1))
+            )
+        );
 
         assert_eq!(
             Cic::type_check_term(
@@ -1545,6 +1553,22 @@ mod tests {
             ),
             Ok(Product("n".to_string(), Box::new(nat.clone()), Box::new(nat.clone()))),
             "Type checking cant inference the type of argument applied to a function Nat->Nat"
+        );
+
+        assert_eq!(
+            Cic::type_check_term(
+                &Abstraction(
+                    "n".to_string(), 
+                    Box::new(nat.clone()), 
+                    Box::new(Application(
+                        Box::new(Variable("id".to_string(), GLOBAL_INDEX)), 
+                        Box::new(Variable("n".to_string(), 0))
+                    ))
+                ), 
+                &mut test_env
+            ),
+            Ok(Product("n".to_string(), Box::new(nat.clone()), Box::new(nat.clone()))),
+            "Type checking cant inference the output type of a function Nat->Nat"
         );
     }
 

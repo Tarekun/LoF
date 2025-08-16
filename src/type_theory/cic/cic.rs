@@ -6,7 +6,7 @@ use crate::misc::Union::{self};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::CicTerm::{Meta, Product};
-use crate::type_theory::cic::cic_utils::substitute_meta;
+use crate::type_theory::cic::cic_utils::{substitute, substitute_meta};
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
 };
@@ -121,6 +121,7 @@ impl Kernel for Cic {
                 type_check_variable::<Cic>(environment, var_name)
             }
             CicTerm::Abstraction(var_name, var_type, body) => {
+                println!("type checking astrazione {:?}", term);
                 u_type_check_abstraction::<Cic, _>(
                     environment,
                     var_name,
@@ -162,6 +163,7 @@ impl Kernel for Cic {
         environment: &mut Environment<Cic>,
     ) -> Result<CicTerm, String> {
         debug!("Term-type checking of {:?}", term);
+        println!("type checking di {:?}", term);
         Cic::type_check_expression(term, environment)
     }
 
@@ -289,6 +291,10 @@ impl Refiner for Cic {
 }
 
 impl Reducer for Cic {
+    fn substitute(term: &CicTerm, var_name: &str, body: &CicTerm) -> CicTerm {
+        substitute(term, var_name, body)
+    }
+
     fn normalize_expression(
         environment: &mut Environment<Cic>,
         term: &CicTerm,

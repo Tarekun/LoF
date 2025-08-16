@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use super::cic::CicTerm::{Application, Product, Sort, Variable};
+use super::cic::CicTerm::{Application, Product, Sort, Variable, Abstraction};
 use super::cic::{Cic, CicTerm};
 use super::cic_utils::{check_positivity};
 use super::evaluation::{evaluate_inductive};
@@ -7,7 +7,7 @@ use super::unification::solve_unification;
 use crate::misc::{simple_map, simple_map_indexed};
 use crate::type_theory::cic::cic::{GLOBAL_INDEX, PLACEHOLDER_DBI};
 use crate::type_theory::cic::cic_utils::{
-    make_multiarg_fun_type, substitute
+    application_args, apply_arguments, clone_product_with_different_result,  get_arg_types, get_prod_innermost, get_variables_as_terms, index_variables, is_instance_of, make_multiarg_fun_type, substitute
 };
 use crate::type_theory::cic::unification::{equal_under_substitution, instatiate_metas};
 use crate::type_theory::commons::type_check::{
@@ -114,9 +114,18 @@ pub fn cic_type_check_fun(
     body: &CicTerm,
     is_rec: &bool,
 ) -> Result<CicTerm, String> {
-    type_check_function::<Cic, _>(environment, fun_name, args, out_type, body, is_rec, |args, out_type| {
-        make_multiarg_fun_type(&args, &out_type)
-    })
+    type_check_function::<Cic, _, _>(
+        environment,
+        fun_name,
+        args,
+        out_type,
+        body,
+        is_rec,
+        |args, out_type| make_multiarg_fun_type(&args, &out_type), 
+        |(var_name, var_type), body| {
+            Abstraction(var_name, Box::new(var_type), Box::new(body))
+        }
+    )
 }
 //
 //

@@ -177,6 +177,14 @@ pub trait Refiner: TypeTheory {
 
 /// Reducer module, implements the execution of programs
 pub trait Reducer: TypeTheory {
+    /// Given a `term`, a `var_name`, and a substitution `body`,
+    /// returns the term where occurences of `var_name` have been swapped with `body`
+    fn substitute(
+        term: &Self::Term,
+        var_name: &str,
+        body: &Self::Term,
+    ) -> Self::Term;
+
     /// Reduces the given term to its normal form
     fn normalize_term(
         environment: &mut Environment<Self>,

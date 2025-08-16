@@ -2,8 +2,9 @@ use crate::{
     misc::Union,
     parser::api::Tactic,
     type_theory::{
+        commons::utils::eta_expand,
         environment::Environment,
-        interface::{Kernel, TypeTheory},
+        interface::{Kernel, Reducer, TypeTheory},
     },
 };
 
@@ -25,7 +26,10 @@ pub fn generic_term_normalization<
 }
 
 //########################### TERM βδ-REDUCTION
-pub fn generic_reduce_variable<T: TypeTheory>(
+/// Performs δ-reduction of a variable by looking it up in the `environment`.
+/// If `var_name` is absent in the `environment` it's treated as a constant
+/// and `og_term` is returned
+pub fn reduce_variable<T: TypeTheory>(
     environment: &Environment<T>,
     var_name: &str,
     og_term: &T::Term,
@@ -39,10 +43,32 @@ pub fn generic_reduce_variable<T: TypeTheory>(
         og_term.to_owned()
     }
 }
+
+pub fn reduce_application<
+    T: TypeTheory + Reducer,
+    F: Fn(&T::Term) -> Option<(String, T::Term)>,
+    G: Fn(T::Term, T::Term) -> T::Term,
+>(
+    environment: &mut Environment<T>,
+    fun: &T::Term,
+    arg: &T::Term,
+    unpack_name_body: F,
+    rebuild_application: G,
+) -> T::Term {
+    // if fun is function variable take its definition, otherwise gets fun back
+    let fun_reduced = T::normalize_term(environment, fun);
+    // TODO do i substitute arg or do i substitute its reduction? big deal
+    let arg_reduced = T::normalize_term(environment, arg);
+
+    match unpack_name_body(&fun_reduced) {
+        Some((var_name, body)) => T::substitute(&body, &var_name, &arg_reduced),
+        None => rebuild_application(fun.to_owned(), arg.to_owned()),
+    }
+}
 //########################### TERM βδ-REDUCTION
 
 //########################### STATEMENTS EXECUTION
-pub fn generic_evaluate_let<T: TypeTheory + Kernel>(
+pub fn evaluate_let<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     var_name: &str,
     var_type: &Option<T::Type>,
@@ -62,9 +88,10 @@ pub fn generic_evaluate_let<T: TypeTheory + Kernel>(
 }
 //
 //
-pub fn generic_evaluate_fun<
+pub fn evaluate_fun<
     T: TypeTheory,
-    C: Fn(Vec<(String, T::Type)>, T::Type) -> T::Type,
+    C: Fn(&Vec<(String, T::Type)>, &T::Type) -> T::Type,
+    E: Fn((String, T::Type), T::Term) -> T::Term,
 >(
     environment: &mut Environment<T>,
     fun_name: &str,
@@ -72,17 +99,17 @@ pub fn generic_evaluate_fun<
     out_type: &T::Type,
     body: &T::Term,
     _is_rec: &bool,
-    constructor: C,
+    fun_type_constructor: C,
+    eta_wrap: E,
 ) -> () {
-    let fun_type = constructor(args.to_owned(), out_type.to_owned());
-    // TODO η-expand body cuz this aint it yungblood
-    // let full_body = eta_expand(args, body);
-    // let body = T::eta_expand(body, ...) type shi
-    environment.add_substitution_with_type(fun_name, body, &fun_type);
+    let fun_type = fun_type_constructor(args, out_type);
+    // let body = eta_expand(args, body);
+    let body = eta_expand::<T, _>(args, body, eta_wrap);
+    environment.add_substitution_with_type(fun_name, &body, &fun_type);
 }
 //
 //
-pub fn generic_evaluate_axiom<T: TypeTheory>(
+pub fn evaluate_axiom<T: TypeTheory>(
     environment: &mut Environment<T>,
     axiom_name: &str,
     formula: &T::Type,
@@ -91,7 +118,7 @@ pub fn generic_evaluate_axiom<T: TypeTheory>(
 }
 //
 //
-pub fn generic_evaluate_theorem<T: TypeTheory, E>(
+pub fn evaluate_theorem<T: TypeTheory, E>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,

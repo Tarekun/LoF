@@ -37,6 +37,22 @@ pub fn wrap_type<T: TypeTheory>(
     Ok(R(type_exp))
 }
 
+/// η-expands `body` by wrapping it in a function with arguments `args`.
+/// First element of the slice will be the first argument to apply
+pub fn eta_expand<
+    T: TypeTheory,
+    F: Fn((String, T::Type), T::Term) -> T::Term,
+>(
+    args: &[(String, T::Type)],
+    body: &T::Term,
+    single_wrap: F,
+) -> T::Term {
+    args.iter()
+        .rev()
+        .cloned()
+        .fold(body.clone(), |acc, arg| single_wrap(arg, acc))
+}
+
 pub enum UnifiedExpression<T: TypeTheory> {
     L(T::Term),
     R(T::Type),
