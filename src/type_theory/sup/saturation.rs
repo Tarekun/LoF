@@ -1,7 +1,10 @@
 use super::sup::SupFormula::{self, Clause};
 use super::sup_utils::subsumes;
-use crate::type_theory::interface::TypeTheory;
-use crate::type_theory::sup::{sup::Sup, sup_utils::is_tautology};
+use crate::type_theory::interface::Automatic;
+use crate::type_theory::sup::sup::Sup;
+use crate::type_theory::sup::sup_utils::{
+    demodulate_first, is_tautology, subsumption_resolution_first,
+};
 
 /// Checks if a formula φ is the empty clause
 fn is_bottom(φ: &SupFormula) -> bool {
@@ -41,18 +44,40 @@ macro_rules! termination {
     };
 }
 
+/// Forward simplification simplifies the given `clause` by the clauses in `kept`
 fn forward_simplification(
     kept: &Vec<SupFormula>,
     clause: SupFormula,
 ) -> SupFormula {
-    clause
+    let mut current_given_clause = clause;
+    for other in kept {
+        current_given_clause = demodulate_first(&current_given_clause, other);
+        current_given_clause =
+            subsumption_resolution_first(&current_given_clause, other);
+    }
+
+    current_given_clause
 }
 
+/// Backward simplification simplifies the `kept` clauses by the given `clause`.
+/// Returns the set of only simplified rules from kept
 fn backward_simplification(
-    kept: Vec<SupFormula>,
+    kept: &Vec<SupFormula>,
     clause: &SupFormula,
 ) -> Vec<SupFormula> {
-    kept
+    let mut simplified_kept = vec![];
+    for other in kept {
+        let simplified_other = demodulate_first(&other, clause);
+        let simplified_other =
+            subsumption_resolution_first(&simplified_other, clause);
+
+        // only include it if it was simplified
+        if simplified_other != *other {
+            simplified_kept.push(simplified_other);
+        }
+    }
+
+    simplified_kept
 }
 
 pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
@@ -62,12 +87,14 @@ pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
     loop {
         while !unprocessed.is_empty() {
             let clause = pick_clause(&mut unprocessed)?;
-            termination!(clause, kept);
 
+            termination!(clause, kept);
             let clause = forward_simplification(&kept, clause);
             termination!(clause, kept);
+            let simplified = backward_simplification(&kept, &clause);
 
-            kept = backward_simplification(kept, &clause);
+            //these should subsume and drop some clauses in kept next cycle
+            unprocessed.extend(simplified);
             kept.push(clause);
         }
 

@@ -3,8 +3,14 @@ use super::sup::{
     SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
     SupTerm::{self, Application, Variable},
 };
-use crate::type_theory::interface::TypeTheory;
-use std::cmp::Ordering::{self, Equal};
+use crate::{
+    misc::simple_map,
+    type_theory::interface::{Automatic, TypeTheory},
+};
+use std::cmp::{
+    max_by, min_by,
+    Ordering::{self, Equal},
+};
 
 /// Returns the ordered vector of formal argument types of nested universal quantification
 pub fn get_arg_types(forall: &SupFormula) -> Vec<SupFormula> {
@@ -161,6 +167,70 @@ pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
     }
 }
 
+fn substitute_term_in_term(
+    base: &SupTerm,
+    target: &SupTerm,
+    body: &SupTerm,
+) -> SupTerm {
+    // TODO if this is for demodulation this should check for alpha equivalence
+    // and return body with the mgu applied
+    if Sup::base_term_equality(base, target).is_ok() {
+        return body.to_owned();
+    }
+    match base {
+        Application(fun_name, args) => Application(
+            fun_name.to_string(),
+            simple_map(args.to_owned(), |arg| {
+                substitute_term_in_term(&arg, target, body)
+            }),
+        ),
+        Variable(_) => base.to_owned(),
+    }
+}
+fn substitute_term_in_type(
+    base: &SupFormula,
+    target: &SupTerm,
+    body: &SupTerm,
+) -> SupFormula {
+    match base {
+        Atom(name, args) => Atom(
+            name.to_string(),
+            simple_map(args.to_owned(), |arg| {
+                substitute_term_in_term(&arg, target, body)
+            }),
+        ),
+        Equality(l, r) => Equality(
+            substitute_term_in_term(&l, target, body),
+            substitute_term_in_term(&r, target, body),
+        ),
+        Not(phi) => Not(Box::new(substitute_term_in_type(phi, target, body))),
+        ForAll(var_name, var_type, predicate) => ForAll(
+            var_name.to_string(),
+            Box::new(substitute_term_in_type(var_type, target, body)),
+            Box::new(substitute_term_in_type(predicate, target, body)),
+        ),
+        Clause(lits) => Clause(simple_map(lits.to_owned(), |lit| {
+            substitute_term_in_type(&lit, target, body)
+        })),
+    }
+}
+
+#[allow(non_snake_case)]
+/// Applies a demodulation simplification rule to C,D, special case of superposition
+/// inference where one of the clauses is a single equality and we rewrite by the smaller term.
+/// only the first argument `C` will be simplified
+pub fn demodulate_first(C: &SupFormula, D: &SupFormula) -> SupFormula {
+    if let Equality(l, r) = D {
+        let min = min_by(l, r, |l, r| Sup::compare_terms(l, r));
+        let max = max_by(l, r, |l, r| Sup::compare_terms(l, r));
+
+        let C = substitute_term_in_type(C, max, min);
+        C
+    } else {
+        C.to_owned()
+    }
+}
+
 #[allow(non_snake_case)]
 /// Checks wheter clause `C` subsumes `D`, ie if `C`≐`E` where `E` is a subset
 /// of literals of `D`
@@ -173,8 +243,57 @@ pub fn subsumes(C: &SupFormula, D: &SupFormula) -> bool {
     c_lits.iter().all(|c_lit| {
         d_lits
             .iter()
+            //TODO currently this is syntactic equality with no mgu support
             .any(|d_lit| Sup::base_type_equality(c_lit, d_lit).is_ok())
     })
+}
+
+#[allow(non_snake_case)]
+/// Applies subsumption resolution inference simplifying the first argument `C`
+pub fn subsumption_resolution_first(
+    C: &SupFormula,
+    D: &SupFormula,
+) -> SupFormula {
+    let Clause(c_lits) = C else {
+        return D.to_owned();
+    };
+    let Clause(d_lits) = D else {
+        return D.to_owned();
+    };
+    let [c_first, c_rest @ ..] = c_lits.as_slice() else {
+        return D.to_owned();
+    };
+    let [d_first, d_rest @ ..] = d_lits.as_slice() else {
+        return D.to_owned();
+    };
+
+    match (c_first, d_first) {
+        (Not(inner), Atom(_, _)) => {
+            let mut d_new = d_rest.to_vec();
+            d_new.push((*d_first).clone());
+            let mut c_new = c_rest.to_vec();
+            c_new.push((**inner).clone());
+
+            if subsumes(&Clause(d_new), &Clause(c_new)) {
+                Clause(d_rest.to_vec())
+            } else {
+                D.to_owned()
+            }
+        }
+        (Atom(_, _), Not(inner)) => {
+            let mut d_new = d_rest.to_vec();
+            d_new.push((**inner).clone());
+            let mut c_new = c_rest.to_vec();
+            c_new.push((*c_first).clone());
+
+            if subsumes(&Clause(d_new), &Clause(c_new)) {
+                Clause(d_rest.to_vec())
+            } else {
+                D.to_owned()
+            }
+        }
+        _ => D.to_owned(),
+    }
 }
 
 #[cfg(test)]
