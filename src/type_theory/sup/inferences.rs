@@ -1,11 +1,13 @@
-use crate::misc::simple_map;
 use crate::type_theory::interface::{Automatic, TypeTheory};
-use crate::type_theory::sup::sup::{
-    Sup,
-    SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
-    SupTerm::{self, Application, Variable},
-};
 use crate::type_theory::sup::sup_utils::subsumes;
+use crate::{
+    misc::simple_map,
+    type_theory::sup::sup::{
+        Sup,
+        SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
+        SupTerm::{self, Application, Variable},
+    },
+};
 use std::cmp::{max_by, min_by};
 
 fn substitute_term_in_term(
@@ -13,12 +15,12 @@ fn substitute_term_in_term(
     target: &SupTerm,
     body: &SupTerm,
 ) -> SupTerm {
+    // TODO if this is for demodulation this should check for alpha equivalence
+    // and return body with the mgu applied
+    if Sup::base_term_equality(base, target).is_ok() {
+        return body.to_owned();
+    }
     match base {
-        // TODO if this is for demodulation this should check for alpha equivalence
-        // and return body with the mgu applied
-        _ if Sup::base_term_equality(base, target).is_ok() => {
-            return body.to_owned();
-        }
         Application(fun_name, args) => Application(
             fun_name.to_string(),
             simple_map(args.to_owned(), |arg| {
@@ -56,6 +58,7 @@ fn substitute_term_in_type(
     }
 }
 
+//########################### SIMPLIFICATION INFERENCES
 #[allow(non_snake_case)]
 /// Applies a demodulation simplification rule to C,D, special case of superposition
 /// inference where one of the clauses is a single equality and we rewrite by the smaller term.
@@ -119,6 +122,63 @@ pub fn subsumption_resolution_first(
         _ => C.to_owned(),
     }
 }
+//########################### SIMPLIFICATION INFERENCES
+
+//########################### SUP INFERENCES
+// pub fn resolution(
+//     C: &SupFormula,
+//     D: &SupFormula,
+// ) -> Result<SupFormula, String> {
+// }
+
+pub fn factoring(C: &SupFormula) -> Result<SupFormula, String> {
+    let Clause(lits) = C else {
+        return Err(format!("{:?} is not a clause with multiple literals", C));
+    };
+
+    let mut literals = lits.clone();
+    for i in 0..literals.len() {
+        for j in (i + 1)..literals.len() {
+            // TODO support mgu check here
+            if Sup::base_type_equality(&literals[i], &literals[j]).is_ok() {
+                literals.remove(j);
+                // TODO apply mgu to literals
+                return Ok(Clause(literals));
+            }
+        }
+    }
+
+    Err(format!("Factoring cannot be applied to clause {:?}", C))
+}
+
+pub fn eq_resolution(C: &SupFormula) -> Result<SupFormula, String> {
+    let Clause(lits) = C else {
+        return Err(format!("{:?} is not a clause with multiple literals", C));
+    };
+
+    for i in 0..lits.len() {
+        match &lits[i] {
+            Not(boxed) => {
+                // TODO support mgu check here
+                if let Equality(l, r) = &**boxed {
+                    if Sup::base_term_equality(&l, &r).is_ok() {
+                        let mut new_lits = lits.clone();
+                        new_lits.remove(i);
+
+                        return Ok(Clause(new_lits));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Err(format!(
+        "Equality resolution cannot be applied to clause {:?}",
+        C
+    ))
+}
+//########################### SUP INFERENCES
 
 #[cfg(test)]
 mod unit_tests {
