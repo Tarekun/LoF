@@ -68,13 +68,16 @@ fn forward_simplification(
 }
 
 /// Backward simplification simplifies the `kept` clauses by the given `clause`.
-/// Returns the set of only simplified rules from kept
+/// Returns the set of only simplified rules from kept and drops simplified clauses
+/// from `kept`
 fn backward_simplification(
-    kept: &Vec<SupFormula>,
+    kept: &mut Vec<SupFormula>,
     clause: &SupFormula,
 ) -> Vec<SupFormula> {
     let mut simplified_kept = vec![];
-    for other in kept {
+    let mut new_kept: Vec<SupFormula> = vec![];
+
+    for other in kept.iter() {
         let simplified_other = demodulate_first(&other, clause);
         let simplified_other =
             subsumption_resolution_first(&simplified_other, clause);
@@ -82,9 +85,12 @@ fn backward_simplification(
         // only include it if it was simplified
         if simplified_other != *other {
             simplified_kept.push(simplified_other);
+        } else {
+            new_kept.push((*other).clone());
         }
     }
 
+    *kept = new_kept;
     simplified_kept
 }
 
@@ -99,7 +105,7 @@ pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
             termination!(clause, kept);
             let clause = forward_simplification(&kept, clause);
             termination!(clause, kept);
-            let simplified = backward_simplification(&kept, &clause);
+            let simplified = backward_simplification(&mut kept, &clause);
 
             //these should subsume and drop some clauses in kept next cycle
             unprocessed.extend(simplified);
