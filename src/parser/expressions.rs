@@ -166,22 +166,13 @@ impl LofParser {
             |input| self.parse_var(input),
         ))(input)?;
 
-        // let (constructor, args) = match construction {
-        //     Application(fun, args) => (*fun, args),
-        //     VarUse(var_name) => (VarUse(var_name), vec![]),
-        //     _ => unreachable!(
-        //         "Why parse_app | parse_var return {:?} instead of a variable/application?",
-        //         construction
-        //     ),
-        // };
-
         Ok((input, construction))
     }
     //
     //
     pub fn parse_match_branch<'a>(
         &self,
-        input: &'a str, // "| h :: l => l,"
+        input: &'a str,
     ) -> IResult<&'a str, (Expression, Expression)> {
         let (input, _) = preceded(multispace0, char('|'))(input)?;
         let (input, pattern) = self.parse_pattern(input)?;
@@ -190,8 +181,6 @@ impl LofParser {
             preceded(multispace0, |input| self.parse_expression(input))(input)?;
         let (input, _) = preceded(multispace0, char(','))(input)?;
 
-        // let mut pattern = vec![constructor];
-        // pattern.extend(args);
         Ok((input, (pattern, body)))
     }
     pub fn parse_pattern_match<'a>(

@@ -261,24 +261,24 @@ mod unit_tests {
         let zero = Variable("z".to_string(), GLOBAL_INDEX);
         let succ = Variable("s".to_string(), GLOBAL_INDEX);
 
-        // assert!(
-        //     matches_pattern(&zero, &zero),
-        //     "Pattern matching refutes identical constants"
-        // );
-        // assert!(
-        //     !matches_pattern(&zero, &succ),
-        //     "Pattern matching accepts different constants"
-        // );
-        // assert!(
-        //     matches_pattern(
-        //         &Application(Box::new(succ.clone()), Box::new(zero.clone())),
-        //         &Application(
-        //             Box::new(succ.clone()),
-        //             Box::new(Variable("renamed_argument".to_string(), 0)),
-        //         )
-        //     ),
-        //     "Pattern matching refutes application with renamed argument"
-        // );
+        assert!(
+            matches_pattern(&zero, &zero),
+            "Pattern matching refutes identical constants"
+        );
+        assert!(
+            !matches_pattern(&zero, &succ),
+            "Pattern matching accepts different constants"
+        );
+        assert!(
+            matches_pattern(
+                &Application(Box::new(succ.clone()), Box::new(zero.clone())),
+                &Application(
+                    Box::new(succ.clone()),
+                    Box::new(Variable("renamed_argument".to_string(), 0)),
+                )
+            ),
+            "Pattern matching refutes application with renamed argument"
+        );
         assert!(
             !matches_pattern(
                 &Application(

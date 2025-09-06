@@ -111,11 +111,8 @@ pub fn type_check_match(
 
     for (pattern, body) in branches {
         //pattern type checking
-        // let constr_var = pattern[0].clone();
-
         let constructor = get_applied_function(pattern);
         let constr_type = if let Variable(_, _) = constructor {
-            // Cic::type_check_term(&constr_var, environment)
             Cic::type_check_term(&constructor, environment)
         } else {
             Err(format!(
@@ -123,12 +120,10 @@ pub fn type_check_match(
                 constructor
             ))
         }?;
-        // let constr_type = Cic::type_check_term(&constr_var, environment)?;
         let result_type = type_check_pattern(
             environment,
             pattern,
             &constr_type,
-            // pattern[1..].to_vec(),
         )?;
         if !Cic::terms_unify(environment, &result_type, &matching_type) {
             return Err(
@@ -142,7 +137,6 @@ pub fn type_check_match(
 
         //body type checking
         let pattern_assumptions =
-            // type_constr_vars(&constr_type, pattern[1..].to_vec())?;
             type_constr_vars(&constr_type, pattern)?;
         let body_type = environment
             .with_local_assumptions(&pattern_assumptions, |local_env| {
@@ -289,7 +283,6 @@ pub fn inductive_eliminator(
             let result_with_rights = apply_arguments(&result_var, right_params);
 
             // TODO might need to rename args, i think they're all anonymous
-            // let args = get_variables_as_terms(&constr_type);
             let arg_types = get_arg_types(&constr_type);
             // in the paper non_recursive are called b and recursive u
             let (non_recursive, recursive) =
@@ -304,7 +297,6 @@ pub fn inductive_eliminator(
                 &Variable(constr_name, PLACEHOLDER_DBI),
                 left_param_vars.clone(),
             );
-            // let constr_instance = apply_arguments(constr_instance, right_params.clone());
             let constr_instance = apply_arguments(
                 &constr_instance,
                 simple_map(non_recursive.clone(), |(arg_name, _)| {
