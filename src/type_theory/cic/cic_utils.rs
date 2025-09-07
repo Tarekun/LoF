@@ -344,6 +344,7 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
     fn solver(
         term: &CicTerm,
         current_dbi: i32,
+        //TODO this doesnt support shadowing of already defined names
         bound_vars: &mut HashMap<String, i32>,
     ) -> CicTerm {
         match term {
@@ -379,32 +380,12 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
             Match(matched_term, branches) => {
                 let matched_term =
                     solver(matched_term, current_dbi, bound_vars);
-
                 // TODO reimplement this
-                // let branches =
-                //     simple_map(branches.clone(), |(pattern, body)| {
-                //         let constructor: CicTerm =
-                //             solver(&pattern[0], current_dbi, bound_vars);
-                //         let arguments: Vec<CicTerm> = simple_map_indexed(
-                //             pattern[1..].to_vec(),
-                //             |(index, arg)| {
-                //                 solver(
-                //                     &arg,
-                //                     current_dbi + index as i32,
-                //                     bound_vars,
-                //                 )
-                //             },
-                //         );
-
-                //         let args_len = arguments.len() as i32;
-                //         let mut new_pattern: Vec<CicTerm> = vec![constructor];
-                //         new_pattern.extend(arguments);
-
-                //         (
-                //             new_pattern,
-                //             solver(&body, current_dbi + args_len, bound_vars),
-                //         )
-                //     });
+                // this code needs to distinguish between type argument (terms)
+                // and constructor argument (variables)
+                // each pattern creates binding for each constructor argument
+                // after this body does the same thing starting from the last index
+                // used in the pattern
 
                 Match(Box::new(matched_term), branches.to_owned())
             }
