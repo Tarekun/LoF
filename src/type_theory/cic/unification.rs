@@ -56,9 +56,7 @@ pub fn solve_unification(
             }
             Match(matched, branches) => {
                 for (pattern, body) in branches {
-                    for term in pattern {
-                        occurs_check(meta_index, term)?;
-                    }
+                    occurs_check(meta_index, pattern)?;
                     occurs_check(meta_index, body)?;
                 }
                 occurs_check(meta_index, &matched)

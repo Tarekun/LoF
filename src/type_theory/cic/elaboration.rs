@@ -136,29 +136,31 @@ fn elaborate_arrow(domain: &Expression, codomain: &Expression) -> CicTerm {
 //
 fn elaborate_match(
     matched_exp: &Expression,
-    branches: &Vec<(Vec<Expression>, Expression)>,
+    branches: &Vec<(Expression, Expression)>,
 ) -> CicTerm {
     //TODO im not sure if the match is a binder
     let matched_term = elaborate_expression(matched_exp);
 
     let mut branch_terms = vec![];
     for (pattern, body_exp) in branches {
-        let constr_term = elaborate_expression(&pattern[0]);
-        let mut pattern_terms = vec![constr_term];
-        for arg in &pattern[1..] {
-            let arg_term = elaborate_expression(arg);
+        let pattern = elaborate_expression(pattern);
+        let body_exp = elaborate_expression(body_exp);
 
-            match &arg_term {
-                Variable(_, _) => {
-                    pattern_terms.push(arg_term);
-                }
-                _ => panic!("Argument expression should be just a variable"),
-            }
-        }
+        // let mut pattern_terms = vec![constr_term];
+        // for arg in &pattern[1..] {
+        //     let arg_term = elaborate_expression(arg);
 
-        let body_term = elaborate_expression(&body_exp);
+        //     match &arg_term {
+        //         Variable(_, _) => {
+        //             pattern_terms.push(arg_term);
+        //         }
+        //         _ => panic!("Argument expression should be just a variable"),
+        //     }
+        // }
 
-        branch_terms.push((pattern_terms, body_term));
+        // let body_term = elaborate_expression(&body_exp);
+
+        branch_terms.push((pattern, body_exp));
     }
 
     Match(Box::new(matched_term), branch_terms)
@@ -498,33 +500,33 @@ mod unit_tests {
             Box::new(Variable("t".to_string(), GLOBAL_INDEX)),
             vec![
                 (
-                    vec![Variable("o".to_string(), GLOBAL_INDEX)],
+                    Variable("o".to_string(), GLOBAL_INDEX),
                     Application(
                         Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
                         Box::new(Variable("o".to_string(), GLOBAL_INDEX)),
                     ),
                 ),
                 (
-                    vec![
-                        Variable("s".to_string(), GLOBAL_INDEX),
-                        Variable("n".to_string(), GLOBAL_INDEX),
-                    ],
+                    Application(
+                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+                        Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                    ),
                     Variable("n".to_string(), GLOBAL_INDEX),
                 ),
             ],
         );
         let base_pattern = (
-            vec![Expression::VarUse("o".to_string())],
+            Expression::VarUse("o".to_string()),
             Expression::Application(
                 Box::new(Expression::VarUse("s".to_string())),
                 vec![Expression::VarUse("o".to_string())],
             ),
         );
         let inductive_patter = (
-            vec![
-                Expression::VarUse("s".to_string()),
-                Expression::VarUse("n".to_string()),
-            ],
+            Expression::Application(
+                Box::new(Expression::VarUse("s".to_string())),
+                vec![Expression::VarUse("n".to_string())],
+            ),
             Expression::VarUse("n".to_string()),
         );
 

@@ -56,15 +56,8 @@ fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // (matched_term, [ branch: ([pattern], body) ])
         Match(matched_term, branches) => {
             write!(f, "match {} {{ ", matched_term)?;
-            for (patterns, body) in branches {
-                write!(f, "[")?;
-                for (i, pattern) in patterns.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", pattern)?;
-                }
-                write!(f, "] => {}; ", body)?;
+            for (pattern, body) in branches {
+                write!(f, "\t[{}] => {},\n", pattern, body)?;
             }
             write!(f, "}}")
         }
@@ -171,11 +164,11 @@ pub fn get_prod_innermost(term: &CicTerm) -> &CicTerm {
 }
 
 /// Given a multiarg application term, returns the vector of all the arguments being applyed
-pub fn application_args(application: CicTerm) -> Vec<CicTerm> {
+pub fn application_args(application: &CicTerm) -> Vec<CicTerm> {
     match application {
         Application(left, right) => {
-            let mut rec = application_args(*left);
-            rec.push(*right); //TODO shouldnt it be append/enqueue?
+            let mut rec = application_args(left);
+            rec.push((**right).to_owned()); //TODO shouldnt it be append/enqueue?
             return rec;
         }
         // discard leftmost term, we dont care about the function
@@ -265,9 +258,7 @@ pub fn substitute_meta(term: &CicTerm, target: &i32, arg: &CicTerm) -> CicTerm {
             //TODO i dont want to clone branches here tbh
             simple_map(branches.clone(), |(pattern, body)| {
                 (
-                    simple_map(pattern, |term| {
-                        substitute_meta(&term, target, arg)
-                    }),
+                    substitute_meta(&pattern, target, arg),
                     substitute_meta(&body, target, arg),
                 )
             }),
@@ -307,9 +298,7 @@ pub fn substitute(term: &CicTerm, target_name: &str, arg: &CicTerm) -> CicTerm {
             //TODO i dont want to clone branches here tbh
             simple_map(branches.clone(), |(pattern, body)| {
                 (
-                    simple_map(pattern, |term| {
-                        substitute(&term, target_name, arg)
-                    }),
+                    substitute(&pattern, target_name, arg),
                     substitute(&body, target_name, arg),
                 )
             }),
@@ -355,6 +344,7 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
     fn solver(
         term: &CicTerm,
         current_dbi: i32,
+        //TODO this doesnt support shadowing of already defined names
         bound_vars: &mut HashMap<String, i32>,
     ) -> CicTerm {
         match term {
@@ -390,35 +380,14 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
             Match(matched_term, branches) => {
                 let matched_term =
                     solver(matched_term, current_dbi, bound_vars);
+                // TODO reimplement this
+                // this code needs to distinguish between type argument (terms)
+                // and constructor argument (variables)
+                // each pattern creates binding for each constructor argument
+                // after this body does the same thing starting from the last index
+                // used in the pattern
 
-                let branches = simple_map(
-                    branches.clone(),
-                    |(pattern, body): (Vec<CicTerm>, CicTerm)| {
-                        let constructor: CicTerm =
-                            solver(&pattern[0], current_dbi, bound_vars);
-                        let arguments: Vec<CicTerm> = simple_map_indexed(
-                            pattern[1..].to_vec(),
-                            |(index, arg)| {
-                                solver(
-                                    &arg,
-                                    current_dbi + index as i32,
-                                    bound_vars,
-                                )
-                            },
-                        );
-
-                        let args_len = arguments.len() as i32;
-                        let mut new_pattern: Vec<CicTerm> = vec![constructor];
-                        new_pattern.extend(arguments);
-
-                        (
-                            new_pattern,
-                            solver(&body, current_dbi + args_len, bound_vars),
-                        )
-                    },
-                );
-
-                Match(Box::new(matched_term), branches)
+                Match(Box::new(matched_term), branches.to_owned())
             }
         }
     }

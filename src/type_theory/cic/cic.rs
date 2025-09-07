@@ -2,9 +2,8 @@ use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::tactics::type_check_tactic;
 use super::type_check::{
     type_check_abstraction, type_check_application, type_check_axiom,
-    type_check_fun, type_check_inductive, type_check_let, type_check_match,
-    type_check_product, type_check_sort, type_check_theorem,
-    type_check_variable,
+    type_check_fun, type_check_let, type_check_product, type_check_sort,
+    type_check_theorem, type_check_variable,
 };
 use super::unification::{cic_unification, solve_unification};
 use crate::misc::Union::{self};
@@ -12,6 +11,9 @@ use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
+};
+use crate::type_theory::cic::type_check_inductive::{
+    type_check_inductive, type_check_match,
 };
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::environment::Environment;
@@ -36,8 +38,8 @@ pub enum CicTerm {
     Product(String, Box<CicTerm>, Box<CicTerm>), //add bodytype?
     /// (function, argument)
     Application(Box<CicTerm>, Box<CicTerm>),
-    /// (matched_term, [ branch: ([pattern], body) ])
-    Match(Box<CicTerm>, Vec<(Vec<CicTerm>, CicTerm)>),
+    /// (matched_term, [ branch: (pattern, body) ])
+    Match(Box<CicTerm>, Vec<(CicTerm, CicTerm)>),
     /// index
     Meta(i32),
 }
