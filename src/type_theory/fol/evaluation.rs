@@ -1,4 +1,4 @@
-use super::fol::FolStm::{Axiom, Fun, Let, Theorem};
+use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
 use super::fol::{
     Fol, FolFormula, FolStm,
     FolTerm::{self, Abstraction, Application, Variable},
@@ -65,7 +65,7 @@ pub fn evaluate_statement(
         Axiom(axiom_name, formula) => {
             evaluate_axiom::<Fol>(environment, axiom_name, formula)
         }
-        Let(var_name, var_type, body) => {
+        Global(var_name, var_type, body) => {
             evaluate_global::<Fol>(environment, var_name, var_type, body)
         }
         Fun(fun_name, args, out_type, body, is_rec) => {

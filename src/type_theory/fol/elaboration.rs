@@ -1,5 +1,5 @@
 use super::fol::FolFormula::{Arrow, Disjunction, ForAll, Predicate};
-use super::fol::FolStm::{Axiom, Fun, Let, Theorem};
+use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
 use super::fol::FolTerm::{Abstraction, Application, Tuple, Variable};
 use super::fol::{Fol, FolFormula, FolTerm};
 use crate::misc::simple_map;
@@ -328,13 +328,13 @@ pub fn elaborate_global(
                 None => None,
             };
             match var_type {
-                Some(Union::R(var_type)) => Ok(Let(
+                Some(Union::R(var_type)) => Ok(Global(
                     var_name.to_string(),
                     Some(var_type),
                     Box::new(body_term),
                 )),
                 None => {
-                    Ok(Let(var_name.to_string(), None, Box::new(body_term)))
+                    Ok(Global(var_name.to_string(), None, Box::new(body_term)))
                 }
 
                 Some(Union::L(wrong_term)) => type_expected_error(
@@ -406,7 +406,7 @@ mod unit_tests {
             },
             fol::{
                 FolFormula::{Arrow, ForAll, Predicate},
-                FolStm::Let,
+                FolStm::Global,
                 FolTerm::{Abstraction, Application, Variable},
             },
         },
@@ -564,7 +564,7 @@ mod unit_tests {
             &Some(Expression::VarUse("Nat".to_string())),
             &Expression::VarUse("zero".to_string()),
         );
-        let expected_let = Let(
+        let expected_let = Global(
             "n".to_string(),
             Some(Predicate("Nat".to_string(), vec![])),
             Box::new(Variable("zero".to_string())),

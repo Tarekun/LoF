@@ -4,7 +4,7 @@ mod tests {
         cic::{
             Cic,
             CicStm::{Fun, InductiveDef},
-            CicTerm::{Abstraction, Application, Match, Meta, Product, Sort, Variable},
+            CicTerm::{Abstraction, Application, Match, Meta, Product, Sort, Variable, Let},
             GLOBAL_INDEX
         },
         type_check_inductive::{inductive_eliminator, type_check_inductive},
@@ -370,6 +370,75 @@ mod tests {
             )
             .is_ok(), 
             "Type checker cant unify function output type with the result of a polymorphic expression"
+        );
+    }
+
+    #[test]
+    fn test_type_check_let() {
+        let mut test_env = Cic::default_environment();
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let zero = Variable("z".to_string(), GLOBAL_INDEX);
+        test_env.add_to_context("z", &nat);
+
+        assert!(
+            Cic::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(Some(nat.clone())),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("n".to_string(), 1)),
+                ),
+                &mut test_env
+            ).is_ok(),
+            "Type checker doesnt support let definitions"
+        );
+        assert!(
+            Cic::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(None),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("n".to_string(), 1)),
+                ),
+                &mut test_env
+            ).is_ok(),
+            "Let type checker doesnt supported untyped definitions"
+        );
+        assert!(
+            Cic::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(Some(Variable("UnboundType".to_string(), GLOBAL_INDEX))),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("n".to_string(), 1)),
+                ),
+                &mut test_env
+            ).is_err(),
+            "Let type checker accepts definition with unbound annotated type"
+        );
+        assert!(
+            Cic::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(Some(nat.clone())),
+                    Box::new(Variable("unbound_term".to_string(), 1)),
+                    Box::new(Variable("n".to_string(), 1)),
+                ),
+                &mut test_env
+            ).is_err(),
+            "Let type checker accepts definition with ill-typed body"
+        );
+        assert!(
+            Cic::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(Some(nat.clone())),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("unbound_term".to_string(), 1)),
+                ),
+                &mut test_env
+            ).is_err(),
+            "Let type checker accepts definition with ill-typed scope"
         );
     }
 

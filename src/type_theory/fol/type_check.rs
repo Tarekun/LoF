@@ -203,8 +203,8 @@ mod unit_tests {
             fol::{
                 Fol,
                 FolFormula::{self, Arrow, ForAll, Predicate},
-                FolStm::{Axiom, Fun, Let},
-                FolTerm::{Abstraction, Application, Variable},
+                FolStm::{Axiom, Fun, Global},
+                FolTerm::{Abstraction, Application, Let, Variable},
             },
             type_check::{
                 type_check_application, type_check_arrow, type_check_forall,
@@ -475,6 +475,83 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_type_check_let() {
+        let mut test_env = Fol::default_environment();
+        let nat = Predicate("Nat".to_string(), vec![]);
+        let zero = Variable("z".to_string());
+        test_env.add_to_context("z", &nat);
+
+        assert!(
+            Fol::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(Some(nat.clone())),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("n".to_string())),
+                ),
+                &mut test_env
+            )
+            .is_ok(),
+            "Type checker doesnt support let definitions"
+        );
+        assert!(
+            Fol::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(None),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("n".to_string())),
+                ),
+                &mut test_env
+            )
+            .is_ok(),
+            "Let type checker doesnt supported untyped definitions"
+        );
+        assert!(
+            Fol::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(Some(Predicate(
+                        "UnboundType".to_string(),
+                        vec![]
+                    ))),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("n".to_string())),
+                ),
+                &mut test_env
+            )
+            .is_err(),
+            "Let type checker accepts definition with unbound annotated type"
+        );
+        assert!(
+            Fol::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(Some(nat.clone())),
+                    Box::new(Variable("unbound_term".to_string())),
+                    Box::new(Variable("n".to_string())),
+                ),
+                &mut test_env
+            )
+            .is_err(),
+            "Let type checker accepts definition with ill-typed body"
+        );
+        assert!(
+            Fol::type_check_term(
+                &Let(
+                    "n".to_string(),
+                    Box::new(Some(nat.clone())),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("unbound_term".to_string())),
+                ),
+                &mut test_env
+            )
+            .is_err(),
+            "Let type checker accepts definition with ill-typed scope"
+        );
+    }
+
+    #[test]
     fn test_axiom_type_check() {
         let top: FolFormula = Predicate("Top".to_string(), vec![]);
         let mut test_env: Environment<Fol> =
@@ -505,7 +582,7 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_let_type_check() {
+    fn test_global_type_check() {
         let nat = Predicate("Nat".to_string(), vec![]);
         let zero = Variable("zero".to_string());
         let mut test_env: Environment<Fol> = Environment::with_defaults(
@@ -515,7 +592,7 @@ mod unit_tests {
         );
 
         let res = Fol::type_check_stm(
-            &Let("n".to_string(), Some(nat.clone()), Box::new(zero.clone())),
+            &Global("n".to_string(), Some(nat.clone()), Box::new(zero.clone())),
             &mut test_env,
         );
         assert!(res.is_ok(), "Let type checker failed with {:?}", res.err());
@@ -526,7 +603,7 @@ mod unit_tests {
         );
         assert!(
             Fol::type_check_stm(
-                &Let(
+                &Global(
                     "m".to_string(),
                     Some(nat.clone()),
                     Box::new(zero.clone())
@@ -538,7 +615,7 @@ mod unit_tests {
         );
         assert!(
             Fol::type_check_stm(
-                &Let("asd".to_string(), None, Box::new(zero.clone())),
+                &Global("asd".to_string(), None, Box::new(zero.clone())),
                 &mut test_env,
             )
             .is_ok(),
@@ -547,7 +624,7 @@ mod unit_tests {
 
         assert!(
             Fol::type_check_stm(
-                &Let(
+                &Global(
                     "o".to_string(),
                     Some(Predicate("StupidUnboundType".to_string(), vec![])),
                     Box::new(zero)
@@ -559,7 +636,7 @@ mod unit_tests {
         );
         assert!(
             Fol::type_check_stm(
-                &Let(
+                &Global(
                     "o".to_string(),
                     Some(nat.clone()),
                     Box::new(Variable("stupid_unbound_var".to_string()))

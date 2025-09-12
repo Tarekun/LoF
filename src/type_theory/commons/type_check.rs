@@ -104,14 +104,39 @@ pub fn type_check_fo_universal<T: TypeTheory + Kernel>(
     })
 }
 
-// pub fn type_check_let<T: TypeTheory>(
-//     var_name: &str,
-//     var_type: &Option<T::Type>,
-//     body: &T::Term,
-//     scope: *T::Term,
-// ) -> Result<String, T::Type> {
+pub fn type_check_let<T: TypeTheory + Kernel>(
+    environment: &mut Environment<T>,
+    var_name: &str,
+    var_type: &Option<T::Type>,
+    body: &T::Term,
+    scope: &T::Term,
+) -> Result<T::Type, String> {
+    println!("type checking body {:?}", body);
+    let body_type = T::type_check_term(body, environment)?;
+    println!("body type {:?}", body_type);
+    let var_type = if var_type.is_none() {
+        body_type.to_owned()
+    } else {
+        var_type.to_owned().unwrap()
+    };
 
-// }
+    if T::base_type_equality(&var_type, &body_type).is_ok() {
+        Ok(environment.with_local_substitution(
+            var_name,
+            body,
+            &Some(var_type),
+            // type of a let is the type of the scope term as it reduces to that
+            |local_env| T::type_check_term(scope, local_env),
+        )?)
+    } else {
+        Err(format!(
+            "Error in variable {} definition: declared type {:?} and assigned {:?} do not match",
+            var_name,
+            var_type,
+            var_type
+        ))
+    }
+}
 
 // pub fn type_check_application<T: TypeTheory>(
 //     environment: &mut Environment<T>,

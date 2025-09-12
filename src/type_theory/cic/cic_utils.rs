@@ -1,8 +1,8 @@
 use super::cic::CicTerm::{
-    Abstraction, Application, Match, Meta, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
 };
 use super::cic::{Cic, CicTerm};
-use crate::misc::{simple_map, simple_map_indexed};
+use crate::misc::simple_map;
 use crate::type_theory::cic::cic::{
     FIRST_INDEX, GLOBAL_INDEX, PLACEHOLDER_DBI,
 };
@@ -39,6 +39,9 @@ fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "\t[{}] => {},\n", pattern, body)?;
             }
             write!(f, "}}")
+        }
+        Let(var_name, _, body, scope) => {
+            write!(f, "let {} := {} in\n{}", var_name, body, scope)
         }
         Meta(index) => write!(f, "?[{}]", index),
     }
@@ -221,7 +224,6 @@ pub fn substitute_meta(term: &CicTerm, target: &i32, arg: &CicTerm) -> CicTerm {
             Box::new(substitute_meta(left, target, arg)),
             Box::new(substitute_meta(right, target, arg)),
         ),
-        // TODO: dont carry substitution if names match to implement overriding of names
         Abstraction(var_name, domain, codomain) => Abstraction(
             var_name.to_string(),
             Box::new(substitute_meta(domain, target, arg)),
@@ -231,6 +233,20 @@ pub fn substitute_meta(term: &CicTerm, target: &i32, arg: &CicTerm) -> CicTerm {
             var_name.to_string(),
             Box::new(substitute_meta(domain, target, arg)),
             Box::new(substitute_meta(codomain, target, arg)),
+        ),
+        Let(var_name, var_type, body, scope) => Let(
+            var_name.to_string(),
+            Box::new(if var_type.is_some() {
+                Some(substitute_meta(
+                    (**var_type).as_ref().unwrap(),
+                    target,
+                    arg,
+                ))
+            } else {
+                None
+            }),
+            Box::new(substitute_meta(body, target, arg)),
+            Box::new(substitute_meta(scope, target, arg)),
         ),
         Match(matched_term, branches) => Match(
             Box::new(substitute_meta(matched_term, target, arg)),
@@ -272,6 +288,31 @@ pub fn substitute(term: &CicTerm, target_name: &str, arg: &CicTerm) -> CicTerm {
             Box::new(substitute(domain, target_name, arg)),
             Box::new(substitute(codomain, target_name, arg)),
         ),
+        Let(var_name, var_type, body, scope) => {
+            let var_type = if var_type.is_some() {
+                Some(substitute(
+                    &(**var_type).as_ref().unwrap(),
+                    target_name,
+                    arg,
+                ))
+            } else {
+                None
+            };
+            let body = substitute(body, target_name, arg);
+            // the name is overridden in `body`'s scope
+            let scope = if var_name != target_name {
+                substitute(scope, target_name, arg)
+            } else {
+                (**scope).to_owned()
+            };
+
+            Let(
+                var_name.to_string(),
+                Box::new(var_type),
+                Box::new(body),
+                Box::new(scope),
+            )
+        }
         Match(matched_term, branches) => Match(
             Box::new(substitute(matched_term, target_name, arg)),
             //TODO i dont want to clone branches here tbh
@@ -334,6 +375,25 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
                     var_name.to_string(),
                     Box::new(solver(var_type, current_dbi + 1, bound_vars)),
                     Box::new(solver(body, current_dbi + 1, bound_vars)),
+                )
+            }
+            Let(var_name, var_type, body, scope) => {
+                bound_vars.insert(var_name.to_string(), current_dbi);
+                let var_type = if var_type.is_some() {
+                    Some(solver(
+                        &(**var_type).as_ref().unwrap(),
+                        current_dbi + 1,
+                        bound_vars,
+                    ))
+                } else {
+                    None
+                };
+
+                Let(
+                    var_name.to_string(),
+                    Box::new(var_type),
+                    Box::new(solver(body, current_dbi + 1, bound_vars)),
+                    Box::new(solver(scope, current_dbi + 1, bound_vars)),
                 )
             }
             Application(left, right) => Application(

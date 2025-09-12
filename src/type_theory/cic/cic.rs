@@ -20,7 +20,7 @@ use crate::type_theory::cic::type_check_inductive::{
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
     type_check_axiom, type_check_fo_universal, type_check_function,
-    type_check_global, type_check_theorem, type_check_variable,
+    type_check_global, type_check_let, type_check_theorem, type_check_variable,
     u_type_check_abstraction,
 };
 use crate::type_theory::environment::Environment;
@@ -47,6 +47,8 @@ pub enum CicTerm {
     Application(Box<CicTerm>, Box<CicTerm>),
     /// (matched_term, [ branch: (pattern, body) ])
     Match(Box<CicTerm>, Vec<(CicTerm, CicTerm)>),
+    /// (var_name, var_type, body, scope)
+    Let(String, Box<Option<CicTerm>>, Box<CicTerm>, Box<CicTerm>),
     /// index
     Meta(i32),
 }
@@ -152,6 +154,9 @@ impl Kernel for Cic {
             }
             CicTerm::Match(matched_term, branches) => {
                 type_check_match(environment, matched_term, branches)
+            }
+            CicTerm::Let(var_name, var_type, body, scope) => {
+                type_check_let(environment, var_name, var_type, body, scope)
             }
             CicTerm::Meta(index) => {
                 //TODO handle this properly

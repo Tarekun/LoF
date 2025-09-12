@@ -9,15 +9,15 @@ use crate::runtime::program::Schedule;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
     type_check_abstraction, type_check_axiom, type_check_global,
-    type_check_theorem, type_check_variable,
+    type_check_let, type_check_theorem, type_check_variable,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::fol::fol::FolFormula::{
     Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
 };
-use crate::type_theory::fol::fol::FolStm::{Axiom, Fun, Let, Theorem};
+use crate::type_theory::fol::fol::FolStm::{Axiom, Fun, Global, Theorem};
 use crate::type_theory::fol::fol::FolTerm::{
-    Abstraction, Application, Tuple, Variable,
+    Abstraction, Application, Let, Tuple, Variable,
 };
 use crate::type_theory::fol::fol_utils::substitute_term;
 use crate::type_theory::fol::type_check::{
@@ -32,6 +32,8 @@ pub enum FolTerm {
     Abstraction(String, Box<FolFormula>, Box<FolTerm>),
     Application(Box<FolTerm>, Box<FolTerm>),
     Tuple(Vec<FolTerm>),
+    /// (var_name, var_type, body, scope)
+    Let(String, Box<Option<FolFormula>>, Box<FolTerm>, Box<FolTerm>),
 }
 #[derive(Clone, PartialEq)]
 pub enum FolFormula {
@@ -55,7 +57,7 @@ pub enum FolStm {
         Union<FolTerm, Vec<Tactic<Union<FolTerm, FolFormula>>>>,
     ),
     /// (var_name, var_type, definition_body)
-    Let(String, Option<FolFormula>, Box<FolTerm>),
+    Global(String, Option<FolFormula>, Box<FolTerm>),
     /// (fun_name, args, out_type, body, is_rec)
     Fun(
         String,
@@ -146,6 +148,9 @@ impl Kernel for Fol {
                 type_check_application(environment, left, right)
             }
             Tuple(terms) => type_check_tuple(environment, terms),
+            Let(var_name, var_type, body, scope) => {
+                type_check_let(environment, var_name, var_type, body, scope)
+            }
         }
     }
 
@@ -187,7 +192,7 @@ impl Kernel for Fol {
             Axiom(axiom_name, predicate) => {
                 type_check_axiom::<Fol>(environment, axiom_name, predicate)
             }
-            Let(var_name, opt_type, body) => {
+            Global(var_name, opt_type, body) => {
                 type_check_global::<Fol>(environment, var_name, opt_type, body)
             }
             Fun(fun_name, args, out_type, body, is_rec) => fol_type_check_fun(
