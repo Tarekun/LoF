@@ -59,7 +59,7 @@ where
     T: TypeTheory,
 {
     schedule: Schedule<T>,
-    pub environment: Environment<T::Term, T::Type>,
+    pub environment: Environment<T>,
 }
 
 impl<T> Program<T>

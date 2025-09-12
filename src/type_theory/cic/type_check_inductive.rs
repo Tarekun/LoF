@@ -59,14 +59,14 @@ fn type_constr_vars(
 /// Type checks the provided terms with the constructor type and returns the actual instanciation
 /// type provided
 fn type_check_pattern(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     pattern: &CicTerm,
     constr_type: &CicTerm,
 ) -> Result<CicTerm, String> {
     fn solver(
         constr_type: &CicTerm,
         variables: Vec<CicTerm>,
-        environment: &mut Environment<CicTerm, CicTerm>,
+        environment: &mut Environment<Cic>,
     ) -> Result<CicTerm, String> {
         match variables.len() {
             0 => Ok(constr_type.clone()),
@@ -102,7 +102,7 @@ fn type_check_pattern(
 }
 
 pub fn type_check_match(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     matched_term: &CicTerm,
     branches: &Vec<(CicTerm, CicTerm)>,
 ) -> Result<CicTerm, String> {
@@ -382,7 +382,7 @@ pub fn inductive_eliminator(
 }
 
 pub fn type_check_inductive(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     type_name: &str,
     params: &Vec<(String, CicTerm)>,
     ariety: &CicTerm,

@@ -1,35 +1,14 @@
+use super::cic::CicTerm::{
+    Abstraction, Application, Match, Meta, Product, Sort, Variable,
+};
+use super::cic::{Cic, CicTerm};
 use crate::misc::{simple_map, simple_map_indexed};
 use crate::type_theory::cic::cic::{
     FIRST_INDEX, GLOBAL_INDEX, PLACEHOLDER_DBI,
 };
 use crate::type_theory::commons::utils::generic_multiarg_fun_type;
-use crate::type_theory::environment::Environment;
-
-use super::cic::CicTerm::{
-    Abstraction, Application, Match, Meta, Product, Sort, Variable,
-};
-use super::cic::{Cic, CicTerm};
 use std::collections::HashMap;
 use std::fmt;
-
-pub fn delta_reduce(
-    environment: &Environment<CicTerm, CicTerm>,
-    term: CicTerm,
-) -> Result<CicTerm, String> {
-    match term {
-        Variable(var_name, _) => {
-            if let Some((_, body)) = environment.get_from_deltas(&var_name) {
-                Ok(body.to_owned())
-            } else {
-                Err(format!("Variable {} is not present in Δ so it doesnt have a substitution", var_name))
-            }
-        }
-        _ => Err(format!(
-            "Term {:?} is not δ-reducable because it's not a variable",
-            term
-        )),
-    }
-}
 
 fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match term {
@@ -321,22 +300,6 @@ pub fn make_multiarg_fun_type(
             CicTerm::Product(arg_name, Box::new(arg_type), Box::new(sub_type))
         },
     )
-}
-
-pub fn eta_expand(args: &[(String, CicTerm)], body: &CicTerm) -> CicTerm {
-    fn solver(mut args: Vec<(String, CicTerm)>, body: CicTerm) -> CicTerm {
-        if args.is_empty() {
-            return body;
-        }
-
-        let (arg_name, arg_type) = args.pop().unwrap();
-        solver(
-            args,
-            Abstraction(arg_name, Box::new(arg_type), Box::new(body)),
-        )
-    }
-
-    solver(args.to_vec(), body.clone())
 }
 
 /// Given a term, it enumerates variables with De Bruijn indexes properly

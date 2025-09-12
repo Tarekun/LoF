@@ -1,33 +1,42 @@
-use core::panic;
-
 use super::cic::CicStm::{Axiom, Fun, Let, Theorem};
-use super::cic::CicTerm::{Abstraction, Application, Match, Product, Variable};
+use super::cic::CicTerm::{Abstraction, Application, Match, Variable};
 use super::cic::{Cic, CicStm, CicTerm};
-use super::cic_utils::{eta_expand, make_multiarg_fun_type, substitute};
-use crate::misc::Union;
-use crate::parser::api::Tactic;
+use super::cic_utils::make_multiarg_fun_type;
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function,
 };
 use crate::type_theory::cic::type_check_inductive::inductive_eliminator;
 use crate::type_theory::commons::evaluation::{
-    generic_evaluate_axiom, generic_evaluate_let, generic_evaluate_theorem,
-    generic_reduce_variable,
+    evaluate_axiom, evaluate_fun, evaluate_let, evaluate_theorem,
+    reduce_application, reduce_variable,
 };
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::Kernel;
 use crate::type_theory::interface::Reducer;
+use core::panic;
 
 //########################### TERM βδ-REDUCTION
 pub fn one_step_reduction(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     term: &CicTerm,
 ) -> CicTerm {
     match term {
-        Variable(var_name, _) => reduce_variable(environment, var_name, term),
-        Application(left, right) => {
-            reduce_application(environment, left, right)
+        Variable(var_name, _) => {
+            reduce_variable::<Cic>(environment, var_name, term)
         }
+        Application(left, right) => reduce_application::<Cic, _, _>(
+            environment,
+            left,
+            right,
+            |fun_reduced| match fun_reduced {
+                Abstraction(var_name, _, body) => {
+                    Some((var_name.to_string(), (**body).to_owned()))
+                }
+                _ => None,
+            },
+            |left_reduced, right_reduced| {
+                Application(Box::new(left_reduced), Box::new(right_reduced))
+            },
+        ),
         Match(matched_term, branches) => {
             reduce_match(environment, matched_term, branches)
         }
@@ -36,62 +45,8 @@ pub fn one_step_reduction(
 }
 //
 //
-fn reduce_variable(
-    environment: &Environment<CicTerm, CicTerm>,
-    var_name: &str,
-    og_term: &CicTerm,
-) -> CicTerm {
-    generic_reduce_variable::<Cic>(environment, var_name, og_term)
-}
-//
-/// Given a functional term returns its body if it has one defined, or None if
-/// it doesnt exist. Assumes that function variables are already β-reduced
-fn get_body(reduced_function: &CicTerm) -> Option<CicTerm> {
-    match reduced_function {
-        Abstraction(_, _, body) => Some(*body.clone()),
-        _ => None,
-    }
-}
-fn reduce_application(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    left: &CicTerm,
-    right: &CicTerm,
-) -> CicTerm {
-    match Cic::type_check_term(&left, environment) {
-        Ok(fun_type) => match fun_type {
-            Product(var_name, _, _) => {
-                // if left is function variable take its body, otherwise gets left back
-                let left_reduced = Cic::normalize_term(environment, left);
-                // TODO do i substitute right or do i substitute its reduction? big deal
-                let right_reduced = Cic::normalize_term(environment, right);
-
-                match get_body(&left_reduced) {
-                    Some(body) => substitute(&body, &var_name, &right_reduced),
-                    None => Application(
-                        Box::new(left_reduced),
-                        Box::new(right_reduced),
-                    ),
-                }
-            }
-            _ => {
-                panic!(
-                    "Trying to reduce an application of term {:?} that doesn't have a functional type. This should have been caught sooner", 
-                    left
-                );
-            }
-        },
-        Err(message) => {
-            panic!(
-                "Trying to reduce an application of term {:?} that is ill-typed. This should have been caught sooner. Details {:?}",
-                left, message
-            );
-        }
-    }
-}
-//
-//
 fn reduce_match(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     matched_term: &CicTerm,
     branches: &Vec<(CicTerm, CicTerm)>,
 ) -> CicTerm {
@@ -111,21 +66,37 @@ fn reduce_match(
 
 //########################### STATEMENTS EXECUTION
 pub fn evaluate_statement(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     stm: &CicStm,
 ) -> () {
     match stm {
         Axiom(axiom_name, formula) => {
-            evaluate_axiom(environment, axiom_name, formula)
+            evaluate_axiom::<Cic>(environment, axiom_name, formula)
         }
         Let(var_name, var_type, body) => {
-            evaluate_let(environment, var_name, var_type, body)
+            evaluate_let::<Cic>(environment, var_name, var_type, body)
         }
         Fun(fun_name, args, out_type, body, is_rec) => {
-            evaluate_fun(environment, fun_name, args, out_type, body, is_rec)
+            evaluate_fun::<Cic, _, _>(
+                environment,
+                fun_name,
+                args,
+                out_type,
+                body,
+                is_rec,
+                |args, out_type| make_multiarg_fun_type(args, out_type),
+                |(var_name, var_type), body| {
+                    Abstraction(var_name, Box::new(var_type), Box::new(body))
+                },
+            );
         }
         Theorem(theorem_name, formula, proof) => {
-            evaluate_theorem(environment, theorem_name, formula, proof)
+            evaluate_theorem::<Cic, CicTerm>(
+                environment,
+                theorem_name,
+                formula,
+                proof,
+            )
         }
         CicStm::InductiveDef(type_name, params, ariety, constructors) => {
             evaluate_inductive(
@@ -140,65 +111,8 @@ pub fn evaluate_statement(
 }
 //
 //
-pub fn evaluate_axiom(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    axiom_name: &str,
-    formula: &CicTerm,
-) -> () {
-    generic_evaluate_axiom::<Cic>(environment, axiom_name, formula);
-}
-//
-//
-pub fn evaluate_let(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    var_name: &str,
-    var_type: &Option<CicTerm>,
-    body: &CicTerm,
-) -> () {
-    generic_evaluate_let::<Cic>(environment, var_name, var_type, body);
-}
-//
-//
-pub fn evaluate_fun(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    fun_name: &str,
-    args: &Vec<(String, CicTerm)>,
-    out_type: &CicTerm,
-    body: &CicTerm,
-    _is_rec: &bool,
-) -> () {
-    let fun_type = make_multiarg_fun_type(args, out_type);
-    let full_body = eta_expand(args, body);
-    environment.add_substitution_with_type(fun_name, &full_body, &fun_type);
-    // generic_evaluate_fun::<Cic, _>(
-    //     environment,
-    //     fun_name,
-    //     args,
-    //     out_type,
-    //     body,
-    //     is_rec,
-    //     make_multiarg_fun_type,
-    // );
-}
-//
-//
-pub fn evaluate_theorem(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    theorem_name: &str,
-    formula: &CicTerm,
-    proof: &Union<CicTerm, Vec<Tactic<CicTerm>>>,
-) -> () {
-    generic_evaluate_theorem::<Cic, CicTerm>(
-        environment,
-        theorem_name,
-        formula,
-        proof,
-    );
-}
-//
-//
 pub fn evaluate_inductive(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     name: &str,
     params: &Vec<(String, CicTerm)>,
     ariety: &CicTerm,
@@ -221,7 +135,6 @@ pub fn evaluate_inductive(
         ),
     );
 }
-
 //########################### STATEMENTS EXECUTION
 //
 //########################### HELPER FUNCTIONS
@@ -249,7 +162,7 @@ mod unit_tests {
                 GLOBAL_INDEX,
             },
             evaluation::{
-                matches_pattern, reduce_application, reduce_match,
+                matches_pattern, one_step_reduction, reduce_match,
                 reduce_variable,
             },
         },
@@ -360,15 +273,20 @@ mod unit_tests {
         );
 
         assert_eq!(
-            reduce_application(&mut test_env, &succ.clone(), &zero),
+            one_step_reduction(
+                &mut test_env,
+                &Application(Box::new(succ.clone()), Box::new(zero.clone()))
+            ),
             Application(Box::new(succ.clone()), Box::new(zero)),
             "Function application of normal form returns a different term"
         );
         assert_eq!(
-            reduce_application(
+            one_step_reduction(
                 &mut test_env,
-                &Variable("add_one".to_string(), GLOBAL_INDEX),
-                &Variable("arg".to_string(), GLOBAL_INDEX)
+                &Application(
+                    Box::new(Variable("add_one".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("arg".to_string(), GLOBAL_INDEX))
+                )
             ),
             Application(
                 Box::new(succ.clone()),

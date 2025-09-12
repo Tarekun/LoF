@@ -1,119 +1,96 @@
 use super::fol::FolStm::{Axiom, Fun, Let, Theorem};
-use super::fol::FolTerm::Variable;
+use super::fol::{
+    Fol, FolFormula, FolStm,
+    FolTerm::{self, Abstraction, Application, Variable},
+};
 use super::fol_utils::make_multiarg_fun_type;
-use crate::type_theory::commons::evaluation::generic_evaluate_fun;
+use crate::type_theory::commons::evaluation::{
+    evaluate_fun, reduce_application,
+};
 use crate::{
     misc::Union,
-    parser::api::Tactic,
     type_theory::{
         commons::evaluation::{
-            generic_evaluate_axiom, generic_evaluate_let,
-            generic_evaluate_theorem, generic_reduce_variable,
+            evaluate_axiom, evaluate_let, evaluate_theorem, reduce_variable,
         },
         environment::Environment,
     },
 };
 
-use super::fol::{Fol, FolFormula, FolStm, FolTerm};
-
 //########################### TERM βδ-REDUCTION
 pub fn one_step_reduction(
-    environment: &mut Environment<FolTerm, FolFormula>,
+    environment: &mut Environment<Fol>,
     term: &FolTerm,
 ) -> FolTerm {
     match term {
-        Variable(var_name) => reduce_variable(environment, var_name, term),
-        // Application(left, right) => {
-        //     reduce_application(environment, left, right)
-        // }
+        Variable(var_name) => {
+            reduce_variable::<Fol>(environment, var_name, term)
+        }
+        Application(left, right) => {
+            fol_reduce_application(environment, left, right)
+        }
         _ => term.clone(),
     }
 }
 //
 //
-fn reduce_variable(
-    environment: &Environment<FolTerm, FolFormula>,
-    var_name: &str,
-    og_term: &FolTerm,
+fn fol_reduce_application(
+    environment: &mut Environment<Fol>,
+    left: &FolTerm,
+    right: &FolTerm,
 ) -> FolTerm {
-    generic_reduce_variable::<Fol>(environment, var_name, og_term)
+    reduce_application::<Fol, _, _>(
+        environment,
+        left,
+        right,
+        |fun_reduced| match fun_reduced {
+            Abstraction(var_name, _, body) => {
+                Some((var_name.to_string(), (**body).to_owned()))
+            }
+            _ => None,
+        },
+        |left_reduced, right_reduced| {
+            Application(Box::new(left_reduced), Box::new(right_reduced))
+        },
+    )
 }
-
 //########################### TERM βδ-REDUCTION
 
 //########################### STATEMENTS EXECUTION
 pub fn evaluate_statement(
-    environment: &mut Environment<FolTerm, FolFormula>,
+    environment: &mut Environment<Fol>,
     stm: &FolStm,
 ) -> () {
     match stm {
         Axiom(axiom_name, formula) => {
-            evaluate_axiom(environment, axiom_name, formula)
+            evaluate_axiom::<Fol>(environment, axiom_name, formula)
         }
         Let(var_name, var_type, body) => {
-            evaluate_let(environment, var_name, var_type, body)
+            evaluate_let::<Fol>(environment, var_name, var_type, body)
         }
         Fun(fun_name, args, out_type, body, is_rec) => {
-            evaluate_fun(environment, fun_name, args, out_type, body, is_rec)
+            evaluate_fun::<Fol, _, _>(
+                environment,
+                fun_name,
+                args,
+                out_type,
+                body,
+                is_rec,
+                |args, body_type| make_multiarg_fun_type(&args, &body_type),
+                |(var_name, var_type), body| {
+                    Abstraction(var_name, Box::new(var_type), Box::new(body))
+                },
+            )
         }
         Theorem(theorem_name, formula, proof) => {
-            evaluate_theorem(environment, theorem_name, formula, proof)
+            evaluate_theorem::<Fol, Union<FolTerm, FolFormula>>(
+                environment,
+                theorem_name,
+                formula,
+                proof,
+            )
         }
     }
-}
-//
-//
-pub fn evaluate_let(
-    environment: &mut Environment<FolTerm, FolFormula>,
-    var_name: &str,
-    var_type: &Option<FolFormula>,
-    body: &FolTerm,
-) -> () {
-    generic_evaluate_let::<Fol>(environment, var_name, var_type, body);
-}
-//
-//
-pub fn evaluate_axiom(
-    environment: &mut Environment<FolTerm, FolFormula>,
-    axiom_name: &str,
-    formula: &FolFormula,
-) -> () {
-    generic_evaluate_axiom::<Fol>(environment, axiom_name, formula);
-}
-//
-//
-pub fn evaluate_theorem(
-    environment: &mut Environment<FolTerm, FolFormula>,
-    theorem_name: &str,
-    formula: &FolFormula,
-    proof: &Union<FolTerm, Vec<Tactic<Union<FolTerm, FolFormula>>>>,
-) -> () {
-    generic_evaluate_theorem::<Fol, Union<FolTerm, FolFormula>>(
-        environment,
-        theorem_name,
-        formula,
-        proof,
-    );
-}
-//
-//
-pub fn evaluate_fun(
-    environment: &mut Environment<FolTerm, FolFormula>,
-    fun_name: &str,
-    args: &Vec<(String, FolFormula)>,
-    out_type: &FolFormula,
-    body: &FolTerm,
-    is_rec: &bool,
-) -> () {
-    generic_evaluate_fun::<Fol, _>(
-        environment,
-        fun_name,
-        args,
-        out_type,
-        body,
-        is_rec,
-        make_multiarg_fun_type,
-    );
 }
 //########################### STATEMENTS EXECUTION
 //

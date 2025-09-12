@@ -1,20 +1,40 @@
+use crate::type_theory::interface::TypeTheory;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub struct Environment<Term, Type> {
-    pub context: HashMap<String, Vec<Type>>, //var_name, variable type
-    pub deltas: HashMap<String, Vec<Term>>,  //var_name, definition term, type
-    pub predicates: HashMap<String, Vec<Type>>, //pred_name, arg_types
-    constraints: Vec<(Term, Term)>,
+#[derive(Debug)]
+pub struct Environment<T: TypeTheory> {
+    /// var_name, variable type
+    pub context: HashMap<String, Vec<T::Type>>,
+    /// var_name, definition term, type
+    pub deltas: HashMap<String, Vec<T::Term>>,
+    /// pred_name, arg_types
+    pub predicates: HashMap<String, Vec<T::Type>>,
+    /// [exp1 = exp2]
+    constraints: Vec<(T::Exp, T::Exp)>,
     next_index: i32,
+}
+impl<T: TypeTheory> Clone for Environment<T>
+where
+    T::Term: Clone,
+    T::Type: Clone,
+{
+    fn clone(&self) -> Self {
+        Environment {
+            context: self.context.clone(),
+            deltas: self.deltas.clone(),
+            predicates: self.predicates.clone(),
+            constraints: self.constraints.clone(),
+            next_index: self.next_index,
+        }
+    }
 }
 
 //TODO check if this cloning is really necessary or there's better ways
-impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
+impl<T: TypeTheory> Environment<T> {
     pub fn with_defaults(
-        axioms: Vec<(&str, &Type)>,
-        deltas: Vec<(&str, &Term, &Option<Type>)>,
-        predicates: Vec<(&str, &Vec<Type>)>,
+        axioms: Vec<(&str, &T::Type)>,
+        deltas: Vec<(&str, &T::Term, &Option<T::Type>)>,
+        predicates: Vec<(&str, &Vec<T::Type>)>,
     ) -> Self {
         let mut context_map = HashMap::new();
         let mut deltas_map = HashMap::new();
@@ -42,24 +62,24 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
         }
     }
 
-    fn context_stack(&mut self, name: &str) -> &mut Vec<Type> {
+    fn context_stack(&mut self, name: &str) -> &mut Vec<T::Type> {
         self.context
             .entry(name.to_string())
             .or_insert_with(Vec::new)
     }
-    fn substitution_stack(&mut self, name: &str) -> &mut Vec<Term> {
+    fn substitution_stack(&mut self, name: &str) -> &mut Vec<T::Term> {
         self.deltas.entry(name.to_string()).or_insert_with(Vec::new)
     }
 
     //######################### ENV MANIPULATION
     //
     /// Insert a new typed variable into the context
-    pub fn add_to_context(&mut self, name: &str, typee: &Type) {
+    pub fn add_to_context(&mut self, name: &str, typee: &T::Type) {
         let context_stack = self.context_stack(name);
         context_stack.push(typee.to_owned());
     }
 
-    pub fn add_substitution(&mut self, name: &str, term: &Term) {
+    pub fn add_substitution(&mut self, name: &str, term: &T::Term) {
         let definition_stack = self.substitution_stack(name);
         definition_stack.push(term.clone());
     }
@@ -67,19 +87,19 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
     pub fn add_substitution_with_type(
         &mut self,
         name: &str,
-        term: &Term,
-        typee: &Type,
+        term: &T::Term,
+        typee: &T::Type,
     ) {
         let definition_stack = self.substitution_stack(name);
         definition_stack.push(term.clone());
         self.add_to_context(name, typee);
     }
 
-    pub fn add_constraint(&mut self, left: &Term, right: &Term) {
+    pub fn add_constraint(&mut self, left: &T::Exp, right: &T::Exp) {
         self.constraints.push((left.clone(), right.clone()));
     }
 
-    pub fn add_predicate(&mut self, name: &str, arg_types: &Vec<Type>) {
+    pub fn add_predicate(&mut self, name: &str, arg_types: &Vec<T::Type>) {
         self.predicates
             .insert(name.to_string(), arg_types.to_owned());
     }
@@ -115,7 +135,7 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
     pub fn with_local_assumption<F: FnOnce(&mut Self) -> R, R>(
         &mut self,
         name: &str,
-        typee: &Type,
+        typee: &T::Type,
         callable: F,
     ) -> R {
         self.add_to_context(name, typee);
@@ -128,7 +148,7 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
     /// Add a list of local variables to the context, execute a closure, and then remove the variables
     pub fn with_local_assumptions<F: FnOnce(&mut Self) -> R, R>(
         &mut self,
-        assumptions: &[(String, Type)],
+        assumptions: &[(String, T::Type)],
         callable: F,
     ) -> R {
         if assumptions.is_empty() {
@@ -148,8 +168,8 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
     pub fn with_local_substitution<F: FnOnce(&mut Self) -> R, R>(
         &mut self,
         name: &str,
-        term: &Term,
-        typee: &Option<Type>,
+        term: &T::Term,
+        typee: &Option<T::Type>,
         callable: F,
     ) -> R {
         self.add_substitution(name, term);
@@ -171,7 +191,7 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
     /// Add a list of local variables to the context, execute a closure, and then remove the variables
     pub fn with_local_substitutions<F: FnOnce(&mut Self) -> R, R>(
         &mut self,
-        substitutions: &[(String, Term, Option<Type>)],
+        substitutions: &[(String, T::Term, Option<T::Type>)],
         callable: F,
     ) -> R {
         if substitutions.is_empty() {
@@ -226,7 +246,7 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
 
     //######################### VARIABLE LOOKUPS
     //
-    pub fn get_from_context(&self, name: &str) -> Option<(String, Type)> {
+    pub fn get_from_context(&self, name: &str) -> Option<(String, T::Type)> {
         self.context.get(name).and_then(|context_stack| {
             context_stack
                 .last()
@@ -234,7 +254,7 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
         })
     }
 
-    pub fn get_from_deltas(&self, name: &str) -> Option<(String, Term)> {
+    pub fn get_from_deltas(&self, name: &str) -> Option<(String, T::Term)> {
         self.deltas.get(name).and_then(|definition_stack| {
             definition_stack
                 .last()
@@ -242,13 +262,13 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
         })
     }
 
-    pub fn get_predicate(&self, type_name: &str) -> Option<Vec<Type>> {
+    pub fn get_predicate(&self, type_name: &str) -> Option<Vec<T::Type>> {
         self.predicates
             .get(type_name)
             .map(|arg_types| arg_types.to_owned())
     }
 
-    pub fn get_constraints(&self) -> Vec<(Term, Term)> {
+    pub fn get_constraints(&self) -> Vec<(T::Exp, T::Exp)> {
         self.constraints.clone()
     }
 
@@ -262,7 +282,7 @@ impl<Term: Clone, Type: Clone + PartialEq> Environment<Term, Type> {
         }
     }
 
-    pub fn get_variable_type(&self, var_name: &str) -> Option<Type> {
+    pub fn get_variable_type(&self, var_name: &str) -> Option<T::Type> {
         match self.get_from_context(var_name) {
             Some((_, var_type)) => Some(var_type.clone()),
             None => None,

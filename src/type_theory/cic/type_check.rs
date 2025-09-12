@@ -1,18 +1,11 @@
 use std::collections::HashMap;
-use super::cic::CicTerm::{Application, Product, Sort, Meta};
+use super::cic::CicTerm::{Application, Product};
 use super::cic::{Cic, CicTerm};
-use super::cic_utils::substitute_meta;
 use super::unification::solve_unification;
-use crate::misc::Union;
-use crate::parser::api::Tactic;
-use crate::type_theory::cic::cic_utils::{
-    make_multiarg_fun_type, substitute
-};
+use crate::type_theory::cic::cic_utils::substitute;
 use crate::type_theory::cic::unification::{equal_under_substitution, instatiate_metas};
 use crate::type_theory::commons::type_check::{
-    generic_type_check_abstraction, generic_type_check_axiom, 
-    generic_type_check_fun, generic_type_check_let, generic_type_check_theorem, 
-    generic_type_check_universal, generic_type_check_variable
+    type_check_variable,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::Kernel;
@@ -20,67 +13,21 @@ use crate::type_theory::interface::Kernel;
 //########################### EXPRESSIONS TYPE CHECKING
 //
 pub fn type_check_sort(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     sort_name: &str,
 ) -> Result<CicTerm, String> {
     //TODO check that the type is a sort itself?
-    generic_type_check_variable::<Cic>(environment, sort_name)
-}
-//
-//
-pub fn type_check_variable(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    var_name: &str,
-) -> Result<CicTerm, String> {
-    generic_type_check_variable::<Cic>(environment, var_name)
-}
-//
-//
-pub fn type_check_abstraction(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    var_name: &str,
-    var_type: &CicTerm,
-    body: &CicTerm,
-) -> Result<CicTerm, String> {
-    let body_type = generic_type_check_abstraction::<Cic>(environment, var_name, var_type, body)?;
-    let (var_type, body_type) = if let Meta(index) = var_type {
-        let substitution = solve_unification(environment.get_constraints())?;
-        (&substitute_meta(var_type, index, substitution.get(index).unwrap()),
-        substitute_meta(&body_type, index, substitution.get(index).unwrap()))
-    } else {
-        (var_type, body_type)
-    };
-
-    Ok(Product(
-        var_name.to_string(),
-        Box::new(var_type.clone()),
-        Box::new(body_type),
-    ))
-}
-//
-//
-pub fn type_check_product(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    var_name: &str,
-    var_type: &CicTerm,
-    body: &CicTerm,
-) -> Result<CicTerm, String> {
-    // TODO: im not sure using the FO quantification is actually correct here
-    let body_type = generic_type_check_universal::<Cic>(environment, var_name, var_type, body)?;
-    match body_type {
-        Sort(_) => Ok(body_type),
-        _ => Err(format!("Body of product term must be of type sort, i.e. must be a type, not {:?}", body_type)),
-    }
+    type_check_variable::<Cic>(environment, sort_name)
 }
 //
 //
 pub fn type_check_application(
-    environment: &mut Environment<CicTerm, CicTerm>,
+    environment: &mut Environment<Cic>,
     left: &CicTerm,
     right: &CicTerm,
 ) -> Result<CicTerm, String> {
     fn solve_metas(
-        local_env: &mut Environment<CicTerm, CicTerm>,
+        local_env: &mut Environment<Cic>,
         arg_type: CicTerm, 
         domain: CicTerm,
     ) -> Result<(CicTerm, CicTerm, HashMap<i32, CicTerm>), String> {
@@ -93,7 +40,7 @@ pub fn type_check_application(
     }
 
     fn type_check_nested_app(
-        local_env: &mut Environment<CicTerm, CicTerm>,
+        local_env: &mut Environment<Cic>,
         term: CicTerm,
     ) -> Result<CicTerm, String> {
         match term {
@@ -150,53 +97,3 @@ pub fn type_check_application(
 }
 //
 //########################### EXPRESSIONS TYPE CHECKING
-//
-//
-//########################### STATEMENTS TYPE CHECKING
-//
-pub fn type_check_let(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    var_name: &str,
-    opt_type: &Option<CicTerm>,
-    body: &CicTerm,
-) -> Result<CicTerm, String> {
-    generic_type_check_let::<Cic>(environment, var_name, opt_type, body)
-}
-//
-//
-pub fn type_check_fun(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    fun_name: &str,
-    args: &Vec<(String, CicTerm)>,
-    out_type: &CicTerm,
-    body: &CicTerm,
-    is_rec: &bool,
-) -> Result<CicTerm, String> {
-    generic_type_check_fun::<Cic, _>(environment, fun_name, args, out_type, body, is_rec, make_multiarg_fun_type)
-}
-//
-//
-pub fn type_check_theorem(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    theorem_name: &str,
-    formula: &CicTerm,
-    proof: &Union<CicTerm, Vec<Tactic<CicTerm>>>
-) -> Result<CicTerm, String> {
-    generic_type_check_theorem::<Cic, CicTerm>(environment, theorem_name, formula, proof)
-}
-//
-//
-pub fn type_check_axiom(
-    environment: &mut Environment<CicTerm, CicTerm>,
-    axiom_name: &str,
-    formula: &CicTerm,
-) -> Result<CicTerm, String> {
-    generic_type_check_axiom::<Cic>(environment, axiom_name, formula)
-}
-//
-//########################### STATEMENTS TYPE CHECKING
-//
-//########################### HELPER FUNCTIONS
-//
-//
-//########################### HELPER FUNCTIONS
