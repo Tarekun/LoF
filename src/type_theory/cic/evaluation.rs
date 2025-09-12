@@ -1,4 +1,4 @@
-use super::cic::CicStm::{Axiom, Fun, Let, Theorem};
+use super::cic::CicStm::{Axiom, Fun, Global, Theorem};
 use super::cic::CicTerm::{Abstraction, Application, Match, Variable};
 use super::cic::{Cic, CicStm, CicTerm};
 use super::cic_utils::make_multiarg_fun_type;
@@ -7,7 +7,7 @@ use crate::type_theory::cic::cic_utils::{
 };
 use crate::type_theory::cic::type_check_inductive::inductive_eliminator;
 use crate::type_theory::commons::evaluation::{
-    evaluate_axiom, evaluate_fun, evaluate_let, evaluate_theorem,
+    evaluate_axiom, evaluate_fun, evaluate_global, evaluate_theorem,
     reduce_application, reduce_variable,
 };
 use crate::type_theory::environment::Environment;
@@ -73,8 +73,8 @@ pub fn evaluate_statement(
         Axiom(axiom_name, formula) => {
             evaluate_axiom::<Cic>(environment, axiom_name, formula)
         }
-        Let(var_name, var_type, body) => {
-            evaluate_let::<Cic>(environment, var_name, var_type, body)
+        Global(var_name, var_type, body) => {
+            evaluate_global::<Cic>(environment, var_name, var_type, body)
         }
         Fun(fun_name, args, out_type, body, is_rec) => {
             evaluate_fun::<Cic, _, _>(

@@ -241,9 +241,11 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Fol>, String> {
         Statement::Axiom(axiom_name, formula) => Ok(Schedule::singleton_stm(
             elaborate_axiom(axiom_name, formula)?,
         )),
-        Statement::Let(var_name, var_type, body) => Ok(
-            Schedule::singleton_stm(elaborate_let(var_name, var_type, body)?),
-        ),
+        Statement::Global(var_name, var_type, body) => {
+            Ok(Schedule::singleton_stm(elaborate_global(
+                var_name, var_type, body,
+            )?))
+        }
         Statement::Fun(fun_name, args, out_type, body, is_rec) => {
             Ok(Schedule::singleton_stm(elaborate_fun(
                 fun_name, args, out_type, body, is_rec,
@@ -313,7 +315,7 @@ pub fn elaborate_theorem(
 }
 //
 //
-pub fn elaborate_let(
+pub fn elaborate_global(
     var_name: &String,
     opt_type: &Option<Expression>,
     body: &Expression,
@@ -399,7 +401,7 @@ mod unit_tests {
         type_theory::fol::{
             elaboration::{
                 elaborate_abstraction, elaborate_application, elaborate_arrow,
-                elaborate_expression, elaborate_forall, elaborate_let,
+                elaborate_expression, elaborate_forall, elaborate_global,
                 elaborate_var_use,
             },
             fol::{
@@ -557,7 +559,7 @@ mod unit_tests {
 
     #[test]
     fn test_let_elaboration() {
-        let res = elaborate_let(
+        let res = elaborate_global(
             &"n".to_string(),
             &Some(Expression::VarUse("Nat".to_string())),
             &Expression::VarUse("zero".to_string()),

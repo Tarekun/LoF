@@ -11,7 +11,7 @@ use crate::{
     misc::Union,
     type_theory::{
         commons::evaluation::{
-            evaluate_axiom, evaluate_let, evaluate_theorem, reduce_variable,
+            evaluate_axiom, evaluate_global, evaluate_theorem, reduce_variable,
         },
         environment::Environment,
     },
@@ -66,7 +66,7 @@ pub fn evaluate_statement(
             evaluate_axiom::<Fol>(environment, axiom_name, formula)
         }
         Let(var_name, var_type, body) => {
-            evaluate_let::<Fol>(environment, var_name, var_type, body)
+            evaluate_global::<Fol>(environment, var_name, var_type, body)
         }
         Fun(fun_name, args, out_type, body, is_rec) => {
             evaluate_fun::<Fol, _, _>(

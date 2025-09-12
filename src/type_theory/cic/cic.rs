@@ -20,7 +20,7 @@ use crate::type_theory::cic::type_check_inductive::{
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
     type_check_axiom, type_check_fo_universal, type_check_function,
-    type_check_let, type_check_theorem, type_check_variable,
+    type_check_global, type_check_theorem, type_check_variable,
     u_type_check_abstraction,
 };
 use crate::type_theory::environment::Environment;
@@ -57,7 +57,7 @@ pub enum CicStm {
     /// theorem_name, formula, proof
     Theorem(String, Box<CicTerm>, Union<CicTerm, Vec<Tactic<CicTerm>>>),
     /// (var_name, var_type, definition_body)
-    Let(String, Option<CicTerm>, Box<CicTerm>),
+    Global(String, Option<CicTerm>, Box<CicTerm>),
     /// (fun_name, args, out_type, body, is_rec)
     Fun(
         String,
@@ -187,8 +187,8 @@ impl Kernel for Cic {
     ) -> Result<CicTerm, String> {
         debug!("Type-type checking of {:?}", stm);
         match stm {
-            CicStm::Let(var_name, opt_type, body) => {
-                type_check_let::<Cic>(environment, var_name, opt_type, body)
+            CicStm::Global(var_name, opt_type, body) => {
+                type_check_global::<Cic>(environment, var_name, opt_type, body)
             }
             CicStm::Axiom(axiom_name, formula) => {
                 type_check_axiom::<Cic>(environment, axiom_name, formula)

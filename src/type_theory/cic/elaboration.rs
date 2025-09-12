@@ -179,9 +179,11 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, String> {
         Statement::Axiom(axiom_name, formula) => Ok(Schedule::singleton_stm(
             elaborate_axiom(axiom_name, formula)?,
         )),
-        Statement::Let(var_name, var_type, body) => Ok(
-            Schedule::singleton_stm(elaborate_let(var_name, var_type, body)?),
-        ),
+        Statement::Global(var_name, var_type, body) => {
+            Ok(Schedule::singleton_stm(elaborate_global(
+                var_name, var_type, body,
+            )?))
+        }
         Statement::Inductive(type_name, parameters, ariety, constructors) => {
             Ok(Schedule::singleton_stm(elaborate_inductive(
                 type_name,
@@ -242,7 +244,7 @@ fn elaborate_dir_root(
 }
 //
 //
-fn elaborate_let(
+fn elaborate_global(
     var_name: &String,
     var_type: &Option<Expression>,
     body: &Expression,
@@ -255,7 +257,7 @@ fn elaborate_let(
     };
     let elaborated_body = elaborate_expression(&body);
 
-    Ok(CicStm::Let(
+    Ok(CicStm::Global(
         var_name.to_string(),
         opt_type,
         Box::new(elaborated_body),

@@ -33,8 +33,8 @@ impl LofParser {
     }
     //
     //
-    pub fn parse_let<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("let"))(input)?;
+    pub fn global<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+        let (input, _) = preceded(multispace0, tag("global"))(input)?;
         let (input, (var_name, opt_type)) = preceded(multispace1, |input| {
             self.parse_optionally_typed_identifier(input)
         })(input)?;
@@ -45,7 +45,7 @@ impl LofParser {
 
         Ok((
             input,
-            Statement::Let(var_name.to_string(), opt_type, Box::new(term)),
+            Statement::Global(var_name.to_string(), opt_type, Box::new(term)),
         ))
     }
     //
@@ -249,7 +249,7 @@ impl LofParser {
     ) -> IResult<&'a str, Statement> {
         alt((
             |input| self.parse_comment(input),
-            |input| self.parse_let(input),
+            |input| self.global(input),
             |input| self.parse_axiom(input),
             |input| self.parse_inductive_def(input),
             |input| self.parse_theorem(input),
@@ -273,7 +273,7 @@ mod unit_tests {
             LofAst::Exp,
             LofParser, Notation,
             Statement::{
-                self, Axiom, Comment, EmptyRoot, Inductive, Let, Theorem,
+                self, Axiom, Comment, EmptyRoot, Global, Inductive, Theorem,
             },
         },
     };
@@ -360,27 +360,27 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_let() {
+    fn test_global() {
         let parser = LofParser::new(Config::default());
         assert!(
-            parser.parse_let("let n: nat := x;").is_ok(),
-            "Parser cant read let definitions"
+            parser.global("global n: nat := x;").is_ok(),
+            "Parser cant read global definitions"
         );
         assert!(
             parser
-                .parse_let("let \t n  \t:  \t nat  :=\t  x  \t;")
+                .global("global \t n  \t:  \t nat  :=\t  x  \t;")
                 .is_ok(),
             "Let parser cant cope with multispaces"
         );
         assert!(
-            parser.parse_let("letn :nat:= x;").is_err(),
-            "Let parser doesnt split 'let' keyword and variable identifier"
+            parser.global("globaln :nat:= x;").is_err(),
+            "Let parser doesnt split 'global' keyword and variable identifier"
         );
         assert_eq!(
-            parser.parse_let("let n : nat := x;").unwrap(),
+            parser.global("global n : nat := x;").unwrap(),
             (
                 "",
-                Let(
+                Global(
                     "n".to_string(),
                     Some(VarUse("nat".to_string())),
                     Box::new(VarUse("x".to_string()))
@@ -389,8 +389,8 @@ mod unit_tests {
             "Let definition struct isnt properly constructed"
         );
         assert!(
-            parser.parse_statement("let n: nat := x;").is_ok(),
-            "Top level parser can't read let definitions"
+            parser.parse_statement("global n: nat := x;").is_ok(),
+            "Top level parser can't read global definitions"
         );
     }
 

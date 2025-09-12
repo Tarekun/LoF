@@ -8,7 +8,7 @@ use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    type_check_abstraction, type_check_axiom, type_check_let,
+    type_check_abstraction, type_check_axiom, type_check_global,
     type_check_theorem, type_check_variable,
 };
 use crate::type_theory::environment::Environment;
@@ -188,7 +188,7 @@ impl Kernel for Fol {
                 type_check_axiom::<Fol>(environment, axiom_name, predicate)
             }
             Let(var_name, opt_type, body) => {
-                type_check_let::<Fol>(environment, var_name, opt_type, body)
+                type_check_global::<Fol>(environment, var_name, opt_type, body)
             }
             Fun(fun_name, args, out_type, body, is_rec) => fol_type_check_fun(
                 environment,

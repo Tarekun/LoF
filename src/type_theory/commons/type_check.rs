@@ -3,7 +3,7 @@ use crate::{
     parser::api::Tactic,
     type_theory::{
         commons::evaluation::{
-            evaluate_axiom, evaluate_fun, evaluate_let, evaluate_theorem,
+            evaluate_axiom, evaluate_fun, evaluate_global, evaluate_theorem,
         },
         environment::Environment,
         interface::{Interactive, Kernel, Refiner, TypeTheory},
@@ -163,8 +163,8 @@ pub fn type_check_fo_universal<T: TypeTheory + Kernel>(
 //
 //########################### STATEMENTS TYPE CHECKING
 //
-/// Generic let definition type checking. Uses `T::type_check_type` on the variable type
-pub fn type_check_let<T: TypeTheory + Kernel>(
+/// Generic global definition type checking. Uses `T::type_check_type` on the variable type
+pub fn type_check_global<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     var_name: &str,
     opt_type: &Option<T::Type>,
@@ -179,7 +179,7 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
     let _ = T::type_check_type(&var_type, environment)?;
 
     if T::base_type_equality(&var_type, &body_type).is_ok() {
-        evaluate_let::<T>(environment, var_name, &Some(var_type), body);
+        evaluate_global::<T>(environment, var_name, &Some(var_type), body);
         Ok(body_type)
     } else {
         Err(format!(
