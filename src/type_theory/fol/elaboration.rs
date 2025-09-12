@@ -1,6 +1,6 @@
 use super::fol::FolFormula::{Arrow, Disjunction, ForAll, Predicate};
 use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
-use super::fol::FolTerm::{Abstraction, Application, Tuple, Variable};
+use super::fol::FolTerm::{Abstraction, Application, Let, Tuple, Variable};
 use super::fol::{Fol, FolFormula, FolTerm};
 use crate::misc::simple_map;
 use crate::parser::api::{Statement, Tactic};
@@ -91,6 +91,14 @@ pub fn elaborate_expression(
         }
         Expression::TypeProduct(var_name, var_type, body) => {
             wrap_type::<Fol>(elaborate_forall(var_name, var_type, body))
+        }
+        Expression::Let(var_name, var_type, definition_body, scope) => {
+            wrap_term::<Fol>(elaborate_let(
+                var_name,
+                var_type,
+                definition_body,
+                scope,
+            ))
         }
         Expression::Tuple(terms) => wrap_term::<Fol>(elaborate_tuple(terms)),
         Expression::Pipe(types) => wrap_type::<Fol>(elaborate_pipe(types)),
@@ -207,6 +215,31 @@ pub fn elaborate_forall(
         }
         Union::L(term) => type_expected_error("forall", &term),
     }
+}
+//
+//
+fn elaborate_let(
+    var_name: &str,
+    var_type: &Option<Expression>,
+    body: &Expression,
+    scope: &Expression,
+) -> Result<FolTerm, String> {
+    let var_type = if var_type.is_some() {
+        Some(expect_type(elaborate_expression(
+            &var_type.as_ref().unwrap(),
+        )?)?)
+    } else {
+        None
+    };
+    let body = expect_term(elaborate_expression(body)?)?;
+    let scope = expect_term(elaborate_expression(scope)?)?;
+
+    Ok(Let(
+        var_name.to_string(),
+        Box::new(var_type),
+        Box::new(body),
+        Box::new(scope),
+    ))
 }
 //
 //
@@ -395,6 +428,7 @@ pub fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Fol>, String> {
 //TODO include tests for failure on non type expressions i dont
 //want to do it now cuz i dont have a real way to distinguish them yet
 mod unit_tests {
+    use crate::type_theory::interface::TypeTheory;
     use crate::{
         misc::Union::{self, L, R},
         parser::api::Expression::{self},
@@ -405,9 +439,10 @@ mod unit_tests {
                 elaborate_var_use,
             },
             fol::{
+                Fol,
                 FolFormula::{Arrow, ForAll, Predicate},
                 FolStm::Global,
-                FolTerm::{Abstraction, Application, Variable},
+                FolTerm::{Abstraction, Application, Let, Variable},
             },
         },
     };
@@ -553,12 +588,46 @@ mod unit_tests {
         );
     }
 
+    #[test]
+    fn test_let_elaboration() {
+        assert_eq!(
+            Fol::elaborate_expression(&Expression::Let(
+                "x".to_string(),
+                Box::new(Some(Expression::VarUse("Complex".to_string()))),
+                Box::new(Expression::VarUse("i".to_string())),
+                Box::new(Expression::VarUse("x".to_string())),
+            )),
+            Ok(L(Let(
+                "x".to_string(),
+                Box::new(Some(Predicate("Complex".to_string(), vec![]))),
+                Box::new(Variable("i".to_string())),
+                Box::new(Variable("x".to_string())),
+            ))),
+            "Let elaboration isnt producing the proper term"
+        );
+        assert_eq!(
+            Fol::elaborate_expression(&Expression::Let(
+                "x".to_string(),
+                Box::new(None),
+                Box::new(Expression::VarUse("i".to_string())),
+                Box::new(Expression::VarUse("x".to_string())),
+            )),
+            Ok(L(Let(
+                "x".to_string(),
+                Box::new(None),
+                Box::new(Variable("i".to_string())),
+                Box::new(Variable("x".to_string())),
+            ))),
+            "Let elaboration cant cope with missing type annotation"
+        );
+    }
+
     // TODO support this test too
     // #[test]
     // fn test_fun_elaboration() {}
 
     #[test]
-    fn test_let_elaboration() {
+    fn test_global_elaboration() {
         let res = elaborate_global(
             &"n".to_string(),
             &Some(Expression::VarUse("Nat".to_string())),
