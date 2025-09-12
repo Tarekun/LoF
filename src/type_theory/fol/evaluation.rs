@@ -1,11 +1,11 @@
 use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
 use super::fol::{
     Fol, FolFormula, FolStm,
-    FolTerm::{self, Abstraction, Application, Variable},
+    FolTerm::{self, Abstraction, Application, Let, Variable},
 };
 use super::fol_utils::make_multiarg_fun_type;
 use crate::type_theory::commons::evaluation::{
-    evaluate_fun, reduce_application,
+    evaluate_fun, reduce_application, reduce_let,
 };
 use crate::{
     misc::Union,
@@ -28,6 +28,9 @@ pub fn one_step_reduction(
         }
         Application(left, right) => {
             fol_reduce_application(environment, left, right)
+        }
+        Let(var_name, var_type, body, scope) => {
+            reduce_let(environment, var_name, var_type, body, scope)
         }
         _ => term.clone(),
     }
@@ -99,4 +102,30 @@ pub fn evaluate_statement(
 
 //########################### UNIT TESTS
 #[cfg(test)]
-mod unit_tests {}
+mod unit_tests {
+    use crate::type_theory::fol::evaluation::one_step_reduction;
+    use crate::type_theory::fol::fol::Fol;
+    use crate::type_theory::fol::fol::FolTerm::{Let, Variable};
+    use crate::type_theory::interface::TypeTheory;
+
+    #[test]
+    fn test_let_reduction() {
+        let mut test_env = Fol::default_environment();
+        let zero = Variable("z".to_string());
+        test_env.add_predicate("Nat", &vec![]);
+
+        assert_eq!(
+            one_step_reduction(
+                &mut test_env,
+                &Let(
+                    "n".to_string(),
+                    Box::new(None),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("n".to_string())),
+                ),
+            ),
+            zero.to_owned(),
+            "Let definition doesnt reduce to its scope with substituted variable"
+        );
+    }
+}

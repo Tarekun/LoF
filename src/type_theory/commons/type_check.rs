@@ -104,6 +104,7 @@ pub fn type_check_fo_universal<T: TypeTheory + Kernel>(
     })
 }
 
+/// Generic let definition type checking
 pub fn type_check_let<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     var_name: &str,
@@ -111,9 +112,7 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
     body: &T::Term,
     scope: &T::Term,
 ) -> Result<T::Type, String> {
-    println!("type checking body {:?}", body);
     let body_type = T::type_check_term(body, environment)?;
-    println!("body type {:?}", body_type);
     let var_type = if var_type.is_none() {
         body_type.to_owned()
     } else {

@@ -71,6 +71,20 @@ pub fn reduce_application<
         None => rebuild_application(fun.to_owned(), arg.to_owned()),
     }
 }
+
+/// Performs reduction of let definition where the definition term
+/// is reduced to its scope term where `var_name` is substituted with
+/// the `body`'s normal form
+pub fn reduce_let<T: TypeTheory + Reducer>(
+    environment: &mut Environment<T>,
+    var_name: &str,
+    _var_type: &Option<T::Type>,
+    body: &T::Term,
+    scope: &T::Term,
+) -> T::Term {
+    let body_reduced = T::normalize_term(environment, body);
+    T::substitute(scope, var_name, &body_reduced)
+}
 //########################### TERM βδ-REDUCTION
 
 //########################### STATEMENTS EXECUTION
