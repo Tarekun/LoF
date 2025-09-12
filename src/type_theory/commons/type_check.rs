@@ -104,6 +104,15 @@ pub fn type_check_fo_universal<T: TypeTheory + Kernel>(
     })
 }
 
+// pub fn type_check_let<T: TypeTheory>(
+//     var_name: &str,
+//     var_type: &Option<T::Type>,
+//     body: &T::Term,
+//     scope: *T::Term,
+// ) -> Result<String, T::Type> {
+
+// }
+
 // pub fn type_check_application<T: TypeTheory>(
 //     environment: &mut Environment<T>,
 //     left: T::Term,

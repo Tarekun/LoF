@@ -25,6 +25,13 @@ pub enum Expression {
     Tuple(Vec<Expression>),
     /// [disjunted types]
     Pipe(Vec<Expression>),
+    /// (var_name, var_type, definition_body, scope)
+    Let(
+        String,
+        Box<Option<Expression>>,
+        Box<Expression>,
+        Box<Expression>,
+    ),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {

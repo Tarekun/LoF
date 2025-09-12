@@ -1,7 +1,7 @@
 use super::api::{
     Expression::{
-        self, Abstraction, Application, Arrow, Inferator, Match, Pipe, Tuple,
-        TypeProduct, VarUse,
+        self, Abstraction, Application, Arrow, Inferator, Let, Match, Pipe,
+        Tuple, TypeProduct, VarUse,
     },
     LofParser,
 };
@@ -206,6 +206,29 @@ impl LofParser {
         Ok((input, Inferator()))
     }
 
+    fn let_def<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
+        let (input, _) = preceded(multispace0, tag("let"))(input)?;
+        let (input, (var_name, opt_type)) = preceded(multispace1, |input| {
+            self.parse_optionally_typed_identifier(input)
+        })(input)?;
+        let (input, _) = preceded(multispace0, tag(":="))(input)?;
+        let (input, term) =
+            preceded(multispace0, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(multispace0, char(';'))(input)?;
+        let (input, scope) =
+            preceded(multispace1, |input| self.local_expression(input))(input)?;
+
+        Ok((
+            input,
+            Let(
+                var_name.to_string(),
+                Box::new(opt_type),
+                Box::new(term),
+                Box::new(scope),
+            ),
+        ))
+    }
+
     pub fn parse_pipe<'a>(
         &self,
         input: &'a str,
@@ -323,6 +346,16 @@ impl LofParser {
         ))(input)
     }
 
+    pub fn local_expression<'a>(
+        &self,
+        input: &'a str,
+    ) -> IResult<&'a str, Expression> {
+        alt((
+            |input| self.let_def(input),
+            |input| self.parse_expression(input),
+        ))(input)
+    }
+
     pub fn parse_expression<'a>(
         &self,
         input: &'a str,
@@ -358,8 +391,8 @@ mod unit_tests {
         config::Config,
         parser::api::{
             Expression::{
-                Abstraction, Application, Arrow, Inferator, Match, Pipe, Tuple,
-                TypeProduct, VarUse,
+                Abstraction, Application, Arrow, Inferator, Let, Match, Pipe,
+                Tuple, TypeProduct, VarUse,
             },
             LofParser,
         },
@@ -625,6 +658,59 @@ mod unit_tests {
         assert!(
             parser.parse_expression("A->B").is_ok(),
             "Top level parser cant read type arrow expressions"
+        );
+    }
+
+    #[test]
+    fn test_let() {
+        let parser = LofParser::new(Config::default());
+
+        assert!(
+            parser.let_def("let z: Nat := zero;\nz").is_ok(),
+            "Parser cant read let definitions"
+        );
+        assert!(
+            parser
+                .let_def("let \t x  \t:  \t Nat  :=\t  x;  \t\n\r\t\t x")
+                .is_ok(),
+            "Let parser cant cope with multispaces"
+        );
+        assert!(
+            parser.let_def("letn :Nat:= zero;\n n").is_err(),
+            "Let parser doesnt split 'let' keyword and variable identifier"
+        );
+        assert!(
+            parser.let_def("let n := zero;\n n").is_err(),
+            "Let parser doesnt support untyped definition"
+        );
+        assert_eq!(
+            parser.let_def("let n : Nat := zero; n").unwrap(),
+            (
+                "",
+                Let(
+                    "n".to_string(),
+                    Box::new(Some(VarUse("Nat".to_string()))),
+                    Box::new(VarUse("zero".to_string())),
+                    Box::new(VarUse("n".to_string()))
+                )
+            ),
+            "Let definition struct isnt properly constructed"
+        );
+    }
+
+    #[test]
+    fn test_let_support() {
+        let parser = LofParser::new(Config::default());
+
+        assert!(
+            parser.local_expression("let n : Nat := zero;\n  n").is_ok(),
+            "Dedicated top-level parser still doesnt work with let definitions"
+        );
+        assert!(
+            parser
+                .parse_statement("fun f (x: X) : X { let y : X := x; x }")
+                .is_ok(),
+            "Function parser doesnt support let definition in the function body"
         );
     }
 

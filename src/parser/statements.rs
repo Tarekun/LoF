@@ -69,7 +69,7 @@ impl LofParser {
 
         let (input, _) = preceded(multispace0, tag("{"))(input)?;
         let (input, body) =
-            preceded(multispace0, |input| self.parse_expression(input))(input)?;
+            preceded(multispace0, |input| self.local_expression(input))(input)?;
         let (input, _) = preceded(multispace0, tag("}"))(input)?;
 
         Ok((
@@ -370,11 +370,11 @@ mod unit_tests {
             parser
                 .global("global \t n  \t:  \t nat  :=\t  x  \t;")
                 .is_ok(),
-            "Let parser cant cope with multispaces"
+            "Global parser cant cope with multispaces"
         );
         assert!(
             parser.global("globaln :nat:= x;").is_err(),
-            "Let parser doesnt split 'global' keyword and variable identifier"
+            "Global parser doesnt split 'global' keyword and variable identifier"
         );
         assert_eq!(
             parser.global("global n : nat := x;").unwrap(),
@@ -386,7 +386,7 @@ mod unit_tests {
                     Box::new(VarUse("x".to_string()))
                 )
             ),
-            "Let definition struct isnt properly constructed"
+            "Global definition struct isnt properly constructed"
         );
         assert!(
             parser.parse_statement("global n: nat := x;").is_ok(),
