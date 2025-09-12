@@ -302,22 +302,6 @@ pub fn make_multiarg_fun_type(
     )
 }
 
-// pub fn eta_expand(args: &[(String, CicTerm)], body: &CicTerm) -> CicTerm {
-//     fn solver(mut args: Vec<(String, CicTerm)>, body: CicTerm) -> CicTerm {
-//         if args.is_empty() {
-//             return body;
-//         }
-
-//         let (arg_name, arg_type) = args.pop().unwrap();
-//         solver(
-//             args,
-//             Abstraction(arg_name, Box::new(arg_type), Box::new(body)),
-//         )
-//     }
-
-//     solver(args.to_vec(), body.clone())
-// }
-
 /// Given a term, it enumerates variables with De Bruijn indexes properly
 pub fn index_variables(term: &CicTerm) -> CicTerm {
     fn solver(

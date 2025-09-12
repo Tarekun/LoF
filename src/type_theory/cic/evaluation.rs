@@ -23,36 +23,25 @@ pub fn one_step_reduction(
         Variable(var_name, _) => {
             reduce_variable::<Cic>(environment, var_name, term)
         }
-        Application(left, right) => {
-            cic_reduce_application(environment, left, right)
-        }
+        Application(left, right) => reduce_application::<Cic, _, _>(
+            environment,
+            left,
+            right,
+            |fun_reduced| match fun_reduced {
+                Abstraction(var_name, _, body) => {
+                    Some((var_name.to_string(), (**body).to_owned()))
+                }
+                _ => None,
+            },
+            |left_reduced, right_reduced| {
+                Application(Box::new(left_reduced), Box::new(right_reduced))
+            },
+        ),
         Match(matched_term, branches) => {
             reduce_match(environment, matched_term, branches)
         }
         _ => term.clone(),
     }
-}
-//
-//
-fn cic_reduce_application(
-    environment: &mut Environment<Cic>,
-    left: &CicTerm,
-    right: &CicTerm,
-) -> CicTerm {
-    reduce_application::<Cic, _, _>(
-        environment,
-        left,
-        right,
-        |fun_reduced| match fun_reduced {
-            Abstraction(var_name, _, body) => {
-                Some((var_name.to_string(), (**body).to_owned()))
-            }
-            _ => None,
-        },
-        |left_reduced, right_reduced| {
-            Application(Box::new(left_reduced), Box::new(right_reduced))
-        },
-    )
 }
 //
 //
@@ -173,7 +162,7 @@ mod unit_tests {
                 GLOBAL_INDEX,
             },
             evaluation::{
-                cic_reduce_application, matches_pattern, reduce_match,
+                matches_pattern, one_step_reduction, reduce_match,
                 reduce_variable,
             },
         },
@@ -284,15 +273,20 @@ mod unit_tests {
         );
 
         assert_eq!(
-            cic_reduce_application(&mut test_env, &succ.clone(), &zero),
+            one_step_reduction(
+                &mut test_env,
+                &Application(Box::new(succ.clone()), Box::new(zero.clone()))
+            ),
             Application(Box::new(succ.clone()), Box::new(zero)),
             "Function application of normal form returns a different term"
         );
         assert_eq!(
-            cic_reduce_application(
+            one_step_reduction(
                 &mut test_env,
-                &Variable("add_one".to_string(), GLOBAL_INDEX),
-                &Variable("arg".to_string(), GLOBAL_INDEX)
+                &Application(
+                    Box::new(Variable("add_one".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("arg".to_string(), GLOBAL_INDEX))
+                )
             ),
             Application(
                 Box::new(succ.clone()),

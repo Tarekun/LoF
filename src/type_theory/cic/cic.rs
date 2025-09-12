@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::tactics::type_check_tactic;
 use super::type_check::{type_check_application, type_check_sort};
@@ -6,18 +8,20 @@ use crate::misc::Union::{self};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::CicTerm::{Meta, Product};
-use crate::type_theory::cic::cic_utils::{substitute, substitute_meta};
+use crate::type_theory::cic::cic_utils::{
+    make_multiarg_fun_type, substitute, substitute_meta,
+};
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
 };
-use crate::type_theory::cic::type_check::cic_type_check_fun;
 use crate::type_theory::cic::type_check_inductive::{
     type_check_inductive, type_check_match,
 };
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    type_check_axiom, type_check_let, type_check_theorem, type_check_universal,
-    type_check_variable, u_type_check_abstraction,
+    type_check_axiom, type_check_fo_universal, type_check_function,
+    type_check_let, type_check_theorem, type_check_variable,
+    u_type_check_abstraction,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
@@ -121,7 +125,6 @@ impl Kernel for Cic {
                 type_check_variable::<Cic>(environment, var_name)
             }
             CicTerm::Abstraction(var_name, var_type, body) => {
-                println!("type checking astrazione {:?}", term);
                 u_type_check_abstraction::<Cic, _>(
                     environment,
                     var_name,
@@ -137,7 +140,7 @@ impl Kernel for Cic {
                 )
             }
             CicTerm::Product(var_name, var_type, body) => {
-                type_check_universal::<Cic>(
+                type_check_fo_universal::<Cic>(
                     environment,
                     var_name,
                     var_type,
@@ -163,7 +166,6 @@ impl Kernel for Cic {
         environment: &mut Environment<Cic>,
     ) -> Result<CicTerm, String> {
         debug!("Term-type checking of {:?}", term);
-        println!("type checking di {:?}", term);
         Cic::type_check_expression(term, environment)
     }
 
@@ -201,13 +203,21 @@ impl Kernel for Cic {
                 )
             }
             CicStm::Fun(fun_name, args, out_type, body, is_rec) => {
-                cic_type_check_fun(
+                type_check_function::<Cic, _, _>(
                     environment,
                     fun_name,
                     args,
                     out_type,
                     body,
                     is_rec,
+                    |args, out_type| make_multiarg_fun_type(&args, &out_type),
+                    |(var_name, var_type), body| {
+                        CicTerm::Abstraction(
+                            var_name,
+                            Box::new(var_type),
+                            Box::new(body),
+                        )
+                    },
                 )
             }
             CicStm::Theorem(theorem_name, formula, proof) => {
@@ -225,7 +235,7 @@ impl Kernel for Cic {
 impl Refiner for Cic {
     fn solve_unification(
         constraints: Vec<(Self::Type, Self::Type)>,
-    ) -> Result<std::collections::HashMap<i32, Self::Type>, String> {
+    ) -> Result<HashMap<i32, Self::Type>, String> {
         solve_unification(constraints)
     }
 
@@ -238,7 +248,7 @@ impl Refiner for Cic {
 
     fn term_solve_metas(
         exp: &Self::Term,
-        substitution: &std::collections::HashMap<i32, Self::Exp>,
+        substitution: &HashMap<i32, Self::Exp>,
     ) -> Self::Term {
         let mut solved_exp = exp.to_owned();
         for index in substitution.keys() {
@@ -252,7 +262,7 @@ impl Refiner for Cic {
     }
     fn type_solve_metas(
         exp: &Self::Type,
-        substitution: &std::collections::HashMap<i32, Self::Exp>,
+        substitution: &HashMap<i32, Self::Exp>,
     ) -> Self::Type {
         let mut solved_exp = exp.to_owned();
         for index in substitution.keys() {

@@ -66,14 +66,11 @@ pub fn u_type_check_abstraction<
     let _ = T::type_check_type(var_type, environment)?;
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_term(body, local_env)?;
-        println!("pre meta index con body {:?}", body_type);
         let meta_index = T::meta_index(var_type);
-        println!("meta index {:?}", meta_index);
 
         let (var_type, body_type) = if meta_index.is_some() {
             let substitution =
                 T::solve_unification(local_env.get_constraints())?;
-            println!("computed MCU {:?}", substitution);
 
             let simplified_arg_type =
                 T::type_solve_metas(var_type, &substitution);
@@ -91,9 +88,9 @@ pub fn u_type_check_abstraction<
 
 /// Generic universal quantification type checking. Implements first order
 /// universal quantification Γ ⊢ ∀a:A.P(a), where a is `var_name`, A is
-/// `var_type`, and P(a) is a dependent `predicate`.
+/// `var_type`, and P(a) is a term-dependent `predicate`.
 /// Creating the dependent type Πa:A.P a is left to type theories implementations
-pub fn type_check_universal<T: TypeTheory + Kernel>(
+pub fn type_check_fo_universal<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     var_name: &str,
     var_type: &T::Type,

@@ -10,6 +10,7 @@ use crate::{
 
 /// Computes the normal form of `term` by iteratively calling `one_step_reduction`
 /// on its result.
+/// Returns the transitive closure of ->β
 pub fn generic_term_normalization<
     T: TypeTheory,
     F: Fn(&mut Environment<T>, &T::Term) -> T::Term,
@@ -44,6 +45,11 @@ pub fn reduce_variable<T: TypeTheory>(
     }
 }
 
+/// Performs β-reduction of an unary application.<br>
+/// First the `fun` term is reduced, then the `arg` is reduced.
+/// Then if `unpack_name_body(fun)` returns the tuple (name, body),
+/// `body` is returned where the name is substituted with `arg`,
+/// otherwise it treats it like a constant and rebuilds the application
 pub fn reduce_application<
     T: TypeTheory + Reducer,
     F: Fn(&T::Term) -> Option<(String, T::Term)>,
@@ -68,6 +74,8 @@ pub fn reduce_application<
 //########################### TERM βδ-REDUCTION
 
 //########################### STATEMENTS EXECUTION
+/// Evaluates the let statement processing the assignment and pushing to the `environment`
+/// the new type binding and substitution
 pub fn evaluate_let<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     var_name: &str,
@@ -86,8 +94,9 @@ pub fn evaluate_let<T: TypeTheory + Kernel>(
     };
     environment.add_substitution_with_type(var_name, body, var_type);
 }
-//
-//
+
+/// Evaluates the function definition statement constructing the signature and pushing to
+/// the `enviroment` the name along with the signature and substitution
 pub fn evaluate_fun<
     T: TypeTheory,
     C: Fn(&Vec<(String, T::Type)>, &T::Type) -> T::Type,
@@ -103,12 +112,11 @@ pub fn evaluate_fun<
     eta_wrap: E,
 ) -> () {
     let fun_type = fun_type_constructor(args, out_type);
-    // let body = eta_expand(args, body);
     let body = eta_expand::<T, _>(args, body, eta_wrap);
     environment.add_substitution_with_type(fun_name, &body, &fun_type);
 }
-//
-//
+
+/// Evaluates the axiom statement adding the type judgement to the `environment`
 pub fn evaluate_axiom<T: TypeTheory>(
     environment: &mut Environment<T>,
     axiom_name: &str,
@@ -116,8 +124,9 @@ pub fn evaluate_axiom<T: TypeTheory>(
 ) -> () {
     environment.add_to_context(axiom_name, formula);
 }
-//
-//
+
+/// Evaluates the theorem statement, assuming it was already type checked for correctness,
+/// and adds the name and formula to the `environment`
 pub fn evaluate_theorem<T: TypeTheory, E>(
     environment: &mut Environment<T>,
     theorem_name: &str,

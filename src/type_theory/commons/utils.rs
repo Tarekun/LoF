@@ -38,7 +38,9 @@ pub fn wrap_type<T: TypeTheory>(
 }
 
 /// η-expands `body` by wrapping it in a function with arguments `args`.
-/// First element of the slice will be the first argument to apply
+/// First element of `args` will be the first argument to apply in the
+/// abstraction constructed, so:<br>
+/// eta_expand( \[(x:X),(y:Y)\], b )  |->  λx:X. λy:Y. b
 pub fn eta_expand<
     T: TypeTheory,
     F: Fn((String, T::Type), T::Term) -> T::Term,

@@ -179,6 +179,7 @@ pub trait Refiner: TypeTheory {
 pub trait Reducer: TypeTheory {
     /// Given a `term`, a `var_name`, and a substitution `body`,
     /// returns the term where occurences of `var_name` have been swapped with `body`
+    // TODO this doesnt feel right. what about dependent types? what about second order formulas?
     fn substitute(
         term: &Self::Term,
         var_name: &str,

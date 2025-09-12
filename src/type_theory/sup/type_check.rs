@@ -13,7 +13,7 @@ use crate::type_theory::{
 use crate::{
     misc::simple_map,
     type_theory::{
-        commons::type_check::type_check_universal, interface::Kernel,
+        commons::type_check::type_check_fo_universal, interface::Kernel,
     },
 };
 
@@ -66,7 +66,7 @@ pub fn type_check_forall(
     var_type: &SupFormula,
     ψ: &SupFormula,
 ) -> Result<SupFormula, String> {
-    let _ = type_check_universal::<Sup>(environment, var_name, var_type, ψ)?;
+    let _ = type_check_fo_universal::<Sup>(environment, var_name, var_type, ψ)?;
 
     Ok(ForAll(
         var_name.to_string(),

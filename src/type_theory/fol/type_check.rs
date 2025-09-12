@@ -7,7 +7,7 @@ use super::fol::{
 };
 use super::fol_utils::make_multiarg_fun_type;
 use crate::type_theory::commons::type_check::{
-    type_check_function, type_check_universal,
+    type_check_fo_universal, type_check_function,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{Kernel, TypeTheory};
@@ -122,7 +122,7 @@ pub fn type_check_forall(
     var_type: &FolFormula,
     predicate: &FolFormula,
 ) -> Result<FolFormula, String> {
-    let _body_type = type_check_universal::<Fol>(
+    let _body_type = type_check_fo_universal::<Fol>(
         environment,
         var_name,
         var_type,

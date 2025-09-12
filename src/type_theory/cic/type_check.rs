@@ -1,17 +1,11 @@
 use std::collections::HashMap;
-use super::cic::CicTerm::{Application, Product, Sort, Variable, Abstraction};
+use super::cic::CicTerm::{Application, Product};
 use super::cic::{Cic, CicTerm};
-use super::cic_utils::{check_positivity};
-use super::evaluation::{evaluate_inductive};
 use super::unification::solve_unification;
-use crate::misc::{simple_map, simple_map_indexed};
-use crate::type_theory::cic::cic::{GLOBAL_INDEX, PLACEHOLDER_DBI};
-use crate::type_theory::cic::cic_utils::{
-    application_args, apply_arguments, clone_product_with_different_result,  get_arg_types, get_prod_innermost, get_variables_as_terms, index_variables, is_instance_of, make_multiarg_fun_type, substitute
-};
+use crate::type_theory::cic::cic_utils::substitute;
 use crate::type_theory::cic::unification::{equal_under_substitution, instatiate_metas};
 use crate::type_theory::commons::type_check::{
-    type_check_function, type_check_variable,
+    type_check_variable,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::Kernel;
@@ -103,95 +97,3 @@ pub fn type_check_application(
 }
 //
 //########################### EXPRESSIONS TYPE CHECKING
-//
-//
-//########################### STATEMENTS TYPE CHECKING
-pub fn cic_type_check_fun(
-    environment: &mut Environment<Cic>,
-    fun_name: &str,
-    args: &Vec<(String, CicTerm)>,
-    out_type: &CicTerm,
-    body: &CicTerm,
-    is_rec: &bool,
-) -> Result<CicTerm, String> {
-    type_check_function::<Cic, _, _>(
-        environment,
-        fun_name,
-        args,
-        out_type,
-        body,
-        is_rec,
-        |args, out_type| make_multiarg_fun_type(&args, &out_type), 
-        |(var_name, var_type), body| {
-            Abstraction(var_name, Box::new(var_type), Box::new(body))
-        }
-    )
-}
-//
-//
-//########################### STATEMENTS TYPE CHECKING
-//
-//########################### HELPER FUNCTIONS
-/// Returns the vector of type judgements for the variables provided if they match the constructor type
-fn type_constr_vars(
-    constr_type: &CicTerm,
-    variables: Vec<CicTerm>,
-) -> Result<Vec<(String, CicTerm)>, String> {
-    match variables.len() {
-        0 => Ok(vec![]),
-        1.. => match &variables[0] {
-            Variable(var_name, _dbi) => match constr_type {
-                Product(type_var, domain, codomain) => {
-                    let reduced_codomain = substitute(&codomain, type_var, &variables[0]);
-                    let mut typed_vars =
-                        type_constr_vars(&reduced_codomain, variables[1..].to_vec())?;
-                    typed_vars.insert(0, (var_name.to_string(), *(domain.clone())));
-                    Ok(typed_vars)
-                }
-                // i dont want to return results here
-                _ => {
-                    Err(format!(
-                        "Mismatch in number of variables for constructor"
-                    ))
-                }
-            },
-            _ => {
-                Err(format!(
-                    "Found illegal term in place of variable {:?}",
-                    variables[0]
-                ))
-            }
-        },
-    }
-}
-
-/// Type checks a patter of a branch of a match term against `constr_type`
-fn type_check_pattern(
-    constr_type: &CicTerm,
-    variables: Vec<CicTerm>,
-    environment: &mut Environment<Cic>,
-) -> Result<CicTerm, String> {
-    match variables.len() {
-        0 => Ok(constr_type.clone()),
-        1.. => match variables[0] {
-            Variable(_, _) => match constr_type {
-                Product(var_name, _, codomain) => {
-                    let reduced_codomain = substitute(&codomain, var_name, &variables[0]);
-                    // doesnt need to update the context, here var_name is a type variable, not a term
-                    type_check_pattern(
-                        &reduced_codomain,
-                        variables[1..].to_vec(),
-                        environment,
-                    )
-                }
-                _ => Err("Mismatch in number of variables for constructor"
-                    .to_string()),
-            },
-            _ => Err(format!(
-                "Found illegal term in place of variable {:?}",
-                variables[0],
-            )),
-        },
-    }
-}
-//########################### HELPER FUNCTIONS
