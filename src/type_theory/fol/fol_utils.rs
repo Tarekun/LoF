@@ -3,7 +3,7 @@ use super::fol::{
     FolFormula::{
         self, Arrow, Conjunction, Disjunction, Exist, ForAll, Not, Predicate,
     },
-    FolTerm::{Abstraction, Application, Tuple, Variable},
+    FolTerm::{Abstraction, Application, Let, Tuple, Variable},
 };
 use crate::{
     misc::simple_map,
@@ -163,6 +163,31 @@ pub fn substitute_term(
         Tuple(terms) => Tuple(simple_map(terms.to_owned(), |term| {
             substitute_term(&term, target_name, arg)
         })),
+        Let(var_name, var_type, body, scope) => {
+            let var_type = if var_type.is_some() {
+                Some(substitute_formula(
+                    &(**var_type).as_ref().unwrap(),
+                    target_name,
+                    arg,
+                ))
+            } else {
+                None
+            };
+            let body = substitute_term(body, target_name, arg);
+            // the name is overridden in `body`'s scope
+            let scope = if var_name != target_name {
+                substitute_term(scope, target_name, arg)
+            } else {
+                (**scope).to_owned()
+            };
+
+            Let(
+                var_name.to_string(),
+                Box::new(var_type),
+                Box::new(body),
+                Box::new(scope),
+            )
+        }
     }
 }
 

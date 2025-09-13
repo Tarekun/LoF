@@ -39,12 +39,12 @@ inductive Exists (T: TYPE) (P: T -> PROP) : PROP {
 }
 
 #available once alpha rename is supported in unification check
-#let iff: PROP -> PROP -> PROP :=
+#global iff: PROP -> PROP -> PROP :=
 #  \lambda P: PROP. \lambda Q: PROP.
 #    (And (P -> Q)) (Q -> P)
 #;
 
-#let decidable: PROP -> PROP :=
+#global decidable: PROP -> PROP :=
 #  \lambda P: PROP. (Or P) (Not P)
 #;
 

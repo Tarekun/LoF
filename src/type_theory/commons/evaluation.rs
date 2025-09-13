@@ -71,12 +71,26 @@ pub fn reduce_application<
         None => rebuild_application(fun.to_owned(), arg.to_owned()),
     }
 }
+
+/// Performs reduction of let definition where the definition term
+/// is reduced to its scope term where `var_name` is substituted with
+/// the `body`'s normal form
+pub fn reduce_let<T: TypeTheory + Reducer>(
+    environment: &mut Environment<T>,
+    var_name: &str,
+    _var_type: &Option<T::Type>,
+    body: &T::Term,
+    scope: &T::Term,
+) -> T::Term {
+    let body_reduced = T::normalize_term(environment, body);
+    T::substitute(scope, var_name, &body_reduced)
+}
 //########################### TERM βδ-REDUCTION
 
 //########################### STATEMENTS EXECUTION
-/// Evaluates the let statement processing the assignment and pushing to the `environment`
+/// Evaluates the global statement processing the assignment and pushing to the `environment`
 /// the new type binding and substitution
-pub fn evaluate_let<T: TypeTheory + Kernel>(
+pub fn evaluate_global<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     var_name: &str,
     var_type: &Option<T::Type>,
@@ -87,7 +101,7 @@ pub fn evaluate_let<T: TypeTheory + Kernel>(
         None => {
             let body_type = T::type_check_term(&body, environment);
             if body_type.is_err() {
-                panic!("Evaluating a let definition with ill type body, this should have been caught sooner");
+                panic!("Evaluating a global definition with ill type body, this should have been caught sooner");
             }
             &body_type.unwrap()
         }

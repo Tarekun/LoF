@@ -3,7 +3,9 @@ use super::cic::PLACEHOLDER_DBI;
 use super::cic::{
     CicStm::{self},
     CicTerm,
-    CicTerm::{Abstraction, Application, Match, Meta, Product, Sort, Variable},
+    CicTerm::{
+        Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+    },
 };
 use super::cic_utils::index_variables;
 use crate::misc::simple_map;
@@ -40,6 +42,9 @@ pub fn elaborate_expression(ast: &Expression) -> CicTerm {
         }
         Expression::Application(left, args) => {
             elaborate_application(left, args)
+        }
+        Expression::Let(var_name, var_type, definition_body, scope) => {
+            elaborate_let(var_name, var_type, definition_body, scope)
         }
         Expression::Match(matched_term, branches) => {
             elaborate_match(&*matched_term, branches)
@@ -134,6 +139,27 @@ fn elaborate_arrow(domain: &Expression, codomain: &Expression) -> CicTerm {
 }
 //
 //
+fn elaborate_let(
+    var_name: &str,
+    var_type: &Option<Expression>,
+    body: &Expression,
+    scope: &Expression,
+) -> CicTerm {
+    let var_type = if var_type.is_some() {
+        Some(elaborate_expression(&var_type.as_ref().unwrap()))
+    } else {
+        None
+    };
+
+    Let(
+        var_name.to_string(),
+        Box::new(var_type),
+        Box::new(elaborate_expression(body)),
+        Box::new(elaborate_expression(scope)),
+    )
+}
+//
+//
 fn elaborate_match(
     matched_exp: &Expression,
     branches: &Vec<(Expression, Expression)>,
@@ -179,9 +205,11 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, String> {
         Statement::Axiom(axiom_name, formula) => Ok(Schedule::singleton_stm(
             elaborate_axiom(axiom_name, formula)?,
         )),
-        Statement::Let(var_name, var_type, body) => Ok(
-            Schedule::singleton_stm(elaborate_let(var_name, var_type, body)?),
-        ),
+        Statement::Global(var_name, var_type, body) => {
+            Ok(Schedule::singleton_stm(elaborate_global(
+                var_name, var_type, body,
+            )?))
+        }
         Statement::Inductive(type_name, parameters, ariety, constructors) => {
             Ok(Schedule::singleton_stm(elaborate_inductive(
                 type_name,
@@ -242,7 +270,7 @@ fn elaborate_dir_root(
 }
 //
 //
-fn elaborate_let(
+fn elaborate_global(
     var_name: &String,
     var_type: &Option<Expression>,
     body: &Expression,
@@ -255,7 +283,7 @@ fn elaborate_let(
     };
     let elaborated_body = elaborate_expression(&body);
 
-    Ok(CicStm::Let(
+    Ok(CicStm::Global(
         var_name.to_string(),
         opt_type,
         Box::new(elaborated_body),
@@ -363,19 +391,23 @@ fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Cic>, String> {
 mod unit_tests {
     use crate::{
         parser::api::Expression,
-        type_theory::cic::{
+        type_theory::{
             cic::{
-                CicStm,
-                CicTerm::{
-                    Abstraction, Application, Match, Product, Sort, Variable,
+                cic::{
+                    Cic, CicStm,
+                    CicTerm::{
+                        Abstraction, Application, Let, Match, Product, Sort,
+                        Variable,
+                    },
+                    GLOBAL_INDEX, PLACEHOLDER_DBI,
                 },
-                GLOBAL_INDEX, PLACEHOLDER_DBI,
+                elaboration::{
+                    elaborate_application, elaborate_expression,
+                    elaborate_inductive, elaborate_match,
+                    elaborate_type_product, elaborate_var_use,
+                },
             },
-            elaboration::{
-                elaborate_application, elaborate_expression,
-                elaborate_inductive, elaborate_match, elaborate_type_product,
-                elaborate_var_use,
-            },
+            interface::TypeTheory,
         },
     };
 
@@ -491,6 +523,40 @@ mod unit_tests {
             )),
             expected_term,
             "Top level elaborator isnt working with applications"
+        );
+    }
+
+    #[test]
+    fn test_let_elaboration() {
+        assert_eq!(
+            Cic::elaborate_expression(&Expression::Let(
+                "x".to_string(),
+                Box::new(Some(Expression::VarUse("Complex".to_string()))),
+                Box::new(Expression::VarUse("i".to_string())),
+                Box::new(Expression::VarUse("x".to_string())),
+            )),
+            Ok(Let(
+                "x".to_string(),
+                Box::new(Some(Variable("Complex".to_string(), GLOBAL_INDEX))),
+                Box::new(Variable("i".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("x".to_string(), 0)),
+            )),
+            "Let elaboration isnt producing the proper term"
+        );
+        assert_eq!(
+            Cic::elaborate_expression(&Expression::Let(
+                "x".to_string(),
+                Box::new(None),
+                Box::new(Expression::VarUse("i".to_string())),
+                Box::new(Expression::VarUse("x".to_string())),
+            )),
+            Ok(Let(
+                "x".to_string(),
+                Box::new(None),
+                Box::new(Variable("i".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("x".to_string(), 0)),
+            )),
+            "Let elaboration cant cope with missing type annotation"
         );
     }
 

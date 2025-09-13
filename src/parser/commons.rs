@@ -1,12 +1,11 @@
-use crate::misc::simple_map;
-
 use super::api::{
     Expression::{
-        self, Abstraction, Application, Arrow, Inferator, Match, Pipe, Tuple,
-        TypeProduct, VarUse,
+        self, Abstraction, Application, Arrow, Inferator, Let, Match, Pipe,
+        Tuple, TypeProduct, VarUse,
     },
     LofParser,
 };
+use crate::misc::simple_map;
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -20,6 +19,7 @@ use nom::{
 
 const RESERVED_KEYWORDS: &[&str] = &[
     "let",
+    "global",
     "axiom",
     "inductive",
     "match",
@@ -90,13 +90,19 @@ impl LofParser {
         &self,
         input: &'a str,
     ) -> IResult<&'a str, (String, Option<Expression>)> {
+        // println!("inizio di parse_optionally_typed_identifier");
         let (input, identifier) =
             preceded(multispace0, |input| self.parse_identifier(input))(input)?;
+        // println!("post parsing dell'identifier");
+        // println!("parsed: {}", identifier);
+        // println!("remaining: {}", input);
+
         let (input, opt_type) = opt(preceded(
             multispace0,
             preceded(
                 tag(":"),
                 preceded(multispace0, |input| {
+                    // println!("post il preceding tag(':') con input {}", input);
                     self.parse_type_expression(input)
                 }),
             ),
@@ -158,6 +164,28 @@ impl LofParser {
                         Box::new(self.substitute(for_body, target_name, body)),
                     )
                 }
+            }
+            Let(var_name, var_type, definition_body, scope) => {
+                let var_type = if var_type.is_some() {
+                    let type_unwrapped = (**var_type).as_ref().unwrap();
+                    Some(self.substitute(&type_unwrapped, target_name, body))
+                } else {
+                    None
+                };
+                let definition_body =
+                    self.substitute(definition_body, target_name, body);
+                let scope = if var_name == target_name {
+                    (**scope).to_owned()
+                } else {
+                    self.substitute(scope, target_name, body)
+                };
+
+                Let(
+                    var_name.to_string(),
+                    Box::new(var_type),
+                    Box::new(definition_body),
+                    Box::new(scope),
+                )
             }
 
             // binary variants

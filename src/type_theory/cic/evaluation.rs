@@ -1,5 +1,5 @@
-use super::cic::CicStm::{Axiom, Fun, Let, Theorem};
-use super::cic::CicTerm::{Abstraction, Application, Match, Variable};
+use super::cic::CicStm::{Axiom, Fun, Global, Theorem};
+use super::cic::CicTerm::{Abstraction, Application, Let, Match, Variable};
 use super::cic::{Cic, CicStm, CicTerm};
 use super::cic_utils::make_multiarg_fun_type;
 use crate::type_theory::cic::cic_utils::{
@@ -7,8 +7,8 @@ use crate::type_theory::cic::cic_utils::{
 };
 use crate::type_theory::cic::type_check_inductive::inductive_eliminator;
 use crate::type_theory::commons::evaluation::{
-    evaluate_axiom, evaluate_fun, evaluate_let, evaluate_theorem,
-    reduce_application, reduce_variable,
+    evaluate_axiom, evaluate_fun, evaluate_global, evaluate_theorem,
+    reduce_application, reduce_let, reduce_variable,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::Reducer;
@@ -37,6 +37,9 @@ pub fn one_step_reduction(
                 Application(Box::new(left_reduced), Box::new(right_reduced))
             },
         ),
+        Let(var_name, var_type, body, scope) => {
+            reduce_let(environment, var_name, var_type, body, scope)
+        }
         Match(matched_term, branches) => {
             reduce_match(environment, matched_term, branches)
         }
@@ -73,8 +76,8 @@ pub fn evaluate_statement(
         Axiom(axiom_name, formula) => {
             evaluate_axiom::<Cic>(environment, axiom_name, formula)
         }
-        Let(var_name, var_type, body) => {
-            evaluate_let::<Cic>(environment, var_name, var_type, body)
+        Global(var_name, var_type, body) => {
+            evaluate_global::<Cic>(environment, var_name, var_type, body)
         }
         Fun(fun_name, args, out_type, body, is_rec) => {
             evaluate_fun::<Cic, _, _>(
@@ -158,7 +161,9 @@ mod unit_tests {
         cic::{
             cic::{
                 Cic,
-                CicTerm::{Abstraction, Application, Product, Sort, Variable},
+                CicTerm::{
+                    Abstraction, Application, Let, Product, Sort, Variable,
+                },
                 GLOBAL_INDEX,
             },
             evaluation::{
@@ -293,6 +298,27 @@ mod unit_tests {
                 Box::new(Variable("arg".to_string(), GLOBAL_INDEX)),
             ),
             "Function application doesnt reduce to the function body with substituted variable"
+        );
+    }
+
+    #[test]
+    fn test_let_reduction() {
+        let mut test_env = Cic::default_environment();
+        let zero = Variable("z".to_string(), GLOBAL_INDEX);
+        test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
+
+        assert_eq!(
+            one_step_reduction(
+                &mut test_env,
+                &Let(
+                    "n".to_string(),
+                    Box::new(None),
+                    Box::new(zero.clone()),
+                    Box::new(Variable("n".to_string(), 0)),
+                ),
+            ),
+            zero.to_owned(),
+            "Let definition doesnt reduce to its scope with substituted variable"
         );
     }
 
