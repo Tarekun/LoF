@@ -178,6 +178,17 @@ pub fn subsumes(C: &SupFormula, D: &SupFormula) -> bool {
     })
 }
 
+#[allow(non_snake_case)]
+/// Given a clause term, returns the vector of its literals.
+/// Does not treat literal variants as singleton clauses
+pub fn unpack_literals(C: &SupFormula) -> Result<&Vec<SupFormula>, String> {
+    match C {
+        Clause(literals) => Ok(literals),
+        // TODO should work with atoms too?
+        _ => Err(format!("Formula {:?} is not a clause with literals", C)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::type_theory::sup::{

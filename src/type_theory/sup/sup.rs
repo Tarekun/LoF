@@ -159,26 +159,18 @@ impl Automatic for Sup {
         kbo_types(type1, type2)
     }
 
-    fn select(clause: &Self::Type) -> Result<Self::Type, String> {
-        match clause {
-            Clause(formulas) => {
-                if formulas.len() == 0 {
-                    Err(format!(
-                        "Empty clause does not allow for selection of literals"
-                    ))
-                } else {
-                    let (max_index, _) = formulas
-                        .iter()
-                        .enumerate()
-                        .max_by(|(_, c1), (_, c2)| Sup::compare_types(c1, c2))
-                        .unwrap();
-                    Ok(formulas.get(max_index).unwrap().to_owned())
-                }
-            }
-            _ => Err(format!(
-                "Selection is defined on clause formulas only, not {:?}",
-                clause
-            )),
+    fn select(formulas: &mut Vec<SupFormula>) -> Result<Self::Type, String> {
+        if formulas.len() == 0 {
+            Err(format!(
+                "Empty clause does not allow for selection of literals"
+            ))
+        } else {
+            let (max_index, _) = formulas
+                .iter()
+                .enumerate()
+                .max_by(|(_, c1), (_, c2)| Sup::compare_types(c1, c2))
+                .unwrap();
+            Ok(formulas.get(max_index).unwrap().to_owned())
         }
     }
 
