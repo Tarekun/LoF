@@ -680,7 +680,7 @@ mod unit_tests {
             "Let parser doesnt split 'let' keyword and variable identifier"
         );
         assert!(
-            parser.let_def("let n := zero;\n n").is_err(),
+            parser.let_def("let n := zero;\n n").is_ok(),
             "Let parser doesnt support untyped definition"
         );
         assert_eq!(
@@ -708,7 +708,7 @@ mod unit_tests {
         );
         assert!(
             parser
-                .parse_statement("fun f (x: X) : X { let y : X := x; x }")
+                .parse_statement("fun f (x: X) : X { let y := x; x }")
                 .is_ok(),
             "Function parser doesnt support let definition in the function body"
         );

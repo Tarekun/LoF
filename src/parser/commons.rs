@@ -10,10 +10,10 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{alphanumeric1, char, multispace0, multispace1},
-    combinator::{not, opt, peek, recognize, verify},
+    combinator::{opt, recognize},
     error::{Error, ErrorKind},
     multi::{many0, many1},
-    sequence::{delimited, preceded, tuple},
+    sequence::{delimited, preceded},
     IResult,
 };
 

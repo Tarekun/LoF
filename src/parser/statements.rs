@@ -389,6 +389,10 @@ mod unit_tests {
             "Global definition struct isnt properly constructed"
         );
         assert!(
+            parser.global("global n := zero;").is_ok(),
+            "Global parser doesnt support untyped definition"
+        );
+        assert!(
             parser.parse_statement("global n: nat := x;").is_ok(),
             "Top level parser can't read global definitions"
         );
