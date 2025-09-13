@@ -1,10 +1,8 @@
 use super::sup::SupFormula::{self, Clause};
 use super::sup_utils::subsumes;
-use crate::type_theory::interface::Automatic;
 use crate::type_theory::sup::inferences::{
     demodulate_first, subsumption_resolution_first,
 };
-use crate::type_theory::sup::sup::Sup;
 use crate::type_theory::sup::sup_utils::is_tautology;
 
 /// Checks if a formula φ is the empty clause
@@ -17,19 +15,8 @@ fn is_bottom(φ: &SupFormula) -> bool {
 
 /// Selects the next clause to be processed and removes it from the set
 fn pick_clause(clauses: &mut Vec<SupFormula>) -> Result<SupFormula, String> {
-    if clauses.is_empty() {
-        Err("Empty set of clauses received, can't pick any out".to_string())
-    } else {
-        // TODO here we should generalize this so i can also support stuff like
-        // weight/age ratio
-        let (max_index, _) = clauses
-            .iter()
-            .enumerate()
-            .max_by(|(_, c1), (_, c2)| Sup::compare_types(c1, c2))
-            .unwrap();
-
-        Ok(clauses.remove(max_index))
-    }
+    // TODO here we should generalize this so i can also support stuff like weight/age ratio
+    Ok(clauses.remove(0))
 }
 
 #[allow(non_snake_case)]

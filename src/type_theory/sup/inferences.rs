@@ -66,11 +66,7 @@ pub fn demodulate_first(C: &SupFormula, D: &SupFormula) -> SupFormula {
         let max = max_by(l, r, |l, r| Sup::compare_terms(l, r));
 
         // TODO also support mgu
-        // if Sup::compare_types(D, C).is_ge() {
         substitute_term_in_type(C, max, min)
-        // } else {
-        //     C.to_owned()
-        // }
     } else {
         C.to_owned()
     }
@@ -82,23 +78,18 @@ pub fn subsumption_resolution_first(
     C: &SupFormula,
     D: &SupFormula,
 ) -> SupFormula {
-    println!("simplifiable: {:?}", C);
-    println!("other clause: {:?}", D);
     let Clause(c_lits) = C else {
-        return D.to_owned();
+        return C.to_owned();
     };
     let Clause(d_lits) = D else {
-        return D.to_owned();
+        return C.to_owned();
     };
     let [c_first, c_rest @ ..] = c_lits.as_slice() else {
-        return D.to_owned();
+        return C.to_owned();
     };
     let [d_first, d_rest @ ..] = d_lits.as_slice() else {
-        return D.to_owned();
+        return C.to_owned();
     };
-
-    println!("examined from simplifiable {:?}", c_first);
-    println!("examined from other one {:?}", d_first);
 
     match (c_first, d_first) {
         (Not(inner), Atom(_, _)) => {
@@ -107,7 +98,6 @@ pub fn subsumption_resolution_first(
             let mut c_new = c_rest.to_vec();
             c_new.push((**inner).clone());
 
-            println!("subsumption check between {:?} <: {:?}", d_new, c_new);
             if subsumes(&Clause(d_new), &Clause(c_new)) {
                 Clause(c_rest.to_vec())
             } else {

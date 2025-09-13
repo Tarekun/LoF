@@ -168,8 +168,12 @@ impl Automatic for Sup {
                         "Empty clause does not allow for selection of literals"
                     ))
                 } else {
-                    // TODO implement better selection other than pick the first
-                    Ok(formulas[0].to_owned())
+                    let (max_index, _) = formulas
+                        .iter()
+                        .enumerate()
+                        .max_by(|(_, c1), (_, c2)| Sup::compare_types(c1, c2))
+                        .unwrap();
+                    Ok(formulas.get(max_index).unwrap().to_owned())
                 }
             }
             _ => Err(format!(
