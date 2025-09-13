@@ -37,11 +37,10 @@ pub enum SupFormula {
     Atom(String, Vec<SupTerm>),
     Equality(SupTerm, SupTerm),
     Not(Box<SupFormula>),
-    /// literals
+    /// [literals]
     Clause(Vec<SupFormula>),
     /// var_name, var_type, formula
     ForAll(String, Box<SupFormula>, Box<SupFormula>),
-    // Exists(String, Box<SupFormula>),
 }
 
 pub struct Sup;
@@ -152,11 +151,10 @@ impl Kernel for Sup {
 }
 
 impl Automatic for Sup {
-    //TODO
-    fn compare_terms(term1: &Self::Term, term2: &Self::Term) -> Ordering {
+    fn compare_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
         kbo_terms(term1, term2)
     }
-    //TODO
+
     fn compare_types(type1: &Self::Type, type2: &Self::Type) -> Ordering {
         kbo_types(type1, type2)
     }
@@ -169,8 +167,12 @@ impl Automatic for Sup {
                         "Empty clause does not allow for selection of literals"
                     ))
                 } else {
-                    // TODO implement better selection other than pick the first
-                    Ok(formulas[0].to_owned())
+                    let (max_index, _) = formulas
+                        .iter()
+                        .enumerate()
+                        .max_by(|(_, c1), (_, c2)| Sup::compare_types(c1, c2))
+                        .unwrap();
+                    Ok(formulas.get(max_index).unwrap().to_owned())
                 }
             }
             _ => Err(format!(

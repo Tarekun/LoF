@@ -45,6 +45,7 @@ pub mod type_theory {
         mod type_check;
     }
     pub mod sup {
+        mod inferences;
         mod saturation;
         pub mod sup;
         mod sup_utils;

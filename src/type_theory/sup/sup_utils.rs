@@ -173,6 +173,7 @@ pub fn subsumes(C: &SupFormula, D: &SupFormula) -> bool {
     c_lits.iter().all(|c_lit| {
         d_lits
             .iter()
+            //TODO currently this is syntactic equality with no mgu support
             .any(|d_lit| Sup::base_type_equality(c_lit, d_lit).is_ok())
     })
 }
