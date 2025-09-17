@@ -3,8 +3,8 @@ use super::sup::{
     SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
     SupTerm::{self, Application, Variable},
 };
-use crate::type_theory::interface::TypeTheory;
-use std::cmp::Ordering::{self, Equal};
+use crate::type_theory::interface::{Automatic, TypeTheory};
+use std::cmp::Ordering::{self, Equal, Greater};
 
 /// Returns the ordered vector of formal argument types of nested universal quantification
 pub fn get_arg_types(forall: &SupFormula) -> Vec<SupFormula> {
@@ -189,6 +189,32 @@ pub fn unpack_literals(C: &SupFormula) -> Result<&Vec<SupFormula>, String> {
     }
 }
 
+/// Given a list of literals of some clause, finds and removes all maximal literals
+/// by the use of SUP simplification ordering
+pub fn drop_maximal_literals(clause: &mut Vec<SupFormula>) -> Vec<SupFormula> {
+    let mut maximal = None;
+
+    for literal in clause.iter() {
+        match maximal.as_ref() {
+            None => maximal = Some(literal.clone()),
+            Some(current_max)
+                if Sup::compare_types(literal, current_max) == Greater =>
+            {
+                maximal = Some(literal.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let maximal_formula = maximal.unwrap();
+    let (maxes, rest): (Vec<_>, Vec<_>) = clause
+        .drain(..)
+        .partition(|f| Sup::compare_types(f, &maximal_formula) == Equal);
+    *clause = rest;
+
+    maxes
+}
+
 #[cfg(test)]
 mod tests {
     use crate::type_theory::sup::{
@@ -196,7 +222,9 @@ mod tests {
             SupFormula::{Atom, Clause, Equality, Not},
             SupTerm::{Application, Variable},
         },
-        sup_utils::{is_tautology, kbo_terms, kbo_types, subsumes},
+        sup_utils::{
+            drop_maximal_literals, is_tautology, kbo_terms, kbo_types, subsumes,
+        },
     };
     use std::cmp::Ordering::{Equal, Greater, Less};
 
@@ -293,6 +321,41 @@ mod tests {
             kbo_types(&long, &short),
             Greater,
             "Clause with less literals isnt strictly less than one with more"
+        );
+    }
+
+    #[test]
+    fn test_maximal_literal_selection() {
+        let constant_atom = Atom("P".to_string(), vec![]);
+        let negated = Not(Box::new(constant_atom.clone()));
+        let negated_renamed = Not(Box::new(Atom("Q".to_string(), vec![])));
+
+        let mut test = vec![constant_atom.clone(), negated.clone()];
+        assert_eq!(
+            drop_maximal_literals(&mut test),
+            vec![negated.clone()],
+            "Maximal literal selection didnt pick the negated between 2 atoms"
+        );
+        assert_eq!(
+            test,
+            vec![constant_atom.clone()],
+            "Maximal literal selection didnt remove the selected literal from input"
+        );
+
+        assert_eq!(
+            drop_maximal_literals(&mut vec![
+                constant_atom.clone(),
+                negated.clone(),
+                negated_renamed.clone()
+            ]),
+            vec![negated.clone(), negated_renamed.clone()],
+            "Maximal literal selection didnt remove all maximal literals"
+        );
+
+        assert_eq!(
+            drop_maximal_literals(&mut vec![]),
+            vec![],
+            "Maximal literal selection isnt working with empty clause"
         );
     }
 }

@@ -127,116 +127,116 @@ pub fn subsumption_resolution_first(
 //########################### SIMPLIFICATION INFERENCES
 
 //########################### SUP INFERENCES
-pub fn resolution(
-    C: &SupFormula,
-    D: &SupFormula,
-) -> Result<SupFormula, String> {
-    let mut c_literals = unpack_literals(C)?.clone();
-    let mut d_literals = unpack_literals(D)?.clone();
-    let selected = Sup::select(&mut c_literals)?;
+// pub fn resolution(
+//     C: &SupFormula,
+//     D: &SupFormula,
+// ) -> Result<SupFormula, String> {
+//     let mut c_literals = unpack_literals(C)?.clone();
+//     let mut d_literals = unpack_literals(D)?.clone();
+//     let selected = Sup::select(&mut c_literals)?;
 
-    match &selected {
-        Atom(_, _) => {
-            for i in 0..d_literals.len() {
-                if let Not(inner) = &d_literals[i] {
-                    // TODO support mcu
-                    if Sup::base_type_equality(&selected, inner).is_ok() {
-                        d_literals.remove(i);
-                        c_literals.extend(d_literals);
-                        return Ok(Clause(c_literals));
-                    }
-                }
-            }
-        }
-        Not(inner) => {
-            for i in 0..d_literals.len() {
-                if let Atom(_, _) = d_literals[i] {
-                    // TODO support mcu
-                    if Sup::base_type_equality(inner, &d_literals[i]).is_ok() {
-                        d_literals.remove(i);
-                        c_literals.extend(d_literals);
-                        return Ok(Clause(c_literals));
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
+//     match &selected {
+//         Atom(_, _) => {
+//             for i in 0..d_literals.len() {
+//                 if let Not(inner) = &d_literals[i] {
+//                     // TODO support mcu
+//                     if Sup::base_type_equality(&selected, inner).is_ok() {
+//                         d_literals.remove(i);
+//                         c_literals.extend(d_literals);
+//                         return Ok(Clause(c_literals));
+//                     }
+//                 }
+//             }
+//         }
+//         Not(inner) => {
+//             for i in 0..d_literals.len() {
+//                 if let Atom(_, _) = d_literals[i] {
+//                     // TODO support mcu
+//                     if Sup::base_type_equality(inner, &d_literals[i]).is_ok() {
+//                         d_literals.remove(i);
+//                         c_literals.extend(d_literals);
+//                         return Ok(Clause(c_literals));
+//                     }
+//                 }
+//             }
+//         }
+//         _ => {}
+//     }
 
-    Err(format!(
-        "Resolution cannot be applied to clauses {:?}, {:?} with picked (from first) literal {:?}",
-        C, D, selected
-    ))
-}
+//     Err(format!(
+//         "Resolution cannot be applied to clauses {:?}, {:?} with picked (from first) literal {:?}",
+//         C, D, selected
+//     ))
+// }
 
-pub fn factoring(C: &SupFormula) -> Result<SupFormula, String> {
-    let lits = unpack_literals(C)?;
-    let mut literals = lits.clone();
-    let selected = Sup::select(&mut literals)?;
+// pub fn factoring(C: &SupFormula) -> Result<SupFormula, String> {
+//     let lits = unpack_literals(C)?;
+//     let mut literals = lits.clone();
+//     let selected = Sup::select(&mut literals)?;
 
-    for i in 0..literals.len() {
-        // TODO support mgu check here
-        if Sup::base_type_equality(&literals[i], &selected).is_ok() {
-            // TODO apply mgu to literals
-            return Ok(Clause(literals));
-        }
-    }
+//     for i in 0..literals.len() {
+//         // TODO support mgu check here
+//         if Sup::base_type_equality(&literals[i], &selected).is_ok() {
+//             // TODO apply mgu to literals
+//             return Ok(Clause(literals));
+//         }
+//     }
 
-    Err(format!(
-        "Factoring cannot be applied to clause {:?} with picked literal {:?}",
-        C, selected
-    ))
-}
+//     Err(format!(
+//         "Factoring cannot be applied to clause {:?} with picked literal {:?}",
+//         C, selected
+//     ))
+// }
 
-pub fn eq_resolution(C: &SupFormula) -> Result<SupFormula, String> {
-    let mut lits = unpack_literals(C)?.clone();
-    let selected = Sup::select(&mut lits)?;
+// pub fn eq_resolution(C: &SupFormula) -> Result<SupFormula, String> {
+//     let mut lits = unpack_literals(C)?.clone();
+//     let selected = Sup::select(&mut lits)?;
 
-    match &selected {
-        Not(boxed) => {
-            if let Equality(l, r) = &**boxed {
-                // TODO support mgu check here
-                if Sup::base_term_equality(l, r).is_ok() {
-                    return Ok(Clause(lits));
-                }
-            }
-        }
-        _ => {}
-    }
+//     match &selected {
+//         Not(boxed) => {
+//             if let Equality(l, r) = &**boxed {
+//                 // TODO support mgu check here
+//                 if Sup::base_term_equality(l, r).is_ok() {
+//                     return Ok(Clause(lits));
+//                 }
+//             }
+//         }
+//         _ => {}
+//     }
 
-    Err(format!(
-        "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
-        C, selected
-    ))
-}
+//     Err(format!(
+//         "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
+//         C, selected
+//     ))
+// }
 
-pub fn eq_factoring(C: &SupFormula) -> Result<SupFormula, String> {
-    let mut literals: Vec<SupFormula> = unpack_literals(C)?.clone();
-    let selected = Sup::select(&mut literals)?;
+// pub fn eq_factoring(C: &SupFormula) -> Result<SupFormula, String> {
+//     let mut literals: Vec<SupFormula> = unpack_literals(C)?.clone();
+//     let selected = Sup::select(&mut literals)?[0].clone();
 
-    if let Equality(s, t) = &selected {
-        let min = min_by(s, t, |s, t| Sup::compare_terms(s, t));
-        let max = max_by(s, t, |s, t| Sup::compare_terms(s, t));
+//     if let Equality(s, t) = &selected {
+//         let min = min_by(s, t, |s, t| Sup::compare_terms(s, t));
+//         let max = max_by(s, t, |s, t| Sup::compare_terms(s, t));
 
-        for lit in &literals {
-            if let Equality(l, r) = lit {
-                if Sup::base_term_equality(max, l).is_ok() {
-                    let mut new_literals = literals.clone();
-                    new_literals.push(selected.clone());
-                    new_literals
-                        .push(Not(Box::new(Equality(min.clone(), r.clone()))));
-                    return Ok(Clause(new_literals));
-                }
-            }
-        }
-    }
+//         for lit in &literals {
+//             if let Equality(l, r) = lit {
+//                 if Sup::base_term_equality(max, l).is_ok() {
+//                     let mut new_literals = literals.clone();
+//                     new_literals.push(selected.clone());
+//                     new_literals
+//                         .push(Not(Box::new(Equality(min.clone(), r.clone()))));
+//                     return Ok(Clause(new_literals));
+//                 }
+//             }
+//         }
+//     }
 
-    Err(format!(
-        "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
-        C, selected
-    ))
-}
-//########################### SUP INFERENCES
+//     Err(format!(
+//         "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
+//         C, selected
+//     ))
+// }
+// //########################### SUP INFERENCES
 
 #[cfg(test)]
 mod unit_tests {

@@ -17,7 +17,7 @@ use crate::{
                 SupFormula::{Atom, Clause, Equality, ForAll, Not},
                 SupTerm::{Application, Variable},
             },
-            sup_utils::{kbo_terms, kbo_types},
+            sup_utils::{drop_maximal_literals, kbo_terms, kbo_types},
         },
     },
 };
@@ -159,18 +159,12 @@ impl Automatic for Sup {
         kbo_types(type1, type2)
     }
 
-    fn select(formulas: &mut Vec<SupFormula>) -> Result<Self::Type, String> {
-        if formulas.len() == 0 {
-            Err(format!(
-                "Empty clause does not allow for selection of literals"
-            ))
+    fn select(clause: &mut Vec<SupFormula>) -> Result<Vec<SupFormula>, String> {
+        if clause.len() == 0 {
+            Err("Empty clause does not allow for selection of literals"
+                .to_string())
         } else {
-            let (max_index, _) = formulas
-                .iter()
-                .enumerate()
-                .max_by(|(_, c1), (_, c2)| Sup::compare_types(c1, c2))
-                .unwrap();
-            Ok(formulas.get(max_index).unwrap().to_owned())
+            Ok(drop_maximal_literals(clause))
         }
     }
 
