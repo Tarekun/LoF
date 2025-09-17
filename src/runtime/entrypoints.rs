@@ -171,7 +171,9 @@ pub fn help() {
 mod unit_tests {
     use crate::{
         config::{Config, TypeSystem},
-        entrypoints::{execute, parse_and_elaborate, parse_only, type_check},
+        runtime::entrypoints::{
+            execute, parse_and_elaborate, parse_only, type_check,
+        },
         type_theory::{cic::cic::Cic, fol::fol::Fol},
     };
 

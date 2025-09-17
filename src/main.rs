@@ -1,6 +1,5 @@
 mod cli;
 mod config;
-mod entrypoints;
 mod file_manager;
 mod logger;
 mod misc;
@@ -12,6 +11,7 @@ mod parser {
     mod tactics;
 }
 mod runtime {
+    pub mod entrypoints;
     pub mod program;
 }
 pub mod type_theory {
@@ -58,12 +58,14 @@ mod tests {
     }
 }
 
+use crate::file_manager::read_ascii_logo;
 use cli::get_flag_value;
 use config::{load_config, Config, TypeSystem};
-use entrypoints::{
-    execute, help, parse_and_elaborate, parse_only, type_check, EntryPoint,
-};
 use logger::init_logger;
+use runtime::entrypoints::{
+    execute, help, interactive, parse_and_elaborate, parse_only, type_check,
+    EntryPoint,
+};
 use std::env;
 use tracing::{debug, error};
 use type_theory::{
@@ -71,8 +73,6 @@ use type_theory::{
     fol::fol::Fol,
     interface::{Kernel, Reducer, TypeTheory},
 };
-
-use crate::{entrypoints::interactive, file_manager::read_ascii_logo};
 
 fn determine_entrypoint(args: &[String]) -> EntryPoint {
     if args.len() < 2 {
