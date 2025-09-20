@@ -99,6 +99,28 @@ pub fn execute<T: TypeTheory + Kernel + Reducer>(
     program.execute()
 }
 
+pub fn read_input() -> Result<String, String> {
+    let mut buffer = String::new();
+
+    loop {
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .map_err(|e| e.to_string())?;
+        buffer.push_str(&input);
+
+        if buffer.ends_with("\\\n") || buffer.ends_with("\\\r\n") {
+            if let Some(pos) = buffer.rfind('\\') {
+                buffer.remove(pos);
+            }
+        } else {
+            break;
+        }
+    }
+
+    Ok(buffer)
+}
+
 pub fn interactive<T: TypeTheory + Kernel + Reducer>(
     config: &Config,
     _workspace: &str,
@@ -110,11 +132,7 @@ pub fn interactive<T: TypeTheory + Kernel + Reducer>(
         print!("> ");
         // make sure the prompt shows immediately
         io::stdout().flush().unwrap();
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .map_err(|e| e.to_string())?;
+        let input = read_input()?;
 
         let node = match parser.parse_node(input.trim()) {
             Err(message) => {
@@ -171,7 +189,9 @@ pub fn help() {
 mod unit_tests {
     use crate::{
         config::{Config, TypeSystem},
-        entrypoints::{execute, parse_and_elaborate, parse_only, type_check},
+        runtime::entrypoints::{
+            execute, parse_and_elaborate, parse_only, type_check,
+        },
         type_theory::{cic::cic::Cic, fol::fol::Fol},
     };
 
