@@ -8,11 +8,11 @@ use super::api::{
 use crate::misc::simple_map;
 use nom::{
     branch::alt,
-    bytes::complete::tag,
-    character::complete::{alphanumeric1, char, multispace0, multispace1},
+    bytes::complete::{tag, take_while1},
+    character::complete::{char, multispace0, multispace1},
     combinator::{opt, recognize},
     error::{Error, ErrorKind},
-    multi::{many0, many1},
+    multi::many0,
     sequence::{delimited, preceded},
     IResult,
 };
@@ -45,7 +45,11 @@ impl LofParser {
     ) -> IResult<&'a str, &'a str> {
         let (input, identifier) = preceded(
             multispace0,
-            recognize(many1(alt((alphanumeric1, tag("_"))))),
+            recognize(take_while1(|c: char| {
+                c == '_'
+                    || unicode_xid::UnicodeXID::is_xid_start(c)
+                    || unicode_xid::UnicodeXID::is_xid_continue(c)
+            })),
         )(input)?;
 
         if RESERVED_KEYWORDS.contains(&identifier) {
@@ -256,6 +260,10 @@ mod unit_tests {
         assert!(
             parser.parse_identifier("_snake_case_").is_ok(),
             "Identifier parser cant read snake case name"
+        );
+        assert!(
+            parser.parse_identifier("Γφ").is_ok(),
+            "Identifier parser cant read greek letters"
         );
     }
 
