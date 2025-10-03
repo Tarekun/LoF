@@ -36,7 +36,7 @@ fun rec plus (n:Nat) (m:Nat) : Nat {
   | z => m,
   | s nn => s (plus nn m),
 }
-notation "_0 + _1" := "plus _0 _1"
+sugar "_0 + _1" := "plus _0 _1"
 
 #note the case 0 - m always returns 0
 #in case m != 0 the function should be undefined
@@ -49,14 +49,14 @@ fun rec minus (n: Nat) (m: Nat) : Nat {
     | s mm => minus nn mm,
   ),
 }
-notation "_0 - _1" := "minus _0 _1"
+sugar "_0 - _1" := "minus _0 _1"
 
 fun rec times (n: Nat) (m: Nat) : Nat {
   match n with 
   | z => z,
   | s nn => plus (times nn m) m,
 }
-notation "_0 * _1" := "times _0 _1"
+sugar "_0 * _1" := "times _0 _1"
 
 # n/m
 fun rec divwithacc (n: Nat) (m: Nat) (acc: Nat) : Nat {

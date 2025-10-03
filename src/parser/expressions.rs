@@ -402,7 +402,7 @@ mod unit_tests {
     fn test_notation() {
         let parser = LofParser::new(Config::default());
 
-        let _ = parser.parse_notation("notation \"_0 + _1\" := \"add _0 _1\"");
+        let _ = parser.parse_notation("sugar \"_0 + _1\" := \"add _0 _1\"");
         assert_eq!(
             parser.parse_custom("n + m"),
             Ok((
@@ -445,7 +445,7 @@ mod unit_tests {
             )),
             "composti non funzionano"
         );
-        let _ = parser.parse_notation("notation \"_0 ++ _1\" := \"add _1 _0\"");
+        let _ = parser.parse_notation("sugar \"_0 ++ _1\" := \"add _1 _0\"");
         assert_eq!(
             parser.parse_custom("n ++ m"),
             Ok((
@@ -458,8 +458,7 @@ mod unit_tests {
             "Custom notation parser cant track arguments properly"
         );
 
-        let _ =
-            parser.parse_notation("notation \"_h :: _l\" := \"cons ? _h _l\"");
+        let _ = parser.parse_notation("sugar \"_h :: _l\" := \"cons ? _h _l\"");
         assert_eq!(
             parser.parse_custom("h :: l"),
             Ok((
@@ -740,8 +739,7 @@ mod unit_tests {
     #[test]
     fn test_pattern_on_custom() {
         let parser = LofParser::new(Config::default());
-        let _ =
-            parser.parse_notation("notation \"_h :: _l\" := \"cons ? _h _l\"");
+        let _ = parser.parse_notation("sugar \"_h :: _l\" := \"cons ? _h _l\"");
 
         assert!(
             parser.parse_match_branch("| h :: l => l,").is_ok(),
