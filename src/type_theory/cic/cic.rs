@@ -21,9 +21,9 @@ use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
     type_check_axiom, type_check_fo_universal, type_check_function,
     type_check_global, type_check_let, type_check_theorem, type_check_variable,
-    u_type_check_abstraction,
+    u_type_check_abstraction, u_type_check_application,
 };
-use crate::type_theory::environment::Environment;
+use crate::type_theory::environment::{Constraint, Environment};
 use crate::type_theory::interface::{
     Interactive, Kernel, Reducer, Refiner, TypeTheory,
 };
@@ -150,7 +150,16 @@ impl Kernel for Cic {
                 )
             }
             CicTerm::Application(left, right) => {
-                type_check_application(environment, left, right)
+                // type_check_application(environment, left, right)
+                u_type_check_application(environment, left, right, |cic_type| {
+                    match cic_type {
+                        Product(_, domain, codomain) => Some((
+                            (**domain).to_owned(),
+                            (**codomain).to_owned(),
+                        )),
+                        _ => None,
+                    }
+                })
             }
             CicTerm::Match(matched_term, branches) => {
                 type_check_match(environment, matched_term, branches)
@@ -239,7 +248,7 @@ impl Kernel for Cic {
 
 impl Refiner for Cic {
     fn solve_unification(
-        constraints: Vec<(Self::Type, Self::Type)>,
+        constraints: Vec<Constraint<Cic>>,
     ) -> Result<HashMap<i32, Self::Type>, String> {
         solve_unification(constraints)
     }
@@ -365,7 +374,12 @@ fn common_unification_check(
     term1: &CicTerm,
     term2: &CicTerm,
 ) -> Result<(), String> {
-    if solve_unification(vec![(term1.to_owned(), term2.to_owned())]).is_ok() {
+    if solve_unification(vec![Constraint::TypeEq(
+        term1.to_owned(),
+        term2.to_owned(),
+    )])
+    .is_ok()
+    {
         Ok(())
     } else {
         Err(format!("{:?} and {:?} do not unifiy", term1, term2))

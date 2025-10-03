@@ -31,7 +31,7 @@ pub fn type_check_application(
         arg_type: CicTerm, 
         domain: CicTerm,
     ) -> Result<(CicTerm, CicTerm, HashMap<i32, CicTerm>), String> {
-        local_env.add_constraint(&domain, &arg_type);
+        local_env.add_type_constraint(&domain, &arg_type);
         let unifier = solve_unification(local_env.get_constraints())?;
         let domain = instatiate_metas(&domain, &unifier);
         let arg_type = instatiate_metas(&arg_type, &unifier);

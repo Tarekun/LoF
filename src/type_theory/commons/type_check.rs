@@ -86,6 +86,75 @@ pub fn u_type_check_abstraction<
     })
 }
 
+/// Generic application type checking. Implements classic APP type checking
+/// rule of Γ ⊢ f x : T of unary function application.
+/// This function does not support unification solving for implicit types
+pub fn type_check_application<
+    T: TypeTheory + Kernel,
+    F: Fn(&T::Type) -> Option<(T::Type, T::Type)>,
+>(
+    environment: &mut Environment<T>,
+    left: &T::Term,
+    right: &T::Term,
+    unpack_fun_type: F,
+) -> Result<T::Type, String> {
+    let arg_type = T::type_check_term(right, environment)?;
+    let function_type = T::type_check_term(left, environment)?;
+
+    if let Some((domain, codomain)) = unpack_fun_type(&function_type) {
+        if T::base_type_equality(&domain, &arg_type).is_ok() {
+            Ok(codomain)
+        } else {
+            Err(format!(
+                "Function and argument have uncompatible types: function expects a {:?} but the argument has type {:?}", 
+                domain,
+                arg_type
+            ))
+        }
+    } else {
+        Err(format!(
+            "Attempted application on non functional term of type: {:?}",
+            function_type
+        ))
+    }
+}
+
+pub fn u_type_check_application<
+    T: TypeTheory + Kernel + Refiner,
+    F: Fn(&T::Type) -> Option<(T::Type, T::Type)>,
+>(
+    environment: &mut Environment<T>,
+    left: &T::Term,
+    right: &T::Term,
+    unpack_fun_type: F,
+) -> Result<T::Type, String> {
+    let arg_type = T::type_check_term(right, environment)?;
+    let function_type = T::type_check_term(left, environment)?;
+
+    if let Some((domain, codomain)) = unpack_fun_type(&function_type) {
+        // solve unification domain = arg_type
+        environment.add_type_constraint(&domain, &arg_type);
+        let unifier = T::solve_unification(environment.get_constraints())?;
+        let domain = T::type_solve_metas(&domain, &unifier);
+        let arg_type = T::type_solve_metas(&arg_type, &unifier);
+
+        if T::base_type_equality(&domain, &arg_type).is_ok() {
+            Ok(codomain)
+        } else {
+            Err(format!(
+                "Function and argument have uncompatible types: function expects a {:?} but the argument has type {:?}", 
+                domain,
+                arg_type
+            ))
+        }
+    } else {
+        Err(format!(
+            "Attempted application on non functional term of type: {:?}",
+            function_type
+        ))
+    }
+}
+
 /// Generic universal quantification type checking. Implements first order
 /// universal quantification Γ ⊢ ∀a:A.P(a), where a is `var_name`, A is
 /// `var_type`, and P(a) is a term-dependent `predicate`.
