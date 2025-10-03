@@ -74,6 +74,7 @@ pub enum CicStm {
         Box<CicTerm>,
         Vec<(String, CicTerm)>,
     ),
+    Auto(CicTerm),
 }
 
 pub struct Cic;

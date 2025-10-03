@@ -64,6 +64,7 @@ pub enum FolStm {
         Box<FolTerm>,
         bool,
     ),
+    Auto(FolFormula),
 }
 
 pub struct Fol;

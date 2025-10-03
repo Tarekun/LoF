@@ -1,5 +1,5 @@
 use super::fol::FolFormula::{Arrow, Disjunction, ForAll, Predicate};
-use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
+use super::fol::FolStm::{Auto, Axiom, Fun, Global, Theorem};
 use super::fol::FolTerm::{Abstraction, Application, Let, Tuple, Variable};
 use super::fol::{Fol, FolFormula, FolTerm};
 use crate::misc::simple_map;
@@ -419,6 +419,13 @@ pub fn elaborate_fun(
 //
 pub fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Fol>, String> {
     elaborate_ast_vector::<Fol>(&"".to_string(), nodes)
+}
+//
+//
+fn elaborate_auto(formula: &Expression) -> Result<FolStm, String> {
+    let formula = elaborate_expression(formula)?;
+
+    Ok(Auto(expect_type(formula)?))
 }
 //
 //########################### STATEMENTS ELABORATION
