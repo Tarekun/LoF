@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::tactics::type_check_tactic;
-use super::type_check::{type_check_application, type_check_sort};
+use super::type_check::type_check_sort;
 use super::unification::{cic_unification, solve_unification};
 use crate::misc::Union::{self};
 use crate::parser::api::{Expression, Statement, Tactic};
@@ -77,6 +77,7 @@ pub enum CicStm {
     ),
 }
 
+#[derive(Debug)]
 pub struct Cic;
 impl TypeTheory for Cic {
     type Term = CicTerm;
@@ -151,15 +152,20 @@ impl Kernel for Cic {
             }
             CicTerm::Application(left, right) => {
                 // type_check_application(environment, left, right)
-                u_type_check_application(environment, left, right, |cic_type| {
-                    match cic_type {
-                        Product(_, domain, codomain) => Some((
+                u_type_check_application(
+                    environment,
+                    left,
+                    right,
+                    |cic_type| match cic_type {
+                        Product(var_name, domain, codomain) => Some((
+                            var_name.to_string(),
                             (**domain).to_owned(),
                             (**codomain).to_owned(),
                         )),
                         _ => None,
-                    }
-                })
+                    },
+                    Cic::substitute,
+                )
             }
             CicTerm::Match(matched_term, branches) => {
                 type_check_match(environment, matched_term, branches)
@@ -250,6 +256,7 @@ impl Refiner for Cic {
     fn solve_unification(
         constraints: Vec<Constraint<Cic>>,
     ) -> Result<HashMap<i32, Self::Type>, String> {
+        println!("Running unification over {:?}", constraints);
         solve_unification(constraints)
     }
 
