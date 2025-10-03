@@ -230,10 +230,8 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, String> {
                 formula,
                 proof,
             )?))
-        } // _ => Err(format!(
-          //     "Language construct {:?} not supported in CIC",
-          //     ast
-          // )),
+        }
+        _ => Err(format!("Language construct {:?} not supported in CIC", ast)),
     }
 }
 //
