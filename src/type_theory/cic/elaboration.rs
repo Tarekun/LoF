@@ -1,4 +1,4 @@
-use super::cic::CicStm::{Auto, Axiom, Theorem};
+use super::cic::CicStm::{Axiom, Theorem};
 use super::cic::PLACEHOLDER_DBI;
 use super::cic::{
     CicStm::{self},
@@ -231,10 +231,10 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, String> {
                 proof,
             )?))
         }
-        Statement::Auto(formula) => {
-            Ok(Schedule::singleton_stm(elaborate_auto(formula)?))
-        } //
-          // _ => Err(format!("Language construct {:?} not supported in CIC", ast)),
+        // Statement::Auto(formula) => {
+        //     Ok(Schedule::singleton_stm(elaborate_auto(formula)?))
+        // } //
+        _ => Err(format!("Language construct {:?} not supported in CIC", ast)),
     }
 }
 //
@@ -386,9 +386,9 @@ fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Cic>, String> {
 }
 //
 //
-fn elaborate_auto(formula: &Expression) -> Result<CicStm, String> {
-    Ok(Auto(elaborate_expression(formula)))
-}
+// fn elaborate_auto(formula: &Expression) -> Result<CicStm, String> {
+//     Ok(Auto(elaborate_expression(formula)))
+// }
 //
 //########################### STATEMENTS ELABORATION
 

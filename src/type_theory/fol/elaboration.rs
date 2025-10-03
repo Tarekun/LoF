@@ -292,6 +292,9 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Fol>, String> {
                 proof,
             )?))
         }
+        Statement::Auto(formula) => {
+            Ok(Schedule::singleton_stm(elaborate_auto(formula)?))
+        }
         _ => Err(format!("Language construct {:?} not supported in FOL", ast)),
     }
 }

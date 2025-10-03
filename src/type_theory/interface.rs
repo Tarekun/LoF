@@ -245,10 +245,7 @@ pub trait Automatic: TypeTheory {
     /// returns > 0 if T2 < T1, 0 otherwise
     fn compare_types(type1: &Self::Type, type2: &Self::Type) -> Ordering;
 
-    /// Check if the given set of `premises` prooves a `goal`. If a proof
-    /// is found returns Ok(()), otherwise fails with details on the problem
-    fn proove(
-        premises: Vec<Self::Type>,
-        goal: Self::Type,
-    ) -> Result<(), String>;
+    /// Runs the saturation algorithm on the given set, closing the set under
+    /// derivation. Terminates when bottom is derived or nothing new can be derived
+    fn saturate(saturation_set: &Vec<Self::Type>) -> Result<(), String>;
 }

@@ -1,12 +1,17 @@
+use tracing::{error, info};
+
 use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
 use super::fol::{
-    Fol, FolFormula, FolStm,
+    Fol,
+    FolFormula::{self, Not},
+    FolStm,
     FolTerm::{self, Abstraction, Application, Let, Variable},
 };
 use super::fol_utils::make_multiarg_fun_type;
 use crate::type_theory::commons::evaluation::{
-    evaluate_fun, reduce_application, reduce_let,
+    evaluate_auto, evaluate_fun, reduce_application, reduce_let,
 };
+use crate::type_theory::fol::fol_utils::clausify;
 use crate::{
     misc::Union,
     type_theory::{
@@ -92,6 +97,18 @@ pub fn evaluate_statement(
                 formula,
                 proof,
             )
+        }
+        FolStm::Auto(target) => {
+            if let Err(message) = evaluate_auto::<Fol, _, _>(
+                environment,
+                target,
+                clausify,
+                |phi| Not(Box::new(phi.to_owned())),
+            ) {
+                error!("ATP algorithm failed: {message}");
+            } else {
+                info!("ATP algorithm proved the target successfully!");
+            }
         }
     }
 }
