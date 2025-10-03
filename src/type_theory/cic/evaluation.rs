@@ -5,7 +5,7 @@ use super::cic_utils::make_multiarg_fun_type;
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function,
 };
-use crate::type_theory::cic::type_check_inductive::inductive_eliminator;
+use crate::type_theory::cic::type_check::inductive_eliminator;
 use crate::type_theory::commons::evaluation::{
     evaluate_axiom, evaluate_fun, evaluate_global, evaluate_theorem,
     reduce_application, reduce_let, reduce_variable,

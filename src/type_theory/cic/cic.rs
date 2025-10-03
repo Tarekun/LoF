@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::tactics::type_check_tactic;
 use super::type_check::type_check_sort;
@@ -14,7 +12,7 @@ use crate::type_theory::cic::cic_utils::{
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
 };
-use crate::type_theory::cic::type_check_inductive::{
+use crate::type_theory::cic::type_check::{
     type_check_inductive, type_check_match,
 };
 use crate::type_theory::commons::evaluation::generic_term_normalization;
@@ -27,6 +25,7 @@ use crate::type_theory::environment::{Constraint, Environment};
 use crate::type_theory::interface::{
     Interactive, Kernel, Reducer, Refiner, TypeTheory,
 };
+use std::collections::HashMap;
 use tracing::debug;
 
 pub static FIRST_INDEX: i32 = 0;

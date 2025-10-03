@@ -7,7 +7,7 @@ mod tests {
             CicTerm::{Abstraction, Application, Match, Meta, Product, Sort, Variable, Let},
             GLOBAL_INDEX
         },
-        type_check_inductive::{inductive_eliminator, type_check_inductive},
+        type_check::{inductive_eliminator, type_check_inductive},
     };
     use crate::type_theory::interface::Kernel;
     use crate::type_theory::interface::TypeTheory;
