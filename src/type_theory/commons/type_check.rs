@@ -411,6 +411,15 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
     Ok(formula.to_owned())
 }
 
+/// Generic auto command type checking. It checks that the target formula is well formed
+pub fn type_check_auto<T: TypeTheory + Kernel>(
+    environment: &mut Environment<T>,
+    formula: &T::Type,
+) -> Result<T::Type, String> {
+    let _ = T::type_check_type(formula, environment)?;
+    Ok(formula.to_owned())
+}
+
 fn type_check_interactive_proof<T: TypeTheory + Interactive>(
     environment: &mut Environment<T>,
     interactive_proof: &[Tactic<T::Exp>],

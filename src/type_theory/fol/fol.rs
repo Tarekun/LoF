@@ -6,14 +6,15 @@ use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    type_check_abstraction, type_check_application, type_check_axiom,
-    type_check_global, type_check_let, type_check_theorem, type_check_variable,
+    type_check_abstraction, type_check_application, type_check_auto,
+    type_check_axiom, type_check_global, type_check_let, type_check_theorem,
+    type_check_variable,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::fol::fol::FolFormula::{
     Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
 };
-use crate::type_theory::fol::fol::FolStm::{Axiom, Fun, Global, Theorem};
+use crate::type_theory::fol::fol::FolStm::{Auto, Axiom, Fun, Global, Theorem};
 use crate::type_theory::fol::fol::FolTerm::{
     Abstraction, Application, Let, Tuple, Variable,
 };
@@ -216,6 +217,7 @@ impl Kernel for Fol {
                 formula,
                 proof,
             ),
+            Auto(formula) => type_check_auto::<Fol>(environment, formula),
         }
     }
 }
