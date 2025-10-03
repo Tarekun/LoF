@@ -222,7 +222,7 @@ impl LofParser {
         let parse_quoted =
             |input| delimited(char('"'), is_not("\""), char('"'))(input);
 
-        let (input, _) = preceded(multispace0, tag("notation"))(input)?;
+        let (input, _) = preceded(multispace0, tag("sugar"))(input)?;
         let (input, notation) = preceded(multispace1, parse_quoted)(input)?;
         let (input, _) = preceded(multispace0, tag(":="))(input)?;
         let (input, body) = preceded(multispace1, parse_quoted)(input)?;
@@ -294,7 +294,7 @@ mod unit_tests {
 
         let parser = LofParser::new(Config::default());
 
-        let _ = parser.parse_notation("notation \"_0 + _1\" := \"comb _0 _1\"");
+        let _ = parser.parse_notation("sugar \"_0 + _1\" := \"comb _0 _1\"");
         assert!(
             notation_contains(
                 &parser,
@@ -317,7 +317,7 @@ mod unit_tests {
         );
 
         let _ = parser.parse_notation(
-            "notation \"_0     *   _1\"    :=   \n\r\t \"comb _0 _1\"",
+            "sugar \"_0     *   _1\"    :=   \n\r\t \"comb _0 _1\"",
         );
         assert!(
             notation_contains(

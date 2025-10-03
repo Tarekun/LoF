@@ -35,7 +35,7 @@ const RESERVED_KEYWORDS: &[&str] = &[
     "qed.",
     "suppose",
     "by",
-    "notation",
+    "sugar",
 ];
 
 impl LofParser {
