@@ -76,7 +76,6 @@ pub enum CicStm {
     ),
 }
 
-#[derive(Debug)]
 pub struct Cic;
 impl TypeTheory for Cic {
     type Term = CicTerm;
@@ -149,23 +148,20 @@ impl Kernel for Cic {
                     body,
                 )
             }
-            CicTerm::Application(left, right) => {
-                // type_check_application(environment, left, right)
-                u_type_check_application(
-                    environment,
-                    left,
-                    right,
-                    |cic_type| match cic_type {
-                        Product(var_name, domain, codomain) => Some((
-                            var_name.to_string(),
-                            (**domain).to_owned(),
-                            (**codomain).to_owned(),
-                        )),
-                        _ => None,
-                    },
-                    Cic::substitute,
-                )
-            }
+            CicTerm::Application(left, right) => u_type_check_application(
+                environment,
+                left,
+                right,
+                |cic_type| match cic_type {
+                    Product(var_name, domain, codomain) => Some((
+                        var_name.to_string(),
+                        (**domain).to_owned(),
+                        (**codomain).to_owned(),
+                    )),
+                    _ => None,
+                },
+                Cic::substitute,
+            ),
             CicTerm::Match(matched_term, branches) => {
                 type_check_match(environment, matched_term, branches)
             }
