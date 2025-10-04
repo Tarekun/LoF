@@ -1,8 +1,8 @@
 use crate::type_theory::environment::Constraint::TypeEq;
 use crate::type_theory::interface::TypeTheory;
 use std::collections::HashMap;
+use std::fmt::{self, Debug};
 
-#[derive(Debug)]
 pub enum Constraint<T: TypeTheory> {
     TypeEq(T::Type, T::Type),
     // TermEq(T::Term, T::Term),
@@ -16,6 +16,13 @@ where
         match self {
             TypeEq(l, r) => TypeEq(l.to_owned(), r.to_owned()),
             // TermEq(l, r) => TermEq(l.to_owned(), r.to_owned()),
+        }
+    }
+}
+impl<T: TypeTheory> Debug for Constraint<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TypeEq(l, r) => write!(f, "{:?} = {:?}", l, r),
         }
     }
 }
