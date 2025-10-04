@@ -1,15 +1,13 @@
 use super::elaboration::{elaborate_expression, elaborate_statement};
 use super::evaluation::{evaluate_statement, one_step_reduction};
-use super::type_check::{
-    type_check_application, type_check_arrow, type_check_forall,
-};
+use super::type_check::{type_check_arrow, type_check_forall};
 use crate::misc::Union::{self, L, R};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    type_check_abstraction, type_check_axiom, type_check_global,
-    type_check_let, type_check_theorem, type_check_variable,
+    type_check_abstraction, type_check_application, type_check_axiom,
+    type_check_global, type_check_let, type_check_theorem, type_check_variable,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::fol::fol::FolFormula::{
@@ -145,7 +143,15 @@ impl Kernel for Fol {
                 )
             }
             Application(left, right) => {
-                type_check_application(environment, left, right)
+                type_check_application(environment, left, right, |fol_type| {
+                    match fol_type {
+                        Arrow(domain, codomain) => Some((
+                            (**domain).to_owned(),
+                            (**codomain).to_owned(),
+                        )),
+                        _ => None,
+                    }
+                })
             }
             Tuple(terms) => type_check_tuple(environment, terms),
             Let(var_name, var_type, body, scope) => {

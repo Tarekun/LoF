@@ -4,7 +4,7 @@ use super::cic::CicTerm::{
 };
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::substitute_meta;
-use crate::type_theory::environment::Environment;
+use crate::type_theory::environment::{Constraint, Environment};
 use std::collections::{HashMap, VecDeque};
 
 pub fn cic_unification(
@@ -13,7 +13,7 @@ pub fn cic_unification(
     term2: &CicTerm,
 ) -> Result<bool, String> {
     let mut constraints = environment.get_constraints();
-    constraints.push((term1.clone(), term2.clone()));
+    constraints.push(Constraint::TypeEq(term1.to_owned(), term2.to_owned()));
     Ok(solve_unification(constraints).is_ok())
 }
 
@@ -30,7 +30,7 @@ pub fn instatiate_metas(
 }
 
 pub fn solve_unification(
-    constraints: Vec<(CicTerm, CicTerm)>,
+    constraints: Vec<Constraint<Cic>>,
 ) -> Result<HashMap<i32, CicTerm>, String> {
     fn occurs_check(meta_index: i32, term: &CicTerm) -> Result<(), String> {
         match term {
@@ -95,13 +95,15 @@ pub fn solve_unification(
     }
 
     fn solver(
-        mut constraints: VecDeque<(CicTerm, CicTerm)>,
+        mut constraints: VecDeque<Constraint<Cic>>,
         substitution: HashMap<i32, CicTerm>,
     ) -> Result<HashMap<i32, CicTerm>, String> {
         match constraints.len() {
             0 => Ok(substitution),
             _ => {
-                let (left, right) = constraints.pop_front().unwrap();
+                let (left, right) = match constraints.pop_front().unwrap() {
+                    Constraint::TypeEq(left, right) => (left, right),
+                };
                 let error_obj = missmatch_error(&left, &right);
                 match (left, right) {
                     (Meta(index), right) => solver(
@@ -138,26 +140,40 @@ pub fn solve_unification(
                         Abstraction(_, right_arg_type, right_body),
                     ) => {
                         //TODO add eta reduction like in matita?
-                        constraints
-                            .push_back((*left_arg_type, *right_arg_type));
-                        constraints.push_back((*left_body, *right_body));
+                        constraints.push_back(Constraint::TypeEq(
+                            *left_arg_type,
+                            *right_arg_type,
+                        ));
+                        constraints.push_back(Constraint::TypeEq(
+                            *left_body,
+                            *right_body,
+                        ));
                         solver(constraints, substitution)
                     }
                     (
                         Product(_, left_arg_type, left_body),
                         Product(_, right_arg_type, right_body),
                     ) => {
-                        constraints
-                            .push_back((*left_arg_type, *right_arg_type));
-                        constraints.push_back((*left_body, *right_body));
+                        constraints.push_back(Constraint::TypeEq(
+                            *left_arg_type,
+                            *right_arg_type,
+                        ));
+                        constraints.push_back(Constraint::TypeEq(
+                            *left_body,
+                            *right_body,
+                        ));
                         solver(constraints, substitution)
                     }
                     (
                         Application(left_fun, left_arg),
                         Application(right_fun, right_arg),
                     ) => {
-                        constraints.push_back((*left_fun, *right_fun));
-                        constraints.push_back((*left_arg, *right_arg));
+                        constraints.push_back(Constraint::TypeEq(
+                            *left_fun, *right_fun,
+                        ));
+                        constraints.push_back(Constraint::TypeEq(
+                            *left_arg, *right_arg,
+                        ));
                         solver(constraints, substitution)
                     }
                     //TODO figure out what to do with branches
@@ -165,7 +181,7 @@ pub fn solve_unification(
                         Match(left_matched_term, left_branches),
                         Match(right_matched_term, right_branches),
                     ) => {
-                        constraints.push_back((
+                        constraints.push_back(Constraint::TypeEq(
                             (*left_matched_term).clone(),
                             (*right_matched_term).clone(),
                         ));
@@ -226,21 +242,24 @@ pub fn equal_under_substitution(
 
 #[cfg(test)]
 mod unit_tests {
-    use crate::type_theory::cic::{
-        cic::{
-            Cic,
-            CicTerm::{Meta, Product, Sort, Variable},
-            GLOBAL_INDEX,
-        },
-        unification::{equal_under_substitution, solve_unification},
-    };
     use crate::type_theory::interface::TypeTheory;
+    use crate::type_theory::{
+        cic::{
+            cic::{
+                Cic,
+                CicTerm::{Meta, Product, Sort, Variable},
+                GLOBAL_INDEX,
+            },
+            unification::{equal_under_substitution, solve_unification},
+        },
+        environment::Constraint,
+    };
     use std::collections::HashMap;
 
     #[test]
     fn test_dhm() {
         let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let constraints = vec![(Meta(0), nat.clone())];
+        let constraints = vec![Constraint::TypeEq(Meta(0), nat.clone())];
         let expected = {
             let mut map = HashMap::new();
             map.insert(0, nat.clone());
@@ -253,7 +272,7 @@ mod unit_tests {
         );
 
         let constraints = vec![
-            (
+            Constraint::TypeEq(
                 Meta(1),
                 Product(
                     "_".to_string(),
@@ -261,7 +280,7 @@ mod unit_tests {
                     Box::new(Meta(0)),
                 ),
             ),
-            (Meta(0), nat.clone()),
+            Constraint::TypeEq(Meta(0), nat.clone()),
         ];
         let expected = {
             let mut map = HashMap::new();

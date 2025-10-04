@@ -31,7 +31,6 @@ pub mod type_theory {
         mod evaluation;
         mod tactics;
         mod type_check;
-        mod type_check_inductive;
         mod unification;
         pub mod tests {
             pub mod type_check;

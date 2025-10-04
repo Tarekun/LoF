@@ -1,5 +1,24 @@
+use crate::type_theory::environment::Constraint::TypeEq;
 use crate::type_theory::interface::TypeTheory;
 use std::collections::HashMap;
+
+#[derive(Debug)]
+pub enum Constraint<T: TypeTheory> {
+    TypeEq(T::Type, T::Type),
+    // TermEq(T::Term, T::Term),
+}
+impl<T: TypeTheory> Clone for Constraint<T>
+where
+    T::Term: Clone,
+    T::Type: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            TypeEq(l, r) => TypeEq(l.to_owned(), r.to_owned()),
+            // TermEq(l, r) => TermEq(l.to_owned(), r.to_owned()),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Environment<T: TypeTheory> {
@@ -10,7 +29,7 @@ pub struct Environment<T: TypeTheory> {
     /// pred_name, arg_types
     pub predicates: HashMap<String, Vec<T::Type>>,
     /// [exp1 = exp2]
-    constraints: Vec<(T::Exp, T::Exp)>,
+    constraints: Vec<Constraint<T>>,
     next_index: i32,
 }
 impl<T: TypeTheory> Clone for Environment<T>
@@ -95,8 +114,11 @@ impl<T: TypeTheory> Environment<T> {
         self.add_to_context(name, typee);
     }
 
-    pub fn add_constraint(&mut self, left: &T::Exp, right: &T::Exp) {
-        self.constraints.push((left.clone(), right.clone()));
+    // pub fn add_term_constraint(&mut self, left: &T::Term, right: &T::Term) {
+    //     self.constraints.push(TermEq(left.clone(), right.clone()));
+    // }
+    pub fn add_type_constraint(&mut self, left: &T::Type, right: &T::Type) {
+        self.constraints.push(TypeEq(left.clone(), right.clone()));
     }
 
     pub fn add_predicate(&mut self, name: &str, arg_types: &Vec<T::Type>) {
@@ -268,7 +290,7 @@ impl<T: TypeTheory> Environment<T> {
             .map(|arg_types| arg_types.to_owned())
     }
 
-    pub fn get_constraints(&self) -> Vec<(T::Exp, T::Exp)> {
+    pub fn get_constraints(&self) -> Vec<Constraint<T>> {
         self.constraints.clone()
     }
 

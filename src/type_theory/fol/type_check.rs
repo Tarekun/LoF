@@ -13,34 +13,6 @@ use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{Kernel, TypeTheory};
 
 //########################### TERMS TYPE CHECKING
-pub fn type_check_application(
-    environment: &mut Environment<Fol>,
-    left: &FolTerm,
-    right: &FolTerm,
-) -> Result<FolFormula, String> {
-    let function_type = Fol::type_check_term(left, environment)?;
-    let arg_type = Fol::type_check_term(right, environment)?;
-
-    match function_type {
-        Arrow(domain, codomain) => {
-            if Fol::base_type_equality(&(*domain), &arg_type).is_ok() {
-                Ok(*codomain)
-            } else {
-                Err(format!(
-                    "Function and argument have uncompatible types: function expects a {:?} but the argument has type {:?}", 
-                    *domain,
-                    arg_type
-                ))
-            }
-        }
-        _ => Err(format!(
-            "Attempted application on non functional term of type: {:?}",
-            function_type
-        )),
-    }
-}
-//
-//
 pub fn type_check_tuple(
     environment: &mut Environment<Fol>,
     terms: &Vec<FolTerm>,
@@ -207,8 +179,7 @@ mod unit_tests {
                 FolTerm::{Abstraction, Application, Let, Variable},
             },
             type_check::{
-                type_check_application, type_check_arrow, type_check_forall,
-                type_check_predicate,
+                type_check_arrow, type_check_forall, type_check_predicate,
             },
         },
         interface::{Kernel, TypeTheory},
@@ -318,10 +289,12 @@ mod unit_tests {
         test_env.add_to_context("it", &unit.clone());
 
         assert_eq!(
-            type_check_application(
+            Fol::type_check_term(
+                &Application(
+                    Box::new(Variable("f".to_string())),
+                    Box::new(Variable("x".to_string())),
+                ),
                 &mut test_env,
-                &Variable("f".to_string()),
-                &Variable("x".to_string())
             ),
             Ok(nat.clone()),
             "Application type checker doesnt work properly"
@@ -339,28 +312,34 @@ mod unit_tests {
         );
 
         assert!(
-            type_check_application(
+            Fol::type_check_term(
+                &Application(
+                    Box::new(Variable("stupid_unbound_fun".to_string())),
+                    Box::new(Variable("x".to_string())),
+                ),
                 &mut test_env,
-                &Variable("stupid_unbound_fun".to_string()),
-                &Variable("x".to_string())
             )
             .is_err(),
             "Application type checking accepts unbound function"
         );
         assert!(
-            type_check_application(
+            Fol::type_check_term(
+                &Application(
+                    Box::new(Variable("f".to_string())),
+                    Box::new(Variable("stupid_unbound_arg".to_string())),
+                ),
                 &mut test_env,
-                &Variable("f".to_string()),
-                &Variable("stupid_unbound_arg".to_string())
             )
             .is_err(),
             "Application type checking accepts unbound argument"
         );
         assert!(
-            type_check_application(
+            Fol::type_check_term(
+                &Application(
+                    Box::new(Variable("f".to_string())),
+                    Box::new(Variable("it".to_string())),
+                ),
                 &mut test_env,
-                &Variable("f".to_string()),
-                &Variable("it".to_string())
             )
             .is_err(),
             "Application type checking accepts application with incompatible types"

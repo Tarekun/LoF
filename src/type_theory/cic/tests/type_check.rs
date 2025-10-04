@@ -7,7 +7,7 @@ mod tests {
             CicTerm::{Abstraction, Application, Match, Meta, Product, Sort, Variable, Let},
             GLOBAL_INDEX
         },
-        type_check_inductive::{inductive_eliminator, type_check_inductive},
+        type_check::{inductive_eliminator, type_check_inductive},
     };
     use crate::type_theory::interface::Kernel;
     use crate::type_theory::interface::TypeTheory;
@@ -301,6 +301,7 @@ mod tests {
         test_env.add_to_context("Unit", &Sort("TYPE".to_string()));
         test_env.add_to_context("it", &unit);
         let type_var_name = "T";
+        // if : ∀ T:TYPE. ∀ exp:Bool. ∀ ifTrue:Unit->T. T
         test_env.add_to_context(
             "if",
             &Product(
@@ -1599,6 +1600,7 @@ mod tests {
                 Box::new(nat.clone())
             )
         );
+        // id : ? -> ?
         test_env.add_to_context(
             "id", 
             &Product(
@@ -1610,6 +1612,7 @@ mod tests {
 
         assert_eq!(
             Cic::type_check_term(
+                // λ n:?. s n
                 &Abstraction(
                     "n".to_string(), 
                     Box::new(Meta(0)), 
@@ -1626,6 +1629,7 @@ mod tests {
 
         assert_eq!(
             Cic::type_check_term(
+                // λ n:Nat. id n
                 &Abstraction(
                     "n".to_string(), 
                     Box::new(nat.clone()), 

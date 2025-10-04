@@ -4,7 +4,7 @@ use crate::runtime::program::{
     ProgramNode::{OfExp, OfStm},
     Schedule,
 };
-use crate::type_theory::environment::Environment;
+use crate::type_theory::environment::{Constraint, Environment};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -133,8 +133,10 @@ pub trait Refiner: TypeTheory {
     /// Algorithm to compute the MCU given a set of constraints.
     /// Returns a substitution for all solvable meta variables or an error
     fn solve_unification(
-        constraints: Vec<(Self::Exp, Self::Exp)>,
-    ) -> Result<HashMap<i32, Self::Exp>, String>;
+        constraints: Vec<Constraint<Self>>,
+    ) -> Result<HashMap<i32, Self::Exp>, String>
+    where
+        Self: Sized;
 
     /// Given a term expression containing metavariables and a `substitution`,
     /// returns the same expression where solved metavariables are substituted
