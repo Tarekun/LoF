@@ -17,9 +17,9 @@ use crate::type_theory::cic::type_check::{
 };
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    type_check_auto, type_check_axiom, type_check_fo_universal,
-    type_check_function, type_check_global, type_check_let, type_check_theorem,
-    type_check_variable, u_type_check_abstraction, u_type_check_application,
+    type_check_axiom, type_check_fo_universal, type_check_function,
+    type_check_global, type_check_let, type_check_theorem, type_check_variable,
+    u_type_check_abstraction, u_type_check_application,
 };
 use crate::type_theory::environment::{Constraint, Environment};
 use crate::type_theory::interface::{

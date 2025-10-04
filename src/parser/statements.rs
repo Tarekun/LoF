@@ -217,12 +217,9 @@ impl LofParser {
     //
     pub fn auto<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
         let (input, _) = preceded(multispace0, tag("auto"))(input)?;
-        // let (input, proof_name) =
-        //     preceded(multispace1, |input| self.parse_identifier(input))(input)?;
         let (input, formula) =
             preceded(multispace1, |input| self.parse_expression(input))(input)?;
         let (input, _) = preceded(multispace0, tag(";"))(input)?;
-        println!("{:?}", formula);
 
         Ok((input, Auto(formula)))
     }
