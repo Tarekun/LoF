@@ -182,12 +182,7 @@ impl Automatic for Sup {
         }
     }
 
-    fn proove(
-        premises: Vec<SupFormula>,
-        goal: SupFormula,
-    ) -> Result<(), String> {
-        let mut copy = premises.clone();
-        copy.push(Not(Box::new(goal)));
-        saturate(&copy)
+    fn saturate(saturation_set: &Vec<SupFormula>) -> Result<(), String> {
+        saturate(saturation_set)
     }
 }

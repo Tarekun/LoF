@@ -4,7 +4,8 @@ use crate::{
     type_theory::{
         commons::utils::eta_expand,
         environment::Environment,
-        interface::{Kernel, Reducer, TypeTheory},
+        interface::{Automatic, Kernel, Reducer, TypeTheory},
+        sup::sup::{Sup, SupFormula},
     },
 };
 
@@ -148,5 +149,29 @@ pub fn evaluate_theorem<T: TypeTheory, E>(
     _proof: &Union<T::Term, Vec<Tactic<E>>>,
 ) -> () {
     environment.add_to_context(&theorem_name, &formula);
+}
+
+/// Evaluates the auto statement, clausifying the target formula along with the current context
+/// and running SUP saturation algorithm with the clausified set of formulas
+pub fn evaluate_auto<
+    T: TypeTheory,
+    F: Fn(&T::Type) -> Result<Vec<SupFormula>, String>,
+    G: Fn(&T::Type) -> T::Type,
+>(
+    environment: &mut Environment<T>,
+    target: &T::Type,
+    clausify: F,
+    complement: G,
+) -> Result<(), String> {
+    let mut saturation_set = vec![];
+    let context = environment.get_context();
+
+    for (_, var_type) in context.iter() {
+        saturation_set.extend(clausify(var_type)?);
+    }
+    let clausified_target = clausify(&complement(target))?;
+    saturation_set.extend(clausified_target);
+
+    Sup::saturate(&saturation_set)
 }
 //########################### STATEMENTS EXECUTION

@@ -74,6 +74,7 @@ pub enum CicStm {
         Box<CicTerm>,
         Vec<(String, CicTerm)>,
     ),
+    // Auto(CicTerm),
 }
 
 pub struct Cic;
@@ -242,7 +243,9 @@ impl Kernel for Cic {
                     formula,
                     proof,
                 )
-            }
+            } // CicStm::Auto(formula) => {
+              //     type_check_auto::<Cic>(environment, formula)
+              // }
         }
     }
 }

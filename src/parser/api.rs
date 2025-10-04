@@ -63,6 +63,7 @@ pub enum Statement {
         Box<Expression>,
         Vec<(String, Expression)>,
     ),
+    Auto(Expression),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum Tactic<E> {

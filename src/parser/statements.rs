@@ -1,4 +1,4 @@
-use super::api::Statement::Theorem;
+use super::api::Statement::{Auto, Theorem};
 use super::api::{Expression, LofAst, LofParser, Statement};
 use crate::config::id_to_system;
 use crate::misc::Union;
@@ -215,6 +215,16 @@ impl LofParser {
     }
     //
     //
+    pub fn auto<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+        let (input, _) = preceded(multispace0, tag("auto"))(input)?;
+        let (input, formula) =
+            preceded(multispace1, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(multispace0, tag(";"))(input)?;
+
+        Ok((input, Auto(formula)))
+    }
+    //
+    //
     pub fn parse_notation<'a>(
         &self,
         input: &'a str,
@@ -257,6 +267,7 @@ impl LofParser {
             |input| self.parse_import(input),
             |input| self.parse_theory_block(input),
             |input| self.parse_notation(input),
+            |input| self.auto(input),
         ))(input)
     }
 }
@@ -269,11 +280,12 @@ mod unit_tests {
         config::{Config, TypeSystem},
         misc::Union,
         parser::api::{
-            Expression::{Application, Arrow, VarUse},
+            Expression::{Application, Arrow, TypeProduct, VarUse},
             LofAst::Exp,
             LofParser, Notation,
             Statement::{
-                self, Axiom, Comment, EmptyRoot, Global, Inductive, Theorem,
+                self, Auto, Axiom, Comment, EmptyRoot, Global, Inductive,
+                Theorem,
             },
         },
     };
@@ -736,6 +748,39 @@ mod unit_tests {
                 .parse_statement("!theory_block cic TYPE !end_block")
                 .is_ok(),
             "Top level parser doesnt support theory blocks"
+        );
+    }
+
+    #[test]
+    fn test_auto() {
+        let parser = LofParser::new(Config::new(TypeSystem::Cic()));
+
+        assert_eq!(
+            parser.parse_statement("auto \\forall x:T. P x;"),
+            Ok((
+                "",
+                Auto(TypeProduct(
+                    "x".to_string(),
+                    Box::new(VarUse("T".to_string())),
+                    Box::new(Application(
+                        Box::new(VarUse("P".to_string())),
+                        vec![VarUse("x".to_string())]
+                    ))
+                ))
+            )),
+            "Parser cant process auto commands"
+        );
+        assert!(
+            parser.parse_statement("auto\\forall x:T. P x;").is_err(),
+            "Auto parser doesnt split keyword from formula"
+        );
+        assert!(
+            parser.parse_statement("auto \t\n\r   \\forall   x\t :\r\r T.\n\r P    x  \r;\n\t\t").is_ok(),
+            "Auto parser cant cope with whitespaces"
+        );
+        assert!(
+            parser.parse_statement("auto ;").is_err(),
+            "Auto parser accepts command with no formula to prove"
         );
     }
 }

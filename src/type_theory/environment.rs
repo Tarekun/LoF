@@ -317,18 +317,30 @@ impl<T: TypeTheory> Environment<T> {
             None => None,
         }
     }
+
+    pub fn get_context(&self) -> HashMap<String, T::Type> {
+        self.context
+            .iter()
+            .filter_map(|(name, stack)| {
+                stack.last().map(|ty| (name.to_string(), ty.to_owned()))
+            })
+            .collect()
+    }
     //
     //######################### VARIABLE LOOKUPS
 }
 
 #[cfg(test)]
 mod unit_tests {
+    use std::collections::HashMap;
+
     use crate::type_theory::{
         cic::cic::{
             Cic,
-            CicTerm::{Sort, Variable},
+            CicTerm::{self, Sort, Variable},
             GLOBAL_INDEX,
         },
+        environment::Environment,
         interface::TypeTheory,
     };
 
@@ -516,5 +528,45 @@ mod unit_tests {
                 "Local substitution was not removed from the deltas after closure execution"
             );
         }
+    }
+
+    #[test]
+    fn test_active_context_reading() {
+        let mut test_env: Environment<Cic> =
+            Environment::with_defaults(vec![], vec![], vec![]);
+        let nat = CicTerm::Variable("Nat".to_string(), GLOBAL_INDEX);
+        let boolean = CicTerm::Variable("Bool".to_string(), GLOBAL_INDEX);
+
+        test_env.add_to_context("x", &nat);
+        test_env.add_to_context("y", &boolean);
+        assert_eq!(
+            test_env.get_context(),
+            HashMap::from([
+                ("x".to_string(), nat.clone()),
+                ("y".to_string(), boolean.clone())
+            ]),
+            "Environment::get_context is returning the proper context"
+        );
+
+        test_env.add_to_context("x", &boolean);
+        assert_eq!(
+            test_env.get_context(),
+            HashMap::from([
+                ("x".to_string(), boolean.clone()),
+                ("y".to_string(), boolean.clone())
+            ]),
+            "Environment::get_context is returning the latest typing assinged to name 'x'"
+        );
+
+        test_env.add_to_context("z", &boolean);
+        assert_eq!(
+            test_env.get_context(),
+            HashMap::from([
+                ("x".to_string(), boolean.clone()),
+                ("y".to_string(), boolean.clone()),
+                ("z".to_string(), boolean.clone()),
+            ]),
+            "Environment::get_context doesnt behave properly after inclusion of new names"
+        );
     }
 }
