@@ -1,5 +1,3 @@
-use rand::rand_core::le;
-
 use crate::type_theory::interface::{Automatic, TypeTheory};
 use crate::type_theory::sup::sup_utils::{subsumes, unpack_literals};
 use crate::{
@@ -10,7 +8,7 @@ use crate::{
         SupTerm::{self, Application, Variable},
     },
 };
-use std::cmp::{max_by, min_by};
+use std::cmp::{max_by, min_by, Ordering::Less};
 
 fn substitute_term_in_term(
     base: &SupTerm,
@@ -127,116 +125,158 @@ pub fn subsumption_resolution_first(
 //########################### SIMPLIFICATION INFERENCES
 
 //########################### SUP INFERENCES
-// pub fn resolution(
-//     C: &SupFormula,
-//     D: &SupFormula,
-// ) -> Result<SupFormula, String> {
-//     let mut c_literals = unpack_literals(C)?.clone();
-//     let mut d_literals = unpack_literals(D)?.clone();
-//     let selected = Sup::select(&mut c_literals)?;
+pub fn resolution(
+    C: &SupFormula,
+    D: &SupFormula,
+) -> Result<SupFormula, String> {
+    let mut c_literals = unpack_literals(C)?.clone();
+    let mut d_literals = unpack_literals(D)?.clone();
+    let selected = Sup::select(&mut c_literals)?;
 
-//     match &selected {
-//         Atom(_, _) => {
-//             for i in 0..d_literals.len() {
-//                 if let Not(inner) = &d_literals[i] {
-//                     // TODO support mcu
-//                     if Sup::base_type_equality(&selected, inner).is_ok() {
-//                         d_literals.remove(i);
-//                         c_literals.extend(d_literals);
-//                         return Ok(Clause(c_literals));
-//                     }
-//                 }
-//             }
-//         }
-//         Not(inner) => {
-//             for i in 0..d_literals.len() {
-//                 if let Atom(_, _) = d_literals[i] {
-//                     // TODO support mcu
-//                     if Sup::base_type_equality(inner, &d_literals[i]).is_ok() {
-//                         d_literals.remove(i);
-//                         c_literals.extend(d_literals);
-//                         return Ok(Clause(c_literals));
-//                     }
-//                 }
-//             }
-//         }
-//         _ => {}
-//     }
+    for selected_atom in selected.iter() {
+        match selected_atom {
+            Atom(_, _) => {
+                for i in 0..d_literals.len() {
+                    if let Not(inner) = &d_literals[i] {
+                        // TODO support mcu
+                        if Sup::base_type_equality(&selected_atom, inner)
+                            .is_ok()
+                        {
+                            d_literals.remove(i);
+                            c_literals.extend(d_literals);
+                            // TODO reinclude other selected atoms in lits
+                            return Ok(Clause(c_literals));
+                        }
+                    }
+                }
+            }
+            Not(inner) => {
+                for i in 0..d_literals.len() {
+                    if let Atom(_, _) = d_literals[i] {
+                        // TODO support mcu
+                        if Sup::base_type_equality(inner, &d_literals[i])
+                            .is_ok()
+                        {
+                            d_literals.remove(i);
+                            c_literals.extend(d_literals);
+                            return Ok(Clause(c_literals));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 
-//     Err(format!(
-//         "Resolution cannot be applied to clauses {:?}, {:?} with picked (from first) literal {:?}",
-//         C, D, selected
-//     ))
-// }
+    Err(format!(
+        "Resolution cannot be applied to clauses {:?}, {:?} with picked literals (from first) {:?}",
+        C, D, selected
+    ))
+}
 
-// pub fn factoring(C: &SupFormula) -> Result<SupFormula, String> {
-//     let lits = unpack_literals(C)?;
-//     let mut literals = lits.clone();
-//     let selected = Sup::select(&mut literals)?;
+pub fn factoring(C: &SupFormula) -> Result<SupFormula, String> {
+    let lits = unpack_literals(C)?;
+    let mut literals = lits.clone();
+    let selected = Sup::select(&mut literals)?;
 
-//     for i in 0..literals.len() {
-//         // TODO support mgu check here
-//         if Sup::base_type_equality(&literals[i], &selected).is_ok() {
-//             // TODO apply mgu to literals
-//             return Ok(Clause(literals));
-//         }
-//     }
+    for i in 0..selected.len() {
+        for j in i + 1..selected.len() {
+            // TODO support mgu check here
+            if Sup::base_type_equality(&selected[i], &selected[j]).is_ok() {
+                // TODO apply mgu to literals
+                // TODO reinclude other selected atoms in lits
+                return Ok(Clause(literals));
+            }
+        }
+    }
 
-//     Err(format!(
-//         "Factoring cannot be applied to clause {:?} with picked literal {:?}",
-//         C, selected
-//     ))
-// }
+    Err(format!(
+        "Factoring cannot be applied to clause {:?} with picked literal {:?}",
+        C, selected
+    ))
+}
 
-// pub fn eq_resolution(C: &SupFormula) -> Result<SupFormula, String> {
-//     let mut lits = unpack_literals(C)?.clone();
-//     let selected = Sup::select(&mut lits)?;
+pub fn eq_resolution(C: &SupFormula) -> Result<SupFormula, String> {
+    let mut lits = unpack_literals(C)?.clone();
+    let selected = Sup::select(&mut lits)?;
 
-//     match &selected {
-//         Not(boxed) => {
-//             if let Equality(l, r) = &**boxed {
-//                 // TODO support mgu check here
-//                 if Sup::base_term_equality(l, r).is_ok() {
-//                     return Ok(Clause(lits));
-//                 }
-//             }
-//         }
-//         _ => {}
-//     }
+    for selected_atom in selected.iter() {
+        match selected_atom {
+            Not(boxed) => {
+                if let Equality(l, r) = &**boxed {
+                    // TODO support mgu check here
+                    if Sup::base_term_equality(l, r).is_ok() {
+                        // TODO apply mgu to literals
+                        // TODO reinclude other selected atoms in lits
+                        return Ok(Clause(lits));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 
-//     Err(format!(
-//         "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
-//         C, selected
-//     ))
-// }
+    Err(format!(
+        "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
+        C, selected
+    ))
+}
 
-// pub fn eq_factoring(C: &SupFormula) -> Result<SupFormula, String> {
-//     let mut literals: Vec<SupFormula> = unpack_literals(C)?.clone();
-//     let selected = Sup::select(&mut literals)?[0].clone();
+/// macro that checks for equality factoring appliability. it assumes that the macro is called
+/// from a clause in the form s=t ∨ s_prime=t_prime ∨ rest, where rest is a vector of atoms.
+/// it works symmetrically on the first equality by computing max=max(s,t) and min=min(s,t);
+/// then checks that min < max, max = s_prime, min < t_prime
+macro_rules! eq_factoring_checks {
+    ($s:expr, $t:expr, $s_prime:expr, $t_prime:expr, $rest:expr) => {{
+        // TODO check s/t arent isomorphic
+        let max = max_by($s, $t, |a, b| Sup::compare_terms(a, b));
+        let min = min_by($s, $t, |a, b| Sup::compare_terms(a, b));
 
-//     if let Equality(s, t) = &selected {
-//         let min = min_by(s, t, |s, t| Sup::compare_terms(s, t));
-//         let max = max_by(s, t, |s, t| Sup::compare_terms(s, t));
+        // this bs of matching true is needed to not indent twice to check equality
+        // and ordering. cuz to check ordering you need to match the variant and if let
+        // definitions are "unstable" with multipled conditions
+        // match works better then if. only in rust
+        match (
+            Sup::base_term_equality(max, $s_prime).is_ok(),
+            Sup::compare_terms(min, $t_prime),
+        ) {
+            (true, Less) => {
+                $rest.push(Equality($s.to_owned(), $t.to_owned()));
+                $rest.push(Not(Box::new(Equality(
+                    min.to_owned(),
+                    $t.to_owned(),
+                ))));
+                return Ok(Clause($rest));
+            }
+            _ => {}
+        }
+    }};
+}
+pub fn eq_factoring(C: &SupFormula) -> Result<SupFormula, String> {
+    let mut literals: Vec<SupFormula> = unpack_literals(C)?.clone();
+    let selected = Sup::select(&mut literals)?;
 
-//         for lit in &literals {
-//             if let Equality(l, r) = lit {
-//                 if Sup::base_term_equality(max, l).is_ok() {
-//                     let mut new_literals = literals.clone();
-//                     new_literals.push(selected.clone());
-//                     new_literals
-//                         .push(Not(Box::new(Equality(min.clone(), r.clone()))));
-//                     return Ok(Clause(new_literals));
-//                 }
-//             }
-//         }
-//     }
+    for i in 0..selected.len() {
+        for j in i + 1..selected.len() {
+            match (&selected[i], &selected[j]) {
+                (Equality(l, r), Equality(s, t)) => {
+                    eq_factoring_checks!(l, r, s, t, literals);
+                    eq_factoring_checks!(l, r, t, s, literals);
+                    // try swapped roles of equalities
+                    eq_factoring_checks!(s, t, l, r, literals);
+                    eq_factoring_checks!(s, t, r, l, literals);
+                }
+                _ => {}
+            }
+        }
+    }
 
-//     Err(format!(
-//         "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
-//         C, selected
-//     ))
-// }
-// //########################### SUP INFERENCES
+    Err(format!(
+        "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
+        C, selected
+    ))
+}
+//########################### SUP INFERENCES
 
 #[cfg(test)]
 mod unit_tests {
