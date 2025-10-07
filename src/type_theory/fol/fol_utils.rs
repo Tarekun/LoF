@@ -19,26 +19,38 @@ use crate::{
 use std::fmt::{self};
 
 impl FolFormula {
-    pub fn to_string(&self) -> String {
+    pub fn custom_string(&self) -> String {
         match self {
             Predicate(name, args) => format!("{}({:?})", name, args),
-            Not(f) => format!("¬{}", f.to_string()),
-            Arrow(l, r) => format!("{} → {}", l.to_string(), r.to_string()),
+            Not(f) => format!("¬{}", f.custom_string()),
+            Arrow(l, r) => {
+                format!("{} → {}", l.custom_string(), r.custom_string())
+            }
             Conjunction(fs) => fs
                 .iter()
-                .map(|f| f.to_string())
+                .map(|f| f.custom_string())
                 .collect::<Vec<_>>()
                 .join("∧"),
             Disjunction(fs) => fs
                 .iter()
-                .map(|f| f.to_string())
+                .map(|f| f.custom_string())
                 .collect::<Vec<_>>()
                 .join("∨"),
             ForAll(var, ty, f) => {
-                format!("∀{}:{}. {}", var, ty.to_string(), f.to_string())
+                format!(
+                    "∀{}:{}. {}",
+                    var,
+                    ty.custom_string(),
+                    f.custom_string()
+                )
             }
             Exist(var, ty, f) => {
-                format!("∃{}:{}. {}", var, ty.to_string(), f.to_string())
+                format!(
+                    "∃{}:{}. {}",
+                    var,
+                    ty.custom_string(),
+                    f.custom_string()
+                )
             }
         }
     }
@@ -86,7 +98,7 @@ impl FolFormula {
 }
 impl fmt::Display for FolFormula {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.custom_string())
     }
 }
 impl fmt::Debug for FolFormula {
