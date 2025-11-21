@@ -4,7 +4,7 @@ use super::sup::{
     SupTerm::{self, Application, Variable},
 };
 use crate::type_theory::interface::{Automatic, TypeTheory};
-use std::cmp::Ordering::{self, Equal, Greater};
+use std::cmp::Ordering::{self, Equal, Greater, Less};
 
 /// Returns the ordered vector of formal argument types of nested universal quantification
 pub fn get_arg_types(forall: &SupFormula) -> Vec<SupFormula> {
@@ -82,10 +82,11 @@ pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
 
     // in case terms have the same weight
     match (term1, term2) {
-        (Variable(name1), Variable(name2)) => name1.cmp(name2),
-        (Variable(_), Application(_, _)) => Ordering::Less,
-        (Application(_, _), Variable(_)) => Ordering::Greater,
-        (Application(f1, args1), Application(f2, args2)) => {
+        (Variable(_), Variable(_)) => Equal,
+        // (Variable(name1), Variable(name2)) => name1.cmp(name2),
+        (Variable(_), Application(_, _)) => Less,
+        (Application(_, _), Variable(_)) => Greater,
+        (Application(_, args1), Application(_, args2)) => {
             match args1.len().cmp(&args2.len()) {
                 Ordering::Equal => {
                     for (argl, argr) in args1.iter().zip(args2.iter()) {
@@ -94,7 +95,8 @@ pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
                             non_eq => return non_eq,
                         }
                     }
-                    f1.cmp(f2)
+                    Equal
+                    // f1.cmp(f2)
                 }
                 non_eq => non_eq,
             }
@@ -103,7 +105,7 @@ pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
 }
 pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
     match (φ1, φ2) {
-        (Atom(p1, args1), Atom(p2, args2)) => {
+        (Atom(_, args1), Atom(_, args2)) => {
             match args1.len().cmp(&args2.len()) {
                 Equal => {
                     for (a1, a2) in args1.iter().zip(args2.iter()) {
@@ -112,7 +114,8 @@ pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
                             non_eq => return non_eq,
                         }
                     }
-                    p1.cmp(&p2)
+                    Equal
+                    // p1.cmp(&p2)
                 }
                 non_eq => non_eq,
             }
@@ -142,11 +145,13 @@ pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
             }
             Equal
         }
-        (ForAll(v1, _, body1), ForAll(v2, _, body2)) => {
-            match kbo_types(body1, body2) {
-                Equal => v1.cmp(v2),
-                non_eq => non_eq,
-            }
+        (ForAll(_, _, body1), ForAll(_, _, body2)) => {
+            kbo_types(body1, body2)
+            // TODO: revise this
+            // match kbo_types(body1, body2) {
+            //     Equal => v1.cmp(v2),
+            //     non_eq => non_eq,
+            // }
         }
 
         // order formulas by constructor kind if they are different
@@ -192,8 +197,11 @@ pub fn unpack_literals(C: &SupFormula) -> Result<&Vec<SupFormula>, String> {
 /// Given a list of literals of some clause, finds and removes all maximal literals
 /// by the use of SUP simplification ordering
 pub fn drop_maximal_literals(clause: &mut Vec<SupFormula>) -> Vec<SupFormula> {
-    let mut maximal = None;
+    if clause.len() == 0 {
+        return vec![];
+    }
 
+    let mut maximal = None;
     for literal in clause.iter() {
         match maximal.as_ref() {
             None => maximal = Some(literal.clone()),
@@ -444,6 +452,11 @@ mod tests {
         assert_eq!(
             kbo_types(&long, &short),
             Greater,
+            "Clause with less literals isnt strictly less than one with more"
+        );
+        assert_eq!(
+            kbo_types(&p, &q),
+            Equal,
             "Clause with less literals isnt strictly less than one with more"
         );
     }

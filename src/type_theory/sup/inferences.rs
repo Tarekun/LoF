@@ -127,6 +127,21 @@ pub fn subsumption_resolution_first(
 //########################### SIMPLIFICATION INFERENCES
 
 //########################### SUP INFERENCES
+macro_rules! resolution_inference {
+    ($atom:expr, $negation:expr) => {{
+        match $atom {
+            Atom(_, _) => {
+                if let Not(inner) = $negation {
+                    // TODO support mcu
+                    Sup::base_type_equality($atom, inner).is_ok()
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }};
+}
 #[allow(non_snake_case)]
 pub fn resolution(
     C: &SupFormula,
@@ -134,46 +149,29 @@ pub fn resolution(
 ) -> Result<SupFormula, String> {
     let mut c_literals = unpack_literals(C)?.clone();
     let mut d_literals = unpack_literals(D)?.clone();
-    let selected = Sup::select(&mut c_literals)?;
+    let mut c_selected = Sup::select(&mut c_literals)?;
+    let mut d_selected = Sup::select(&mut d_literals)?;
 
-    for selected_atom in selected.iter() {
-        match selected_atom {
-            Atom(_, _) => {
-                for i in 0..d_literals.len() {
-                    if let Not(inner) = &d_literals[i] {
-                        // TODO support mcu
-                        if Sup::base_type_equality(&selected_atom, inner)
-                            .is_ok()
-                        {
-                            d_literals.remove(i);
-                            c_literals.extend(d_literals);
-                            // TODO reinclude other selected atoms in lits
-                            return Ok(Clause(c_literals));
-                        }
-                    }
-                }
+    for i in 0..c_selected.len() {
+        for j in 0..d_selected.len() {
+            if resolution_inference!(&c_selected[i], &d_selected[j])
+                || resolution_inference!(&d_selected[j], &c_selected[i])
+            {
+                let mut new_clause = vec![];
+                c_selected.remove(i);
+                new_clause.extend(c_selected);
+                new_clause.extend(c_literals);
+                d_selected.remove(j);
+                new_clause.extend(d_selected);
+                new_clause.extend(d_literals);
+                return Ok(Clause(new_clause));
             }
-            Not(inner) => {
-                for i in 0..d_literals.len() {
-                    if let Atom(_, _) = d_literals[i] {
-                        // TODO support mcu
-                        if Sup::base_type_equality(inner, &d_literals[i])
-                            .is_ok()
-                        {
-                            d_literals.remove(i);
-                            c_literals.extend(d_literals);
-                            return Ok(Clause(c_literals));
-                        }
-                    }
-                }
-            }
-            _ => {}
         }
     }
 
     Err(format!(
-        "Resolution cannot be applied to clauses {:?}, {:?} with picked literals (from first) {:?}",
-        C, D, selected
+        "Resolution cannot be applied to clauses {:?}, {:?} with selected literals {:?}, {:?}",
+        C, D, c_selected, d_selected
     ))
 }
 
@@ -338,7 +336,7 @@ pub fn superposition(
 #[cfg(test)]
 mod unit_tests {
     use crate::type_theory::sup::inferences::{
-        demodulate_first, subsumption_resolution_first,
+        demodulate_first, resolution, subsumption_resolution_first,
     };
     use crate::type_theory::sup::sup::SupFormula::{
         Atom, Clause, Equality, Not,
@@ -383,6 +381,44 @@ mod unit_tests {
             ),
             Clause(extras.clone()),
             "Subsumption couldnt resolve clause containing a contradiction with with provided clause"
+        );
+    }
+
+    #[test]
+    fn test_resolution() {
+        let p = Atom("P".to_string(), vec![Variable("x".to_string())]);
+        let ligther = Atom("Q".to_string(), vec![]);
+        let heavier = Atom(
+            "R".to_string(),
+            vec![Variable("x".to_string()), Variable("y".to_string())],
+        );
+        let not_p = Not(Box::new(p.clone()));
+
+        assert_eq!(
+            resolution(&Clause(vec![p.clone()]), &Clause(vec![not_p.clone()])),
+            Ok(Clause(vec![])),
+            "Resolution doesnt derive empty clause from contraddictory literals"
+        );
+        assert_eq!(
+            resolution(
+                &Clause(vec![p.clone(), ligther.clone()]),
+                &Clause(vec![not_p.clone()])
+            ),
+            Ok(Clause(vec![ligther.clone()])),
+            "Resolution doesnt preserve unrelated literals from left clause"
+        );
+        assert_eq!(
+            resolution(
+                &Clause(vec![p.clone()]),
+                &Clause(vec![not_p.clone(), ligther.clone()])
+            ),
+            Ok(Clause(vec![ligther.clone()])),
+            "Resolution doesnt preserve unrelated literals from right clause"
+        );
+
+        assert!(
+            resolution(&Clause(vec![p.clone(), heavier.clone()]), &Clause(vec![not_p.clone()])).is_err(),
+            "Maximal literal according to KBO doesnt have a negation but resolution was applied regardless"
         );
     }
 }

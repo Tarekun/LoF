@@ -102,7 +102,7 @@ fn generating_inferences(kept: &Vec<SupFormula>) -> Vec<SupFormula> {
         }
 
         // binary inferences
-        for j in 1..kept.len() {
+        for j in i..kept.len() {
             if let Ok(derived) = resolution(&kept[i], &kept[j]) {
                 newly_derived.push(derived);
             }
