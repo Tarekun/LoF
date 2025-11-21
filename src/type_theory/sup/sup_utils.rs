@@ -215,6 +215,130 @@ pub fn drop_maximal_literals(clause: &mut Vec<SupFormula>) -> Vec<SupFormula> {
     maxes
 }
 
+/// Returns a new term identical to `term` where every occurance of `target` is
+/// substituted by `arg`
+pub fn substitute_term(
+    term: &SupTerm,
+    target: &SupTerm,
+    arg: &SupTerm,
+) -> SupTerm {
+    if Sup::base_term_equality(term, target).is_ok() {
+        return arg.to_owned();
+    }
+    match term {
+        Application(fun_name, fun_args) => Application(
+            fun_name.to_string(),
+            fun_args
+                .iter()
+                .map(|fun_arg| substitute_term(fun_arg, target, arg))
+                .collect(),
+        ),
+        // non-recursive cases didnt pass equality against `target` by now
+        _ => term.to_owned(),
+    }
+}
+/// Returns a new formula identical to `formula` where every occurance of `target` is
+/// substituted by `arg`
+pub fn substitute_formula(
+    formula: &SupFormula,
+    target: &SupTerm,
+    arg: &SupTerm,
+) -> SupFormula {
+    match formula {
+        Atom(pred_name, pred_args) => Atom(
+            pred_name.to_string(),
+            pred_args
+                .iter()
+                .map(|pred_arg| substitute_term(pred_arg, target, arg))
+                .collect(),
+        ),
+        Equality(l, r) => Equality(
+            substitute_term(l, target, arg),
+            substitute_term(r, target, arg),
+        ),
+        Not(sub) => Not(Box::new(substitute_formula(sub, target, arg))),
+        Clause(sub_formulas) => Clause(
+            sub_formulas
+                .iter()
+                .map(|lit| substitute_formula(lit, target, arg))
+                .collect(),
+        ),
+        ForAll(var_name, var_type, body) => ForAll(
+            var_name.to_string(),
+            Box::new(substitute_formula(var_type, target, arg)),
+            Box::new(substitute_formula(body, target, arg)),
+        ),
+    }
+}
+
+/// Returns a clone of the first subterm of `term` that can be unified with `target`.
+/// Terms&types are read left2right and binders are checked before bodies
+pub fn find_unifiable_term(
+    term: &SupTerm,
+    target: &SupTerm,
+) -> Option<SupTerm> {
+    // TODO: support actual unification
+    if Sup::base_term_equality(term, target).is_ok() {
+        return Some(term.clone());
+    }
+    match term {
+        Application(_, fun_args) => {
+            for arg in fun_args {
+                let rec_result = find_unifiable_term(arg, target);
+                if !rec_result.is_none() {
+                    return rec_result;
+                }
+            }
+            return None;
+        }
+        _ => return None,
+    }
+}
+/// Returns a clone of the first subterm of `formula` that can be unified with `target`.
+/// Terms&types are read left2right and binders are checked before bodies
+pub fn find_unifiable_formula(
+    formula: &SupFormula,
+    target: &SupTerm,
+) -> Option<SupTerm> {
+    match formula {
+        Atom(_, pred_args) => {
+            for arg in pred_args {
+                let rec_result = find_unifiable_term(arg, target);
+                if !rec_result.is_none() {
+                    return rec_result;
+                }
+            }
+            return None;
+        }
+        Equality(l, r) => {
+            let left_result = find_unifiable_term(l, target);
+            if left_result.is_some() {
+                return left_result;
+            } else {
+                return find_unifiable_term(r, target);
+            }
+        }
+        Not(sub) => find_unifiable_formula(sub, target),
+        Clause(sub_formulas) => {
+            for sub in sub_formulas {
+                let rec_result = find_unifiable_formula(sub, target);
+                if !rec_result.is_none() {
+                    return rec_result;
+                }
+            }
+            return None;
+        }
+        ForAll(_, var_type, body) => {
+            let type_result = find_unifiable_formula(var_type, target);
+            if type_result.is_some() {
+                return type_result;
+            } else {
+                return find_unifiable_formula(body, target);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::type_theory::sup::{

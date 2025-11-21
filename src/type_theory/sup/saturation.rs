@@ -1,7 +1,8 @@
 use super::sup::SupFormula::{self, Clause};
 use super::sup_utils::subsumes;
 use crate::type_theory::sup::inferences::{
-    demodulate_first, subsumption_resolution_first,
+    demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
+    subsumption_resolution_first, superposition,
 };
 use crate::type_theory::sup::sup_utils::is_tautology;
 
@@ -82,6 +83,38 @@ fn backward_simplification(
     simplified_kept
 }
 
+/// Applies superposition inferences to all currently kept formulas.
+/// Cost is quadrating in the size of working set of formulas, as for binary
+/// inference rules it compares every formula with every other formula ones
+fn generating_inferences(kept: &Vec<SupFormula>) -> Vec<SupFormula> {
+    let mut newly_derived = vec![];
+
+    for i in 0..kept.len() {
+        // unary inferences
+        if let Ok(derived) = factoring(&kept[i]) {
+            newly_derived.push(derived);
+        }
+        if let Ok(derived) = eq_resolution(&kept[i]) {
+            newly_derived.push(derived);
+        }
+        if let Ok(derived) = eq_factoring(&kept[i]) {
+            newly_derived.push(derived);
+        }
+
+        // binary inferences
+        for j in 1..kept.len() {
+            if let Ok(derived) = resolution(&kept[i], &kept[j]) {
+                newly_derived.push(derived);
+            }
+            if let Ok(derived) = superposition(&kept[i], &kept[j]) {
+                newly_derived.push(derived);
+            }
+        }
+    }
+
+    newly_derived
+}
+
 pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
@@ -95,12 +128,16 @@ pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
             termination!(clause, kept);
             let simplified = backward_simplification(&mut kept, &clause);
 
-            //these should subsume and drop some clauses in kept next cycle
             unprocessed.extend(simplified);
             kept.push(clause);
         }
 
-        // generating inferences into unprocessed
+        unprocessed = generating_inferences(&kept);
+        if unprocessed.len() == 0 {
+            return Err(
+                "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
+            );
+        }
     }
 }
 

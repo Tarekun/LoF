@@ -1,5 +1,7 @@
 use crate::type_theory::interface::{Automatic, TypeTheory};
-use crate::type_theory::sup::sup_utils::{subsumes, unpack_literals};
+use crate::type_theory::sup::sup_utils::{
+    find_unifiable_formula, substitute_formula, subsumes, unpack_literals,
+};
 use crate::{
     misc::simple_map,
     type_theory::sup::sup::{
@@ -125,6 +127,7 @@ pub fn subsumption_resolution_first(
 //########################### SIMPLIFICATION INFERENCES
 
 //########################### SUP INFERENCES
+#[allow(non_snake_case)]
 pub fn resolution(
     C: &SupFormula,
     D: &SupFormula,
@@ -174,6 +177,7 @@ pub fn resolution(
     ))
 }
 
+#[allow(non_snake_case)]
 pub fn factoring(C: &SupFormula) -> Result<SupFormula, String> {
     let lits = unpack_literals(C)?;
     let mut literals = lits.clone();
@@ -196,6 +200,7 @@ pub fn factoring(C: &SupFormula) -> Result<SupFormula, String> {
     ))
 }
 
+#[allow(non_snake_case)]
 pub fn eq_resolution(C: &SupFormula) -> Result<SupFormula, String> {
     let mut lits = unpack_literals(C)?.clone();
     let selected = Sup::select(&mut lits)?;
@@ -252,6 +257,7 @@ macro_rules! eq_factoring_checks {
         }
     }};
 }
+#[allow(non_snake_case)]
 pub fn eq_factoring(C: &SupFormula) -> Result<SupFormula, String> {
     let mut literals: Vec<SupFormula> = unpack_literals(C)?.clone();
     let selected = Sup::select(&mut literals)?;
@@ -274,6 +280,57 @@ pub fn eq_factoring(C: &SupFormula) -> Result<SupFormula, String> {
     Err(format!(
         "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
         C, selected
+    ))
+}
+
+macro_rules! sup_inference {
+    ($equality:expr, $other:expr) => {{
+        match $equality {
+            Equality(l, r) => {
+                // TODO: check `other` isnt an equality. in that case find_unifiable should only look in 1 term
+                let unifiable_term = find_unifiable_formula(&$other, &l);
+                let (unifiable_term, target) = if unifiable_term.is_some() {
+                    (unifiable_term, l)
+                } else {
+                    (find_unifiable_formula(&$other, &r), r)
+                };
+
+                if let Some(unifiable_term) = unifiable_term {
+                    let other =
+                        substitute_formula(&$other, &target, &unifiable_term);
+                    Ok(other)
+                } else {
+                    Err("Non unifiable".to_string())
+                }
+            }
+            _ => Err("Not equality".to_string()),
+        }
+    }};
+}
+#[allow(non_snake_case)]
+pub fn superposition(
+    C: &SupFormula,
+    D: &SupFormula,
+) -> Result<SupFormula, String> {
+    let mut c_literals = unpack_literals(C)?.clone();
+    let mut d_literals = unpack_literals(D)?.clone();
+    let c_selected = Sup::select(&mut c_literals)?;
+    let d_selected = Sup::select(&mut d_literals)?;
+
+    for c_lit in &c_selected {
+        for d_lit in &d_selected {
+            let first_try = sup_inference!(c_lit, d_lit);
+            if first_try.is_ok() {
+                return first_try;
+            } else {
+                return sup_inference!(d_lit, c_lit);
+            }
+        }
+    }
+
+    Err(format!(
+        "Superposition cannot be applied to clauses {:?}, {:?} with respective picked literals {:?}, {:?}",
+        C, D, c_selected, d_selected
     ))
 }
 //########################### SUP INFERENCES
