@@ -84,29 +84,39 @@ fn backward_simplification(
 }
 
 /// Applies superposition inferences to all currently kept formulas.
-/// Cost is quadrating in the size of working set of formulas, as for binary
-/// inference rules it compares every formula with every other formula ones
+/// Cost is quadratic in the size of working set of formulas, as for binary
+/// inference rules it compares every formula with every other formula once
 fn generating_inferences(kept: &Vec<SupFormula>) -> Vec<SupFormula> {
     let mut newly_derived = vec![];
 
     for i in 0..kept.len() {
+        println!("\ngenerating inference with {:?}", kept[i]);
         // unary inferences
         if let Ok(derived) = factoring(&kept[i]) {
+            println!("applied factoring");
             newly_derived.push(derived);
         }
         if let Ok(derived) = eq_resolution(&kept[i]) {
+            println!("applied eq_resolution");
             newly_derived.push(derived);
         }
         if let Ok(derived) = eq_factoring(&kept[i]) {
+            println!("applied eq_factoring");
             newly_derived.push(derived);
         }
 
         // binary inferences
-        for j in i..kept.len() {
+        for j in i + 1..kept.len() {
+            println!(
+                "binary generating inference with {:?} and {:?}",
+                kept[i], kept[j]
+            );
             if let Ok(derived) = resolution(&kept[i], &kept[j]) {
+                println!("applied resolution");
                 newly_derived.push(derived);
             }
             if let Ok(derived) = superposition(&kept[i], &kept[j]) {
+                println!("applied superposition");
                 newly_derived.push(derived);
             }
         }
@@ -121,23 +131,79 @@ pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
 
     loop {
         while !unprocessed.is_empty() {
+            println!(
+                "\nsimplification iteration, unprocessed is {:?}",
+                unprocessed
+            );
             let clause = pick_clause(&mut unprocessed)?;
+            println!("picked clause was {:?}", clause);
 
             termination!(clause, kept);
+            println!("passed termination test");
             let clause = forward_simplification(&kept, clause);
+            println!("picked clause after simplification {:?}", clause);
             termination!(clause, kept);
+            println!("passed termination test");
             let simplified = backward_simplification(&mut kept, &clause);
 
             unprocessed.extend(simplified);
             kept.push(clause);
         }
 
+        println!("finished simplification loop with kept {:?}", kept);
         unprocessed = generating_inferences(&kept);
+        println!("newly derived unprocessed {:?}", unprocessed);
         if unprocessed.len() == 0 {
             return Err(
                 "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use crate::type_theory::sup::{
+        saturation::saturate,
+        sup::SupFormula::{Atom, Clause, Not},
+    };
+
+    #[test]
+    fn test_simple_saturation() {
+        let a = Atom("A".to_string(), vec![]);
+        let b = Atom("B".to_string(), vec![]);
+
+        let non_contradiction = vec![
+            a.clone(),
+            // conclusion, trying to prove A |- A
+            Not(Box::new(a.clone())),
+        ];
+        assert!(
+            saturate(&non_contradiction).is_ok(),
+            "Saturation couldnt prove A ⊢ A"
+        );
+
+        let modus_ponens = vec![
+            Clause(vec![Not(Box::new(a.clone())), b.clone()]),
+            a.clone(),
+            // conclusion, trying to prove A=>B, A ⊢ B
+            Not(Box::new(b.clone())),
+        ];
+        assert!(
+            saturate(&modus_ponens).is_ok(),
+            "Saturation couldnt prove A=>B, A ⊢ B"
+        );
+
+        let modus_tollens = vec![
+            Clause(vec![Not(Box::new(a.clone())), b.clone()]),
+            Not(Box::new(b.clone())),
+            // trying to prove A=>B, ¬B ⊢ ¬A
+            a.clone(),
+        ];
+        assert!(
+            saturate(&modus_tollens).is_ok(),
+            "Saturation couldnt prove A=>B, ¬B ⊢ ¬A"
+        );
     }
 }
 

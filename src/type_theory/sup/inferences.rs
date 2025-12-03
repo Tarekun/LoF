@@ -147,8 +147,8 @@ pub fn resolution(
     C: &SupFormula,
     D: &SupFormula,
 ) -> Result<SupFormula, String> {
-    let mut c_literals = unpack_literals(C)?.clone();
-    let mut d_literals = unpack_literals(D)?.clone();
+    let mut c_literals = unpack_literals(C)?;
+    let mut d_literals = unpack_literals(D)?;
     let mut c_selected = Sup::select(&mut c_literals)?;
     let mut d_selected = Sup::select(&mut d_literals)?;
 
@@ -177,16 +177,17 @@ pub fn resolution(
 
 #[allow(non_snake_case)]
 pub fn factoring(C: &SupFormula) -> Result<SupFormula, String> {
-    let lits = unpack_literals(C)?;
-    let mut literals = lits.clone();
-    let selected = Sup::select(&mut literals)?;
+    let mut literals = unpack_literals(C)?;
+    let mut selected = Sup::select(&mut literals)?;
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
             // TODO support mgu check here
             if Sup::base_type_equality(&selected[i], &selected[j]).is_ok() {
+                // selected.remove(i);
+                selected.remove(j);
+                literals.extend(selected);
                 // TODO apply mgu to literals
-                // TODO reinclude other selected atoms in lits
                 return Ok(Clause(literals));
             }
         }
@@ -200,7 +201,7 @@ pub fn factoring(C: &SupFormula) -> Result<SupFormula, String> {
 
 #[allow(non_snake_case)]
 pub fn eq_resolution(C: &SupFormula) -> Result<SupFormula, String> {
-    let mut lits = unpack_literals(C)?.clone();
+    let mut lits = unpack_literals(C)?;
     let selected = Sup::select(&mut lits)?;
 
     for selected_atom in selected.iter() {
@@ -234,12 +235,17 @@ macro_rules! eq_factoring_checks {
         // TODO check s/t arent isomorphic
         let max = max_by($s, $t, |a, b| Sup::compare_terms(a, b));
         let min = min_by($s, $t, |a, b| Sup::compare_terms(a, b));
+        println!("alleged s {:?}", $s);
+        println!("alleged t {:?}", $t);
+        println!("alleged s_prime {:?}", $s_prime);
+        println!("alleged t_prime {:?}", $t_prime);
 
         // this bs of matching true is needed to not indent twice to check equality
         // and ordering. cuz to check ordering you need to match the variant and if let
         // definitions are "unstable" with multipled conditions
         // match works better then if. only in rust
         match (
+            // TODO: implement unification
             Sup::base_term_equality(max, $s_prime).is_ok(),
             Sup::compare_terms(min, $t_prime),
         ) {
@@ -257,18 +263,19 @@ macro_rules! eq_factoring_checks {
 }
 #[allow(non_snake_case)]
 pub fn eq_factoring(C: &SupFormula) -> Result<SupFormula, String> {
-    let mut literals: Vec<SupFormula> = unpack_literals(C)?.clone();
+    let mut literals: Vec<SupFormula> = unpack_literals(C)?;
     let selected = Sup::select(&mut literals)?;
+    println!("{:?}", selected);
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
             match (&selected[i], &selected[j]) {
-                (Equality(l, r), Equality(s, t)) => {
-                    eq_factoring_checks!(l, r, s, t, literals);
-                    eq_factoring_checks!(l, r, t, s, literals);
+                (Equality(s, t), Equality(s_prime, t_prime)) => {
+                    eq_factoring_checks!(s, t, s_prime, t_prime, literals);
+                    eq_factoring_checks!(s, t, t_prime, s_prime, literals);
                     // try swapped roles of equalities
-                    eq_factoring_checks!(s, t, l, r, literals);
-                    eq_factoring_checks!(s, t, r, l, literals);
+                    eq_factoring_checks!(s_prime, t_prime, s, t, literals);
+                    eq_factoring_checks!(s_prime, t_prime, t, s, literals);
                 }
                 _ => {}
             }
@@ -276,7 +283,7 @@ pub fn eq_factoring(C: &SupFormula) -> Result<SupFormula, String> {
     }
 
     Err(format!(
-        "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
+        "Equality factoring cannot be applied to clause {:?} with picked literal {:?}",
         C, selected
     ))
 }
@@ -310,8 +317,8 @@ pub fn superposition(
     C: &SupFormula,
     D: &SupFormula,
 ) -> Result<SupFormula, String> {
-    let mut c_literals = unpack_literals(C)?.clone();
-    let mut d_literals = unpack_literals(D)?.clone();
+    let mut c_literals = unpack_literals(C)?;
+    let mut d_literals = unpack_literals(D)?;
     let c_selected = Sup::select(&mut c_literals)?;
     let d_selected = Sup::select(&mut d_literals)?;
 
@@ -336,7 +343,8 @@ pub fn superposition(
 #[cfg(test)]
 mod unit_tests {
     use crate::type_theory::sup::inferences::{
-        demodulate_first, resolution, subsumption_resolution_first,
+        demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
+        subsumption_resolution_first,
     };
     use crate::type_theory::sup::sup::SupFormula::{
         Atom, Clause, Equality, Not,
@@ -421,4 +429,78 @@ mod unit_tests {
             "Maximal literal according to KBO doesnt have a negation but resolution was applied regardless"
         );
     }
+
+    #[test]
+    fn test_factoring() {
+        let p = Atom("P".to_string(), vec![]);
+        let q = Atom("Q".to_string(), vec![Variable("x".to_string())]);
+
+        assert_eq!(
+            factoring(&Clause(vec![q.clone(), q.clone()])),
+            Ok(Clause(vec![q.clone()])),
+            "Factoring rule didnt remove the duplicate predicate"
+        );
+        assert_eq!(
+            factoring(&Clause(vec![q.clone(), p.clone(), q.clone()])),
+            Ok(Clause(vec![p.clone(), q.clone()])),
+            "Factoring rule didnt keep the non selected predicate"
+        );
+        assert!(
+            factoring(&Clause(vec![p.clone(), q.clone()])).is_err(),
+            "Factoring rule applied with no unification available"
+        );
+    }
+
+    #[test]
+    fn test_eq_resolution() {
+        let s = Variable("x".to_string());
+        let t = Application("f".to_string(), vec![Variable("y".to_string())]);
+        let neq_ss = Not(Box::new(Equality(s.clone(), s.clone())));
+        let neq_st = Not(Box::new(Equality(s.clone(), t.clone())));
+        let p = Atom("P".to_string(), vec![]);
+
+        assert_eq!(
+            eq_resolution(&Clause(vec![neq_ss.clone()])),
+            Ok(Clause(vec![])),
+            "Equality resolution didnt simplify clause with difference of identical terms"
+        );
+        assert_eq!(
+            eq_resolution(&Clause(vec![neq_ss.clone(), p.clone()])),
+            Ok(Clause(vec![p.clone()])),
+            "Equality resolution doesnt preserve unprocessed terms"
+        );
+        assert!(
+            eq_resolution(&Clause(vec![neq_st.clone(), p.clone()])).is_err(),
+            "Equality resolution applied with no inconsistent unification available"
+        );
+    }
+
+    #[test]
+    fn test_eq_factoring() {
+        let unifiable = Application(
+            "s".to_string(),
+            vec![Variable("x".to_string()), Variable("y".to_string())],
+        );
+        let t = Application("t".to_string(), vec![Variable("x".to_string())]);
+        let t_prime = Application(
+            "t".to_string(),
+            vec![Variable("x".to_string()), Variable("y".to_string())],
+        );
+        // let rest = Atom("P".to_string(), vec![]);
+
+        assert_eq!(
+            eq_factoring(&Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Equality(unifiable.clone(), t_prime.clone()),
+            ])),
+            Ok(Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Not(Box::new(Equality(unifiable.clone(), t.clone()))),
+            ])),
+            ""
+        );
+    }
+
+    #[test]
+    fn test_superposition() {}
 }

@@ -96,7 +96,6 @@ pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
                         }
                     }
                     Equal
-                    // f1.cmp(f2)
                 }
                 non_eq => non_eq,
             }
@@ -184,13 +183,12 @@ pub fn subsumes(C: &SupFormula, D: &SupFormula) -> bool {
 }
 
 #[allow(non_snake_case)]
-/// Given a clause term, returns the vector of its literals.
-/// Does not treat literal variants as singleton clauses
-pub fn unpack_literals(C: &SupFormula) -> Result<&Vec<SupFormula>, String> {
+/// Given a clause formula, returns the vector of its literals.
+/// Treats literal variants as singleton clauses
+pub fn unpack_literals(C: &SupFormula) -> Result<Vec<SupFormula>, String> {
     match C {
-        Clause(literals) => Ok(literals),
-        // TODO should work with atoms too?
-        _ => Err(format!("Formula {:?} is not a clause with literals", C)),
+        Clause(literals) => Ok(literals.to_owned()),
+        _ => Ok(vec![C.clone()]),
     }
 }
 
