@@ -635,6 +635,5 @@ pub fn clausify(φ: &FolFormula) -> Result<Vec<SupFormula>, String> {
     let pnf = prenex_normal_form(&nnf);
     let skolemized = skolemize(&pnf);
     let cnf = conjunction_normal_form(&skolemized);
-    println!("constructed cnf: {}", cnf[0].to_string());
     clauses_to_sup(cnf)
 }

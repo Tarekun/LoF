@@ -95,35 +95,25 @@ fn generating_inferences(
     let mut newly_derived = vec![];
 
     for i in 0..kept.len() {
-        println!("\ngenerating inference with {:?}", kept[i]);
         // unary inferences
         if let Ok(derived) = factoring(&kept[i], &selection_fn) {
-            println!("applied factoring");
             newly_derived.push(derived);
         }
         if let Ok(derived) = eq_resolution(&kept[i], &selection_fn) {
-            println!("applied eq_resolution");
             newly_derived.push(derived);
         }
         if let Ok(derived) = eq_factoring(&kept[i], &selection_fn) {
-            println!("applied eq_factoring");
             newly_derived.push(derived);
         }
 
         // binary inferences
         for j in i + 1..kept.len() {
-            println!(
-                "binary generating inference with {:?} and {:?}",
-                kept[i], kept[j]
-            );
             if let Ok(derived) = resolution(&kept[i], &kept[j], &selection_fn) {
-                println!("applied resolution");
                 newly_derived.push(derived);
             }
             if let Ok(derived) =
                 superposition(&kept[i], &kept[j], &selection_fn)
             {
-                println!("applied superposition");
                 newly_derived.push(derived);
             }
         }
@@ -141,28 +131,18 @@ pub fn saturate(
 
     loop {
         while !unprocessed.is_empty() {
-            println!(
-                "\nsimplification iteration, unprocessed is {:?}",
-                unprocessed
-            );
             let clause = pick_clause(&mut unprocessed)?;
-            println!("picked clause was {:?}", clause);
 
             termination!(clause, kept);
-            println!("passed termination test");
             let clause = forward_simplification(&kept, clause);
-            println!("picked clause after simplification {:?}", clause);
             termination!(clause, kept);
-            println!("passed termination test");
             let simplified = backward_simplification(&mut kept, &clause);
 
             unprocessed.extend(simplified);
             kept.push(clause);
         }
 
-        println!("finished simplification loop with kept {:?}", kept);
         unprocessed = generating_inferences(&kept, &selection_fn);
-        println!("newly derived unprocessed {:?}", unprocessed);
         if unprocessed.len() == 0 {
             return Err(
                 "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()

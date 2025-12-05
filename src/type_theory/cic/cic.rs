@@ -254,7 +254,6 @@ impl Refiner for Cic {
     fn solve_unification(
         constraints: Vec<Constraint<Cic>>,
     ) -> Result<HashMap<i32, Self::Type>, String> {
-        println!("Running unification over {:?}", constraints);
         solve_unification(constraints)
     }
 
