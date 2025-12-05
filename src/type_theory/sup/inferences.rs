@@ -243,17 +243,6 @@ macro_rules! eq_factoring_checks {
         // TODO check s/t arent isomorphic
         let max = max_by($s, $t, |a, b| Sup::compare_terms(a, b));
         let min = min_by($s, $t, |a, b| Sup::compare_terms(a, b));
-        // println!("alleged s {:?}", $s);
-        // println!("alleged t {:?}", $t);
-        // println!("alleged s_prime {:?}", $s_prime);
-        // println!("alleged t_prime {:?}", $t_prime);
-        // println!("MAX of s/t {:?}", max);
-        // println!("MIN of s/t {:?}", min);
-        // println!("equality of unifiable: {}", Sup::base_term_equality(max, $s_prime).is_ok());
-        // println!("ordering of others {:?}", Sup::compare_terms(min, $t_prime));
-        // println!("Selected {:?}", $selected);
-        // println!("unelected {:?}", $unselected);
-        // println!("i={:?}  j={:?}", $i, $j);
 
         // this bs of matching true is needed to not indent twice to check equality
         // and ordering. cuz to check ordering you need to match the variant and if let
@@ -273,7 +262,6 @@ macro_rules! eq_factoring_checks {
                 $selected.remove($j);
                 $selected.remove($i);
 
-                println!("selected after remotion {:?}", $selected);
                 $unselected.extend($selected);
                 return Ok(Clause($unselected));
             }
@@ -288,7 +276,6 @@ pub fn eq_factoring(
 ) -> Result<SupFormula, String> {
     let mut literals: Vec<SupFormula> = unpack_literals(C)?;
     let mut selected = selection_fn(&mut literals)?;
-    println!("{:?}", selected);
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
@@ -319,30 +306,6 @@ pub fn eq_factoring(
     ))
 }
 
-macro_rules! sup_inference {
-    ($equality:expr, $other:expr) => {{
-        match $equality {
-            Equality(l, r) => {
-                // TODO: check `other` isnt an equality. in that case find_unifiable should only look in 1 term
-                let unifiable_term = find_unifiable_formula(&$other, &l);
-                let (unifiable_term, target) = if unifiable_term.is_some() {
-                    (unifiable_term, l)
-                } else {
-                    (find_unifiable_formula(&$other, &r), r)
-                };
-
-                if let Some(unifiable_term) = unifiable_term {
-                    let other =
-                        substitute_formula(&$other, &target, &unifiable_term);
-                    Ok(other)
-                } else {
-                    Err("Non unifiable".to_string())
-                }
-            }
-            _ => Err("Not equality".to_string()),
-        }
-    }};
-}
 #[allow(non_snake_case)]
 pub fn superposition(
     C: &SupFormula,
@@ -351,16 +314,54 @@ pub fn superposition(
 ) -> Result<SupFormula, String> {
     let mut c_literals = unpack_literals(C)?;
     let mut d_literals = unpack_literals(D)?;
-    let c_selected = selection_fn(&mut c_literals)?;
-    let d_selected = selection_fn(&mut d_literals)?;
+    let mut c_selected = selection_fn(&mut c_literals)?;
+    let mut d_selected = selection_fn(&mut d_literals)?;
 
-    for c_lit in &c_selected {
-        for d_lit in &d_selected {
-            let first_try = sup_inference!(c_lit, d_lit);
-            if first_try.is_ok() {
-                return first_try;
+    macro_rules! sup_inference {
+        ($l:expr, $r:expr, $other:expr, $i:expr, $j:expr) => {{
+            println!("l={:?}", $l);
+            println!("r={:?}", $r);
+            println!("other {:?}", $other);
+            // TODO: check `other` isnt an equality. in that case find_unifiable should only look in 1 term
+            let unifiable_term = find_unifiable_formula(&$other, $l);
+            println!("unifiable {:?}", unifiable_term);
+            let (unifiable_term, target, arg) = if unifiable_term.is_some() {
+                (unifiable_term, $l, $r)
             } else {
-                return sup_inference!(d_lit, c_lit);
+                (find_unifiable_formula(&$other, $r), $r, $l)
+            };
+            println!("unifiable {:?}", unifiable_term);
+            println!("is some? {:?}", unifiable_term.is_some());
+
+            if unifiable_term.is_some() {
+                println!("TRUE!");
+                let other =
+                    substitute_formula(&$other, &target, arg);
+                    println!("subst other {:?}", other);
+                let mut new_clause = vec![];
+                new_clause.push(other);
+                new_clause.extend(c_literals);
+                new_clause.extend(d_literals);
+                c_selected.remove($i);
+                new_clause.extend(c_selected);
+                d_selected.remove($j);
+                new_clause.extend(d_selected);
+                return Ok(Clause(new_clause));
+            }
+        }};
+    }
+
+    for i in 0..c_selected.len() {
+        for j in 0..d_selected.len() {
+            let c_lit = &c_selected[i];
+            let d_lit = &d_selected[j];
+            if let Equality(l, r) = c_lit {
+                sup_inference!(l, r, d_lit, i, j);
+                // sup_inference!(r, l, d_lit, i, j);
+            }
+            if let Equality(l, r) = d_lit {
+                sup_inference!(l, r, c_lit, i, j);
+                // sup_inference!(r, l, c_lit, i, j);
             }
         }
     }
@@ -377,7 +378,7 @@ mod unit_tests {
     use crate::config::SelectionFunction;
     use crate::type_theory::sup::inferences::{
         demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
-        subsumption_resolution_first,
+        subsumption_resolution_first, superposition,
     };
     use crate::type_theory::sup::sup::SupFormula::{
         Atom, Clause, Equality, Not,
@@ -642,5 +643,87 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_superposition() {}
+    fn test_superposition() {
+        let selection_fn = get_selection_fn(SelectionFunction::Maximal());
+        // unfiable corresponds to l and s in the vampire paper, not testing unification here
+        let unifiable =
+            Application("l".to_string(), vec![Variable("x".to_string())]);
+        // terms are constructed to enforce r < l and t' < t[s]
+        let r = Variable("r".to_string());
+        let t_prime = Variable("t_prime".to_string());
+        let t = Application("t".to_string(), vec![unifiable.clone()]);
+        let t_subst = Application("t".to_string(), vec![r.clone()]);
+        let p = Atom("L".to_string(), vec![unifiable.clone()]);
+        let p_subst = Atom("L".to_string(), vec![r.clone()]);
+        let q = Atom("Q".to_string(), vec![]);
+
+        assert_eq!(
+            superposition(
+                &Clause(vec![Equality(unifiable.clone(), r.clone())]),
+                &Clause(vec![p.clone()]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![p_subst.clone()])),
+            "Superposition isnt working with predicates"
+        );
+        assert_eq!(
+            superposition(
+                &Clause(vec![Equality(unifiable.clone(), r.clone())]),
+                &Clause(vec![Equality(t.clone(), t_prime.clone())]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![Equality(t_subst.clone(), t_prime.clone())])),
+            "Superposition isnt working with equalities"
+        );
+        assert_eq!(
+            superposition(
+                &Clause(vec![Equality(unifiable.clone(), r.clone())]),
+                &Clause(vec![Not(Box::new(Equality(
+                    t.clone(),
+                    t_prime.clone()
+                )))]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![Not(Box::new(Equality(
+                t_subst.clone(),
+                t_prime.clone()
+            )))])),
+            "Superposition isnt working with negated equalities"
+        );
+        assert_eq!(
+            superposition(
+                &Clause(vec![
+                    Equality(unifiable.clone(), r.clone()),
+                    Not(Box::new(q.clone()))
+                ]),
+                &Clause(vec![p.clone(), q.clone()]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![
+                p_subst.clone(),
+                Not(Box::new(q.clone())),
+                q.clone(),
+            ])),
+            "Superposition isnt preserving unralted literals"
+        );
+
+        assert_eq!(
+            superposition(
+                &Clause(vec![Equality(r.clone(), unifiable.clone())]),
+                &Clause(vec![p.clone()]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![p_subst.clone()])),
+            "Superposition is dependant on equality terms ordering"
+        );
+        assert_eq!(
+            superposition(
+                &Clause(vec![p.clone()]),
+                &Clause(vec![Equality(unifiable.clone(), r.clone())]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![p_subst.clone()])),
+            "Superposition is dependant on clause ordering"
+        );
+    }
 }
