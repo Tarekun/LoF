@@ -3,7 +3,10 @@ use super::sup::{
     SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
     SupTerm::{self, Application, Variable},
 };
-use crate::type_theory::interface::{Automatic, TypeTheory};
+use crate::{
+    config::SelectionFunction::{self, All, Maximal},
+    type_theory::interface::{Automatic, TypeTheory},
+};
 use std::cmp::Ordering::{self, Equal, Greater, Less};
 
 /// Returns the ordered vector of formal argument types of nested universal quantification
@@ -343,6 +346,28 @@ pub fn find_unifiable_formula(
             }
         }
     }
+}
+
+/// Selection function to select a non-empty set of *literals* from a `clause`.
+/// This function removes one literal from the input vector and returns it
+
+pub type SelectionFunctionSignature = Box<
+    dyn Fn(&mut Vec<SupFormula>) -> Result<Vec<SupFormula>, String>
+        + Send
+        + Sync,
+>;
+
+pub fn get_selection_fn(
+    selection_fn: SelectionFunction,
+) -> SelectionFunctionSignature {
+    Box::new(move |clause: &mut Vec<SupFormula>| match selection_fn {
+        Maximal() => Ok(drop_maximal_literals(clause)),
+        All() => {
+            let selected = clause.clone();
+            *clause = vec![];
+            Ok(selected)
+        }
+    })
 }
 
 #[cfg(test)]

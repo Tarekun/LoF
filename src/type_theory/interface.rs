@@ -234,12 +234,6 @@ pub trait Interactive: TypeTheory {
 /// Automatic module, implements automatic theorem proving via satisfaction
 /// of a set of formulas. Inspired by saturation algorithms on Sup
 pub trait Automatic: TypeTheory {
-    /// Selection function to select a non-empty set of *literals* from a `clause`.
-    /// This function removes one literal from the input vector and returns it
-    fn select(
-        literals: &mut Vec<Self::Type>,
-    ) -> Result<Vec<Self::Type>, String>;
-
     /// Simplification ordering over terms. Returns < 0 if t1 < t2,
     /// returns > 0 if t2 < t1, 0 otherwise
     fn compare_terms(term1: &Self::Term, term2: &Self::Term) -> Ordering;

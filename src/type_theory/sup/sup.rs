@@ -6,6 +6,7 @@ use super::{
     },
 };
 use crate::{
+    config::SelectionFunction,
     misc::Union::{self, L, R},
     runtime::program::Schedule,
     type_theory::{
@@ -17,7 +18,7 @@ use crate::{
                 SupFormula::{Atom, Clause, Equality, ForAll, Not},
                 SupTerm::{Application, Variable},
             },
-            sup_utils::{drop_maximal_literals, kbo_terms, kbo_types},
+            sup_utils::{get_selection_fn, kbo_terms, kbo_types},
         },
     },
 };
@@ -159,16 +160,9 @@ impl Automatic for Sup {
         kbo_types(type1, type2)
     }
 
-    fn select(clause: &mut Vec<SupFormula>) -> Result<Vec<SupFormula>, String> {
-        if clause.len() == 0 {
-            Err("Empty clause does not allow for selection of literals"
-                .to_string())
-        } else {
-            Ok(drop_maximal_literals(clause))
-        }
-    }
-
     fn saturate(saturation_set: &Vec<SupFormula>) -> Result<(), String> {
-        saturate(saturation_set)
+        // TODO properly configure this
+        let selection_fn = get_selection_fn(SelectionFunction::Maximal());
+        saturate(saturation_set, &selection_fn)
     }
 }

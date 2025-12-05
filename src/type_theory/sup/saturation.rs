@@ -4,7 +4,9 @@ use crate::type_theory::sup::inferences::{
     demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
     subsumption_resolution_first, superposition,
 };
-use crate::type_theory::sup::sup_utils::is_tautology;
+use crate::type_theory::sup::sup_utils::{
+    is_tautology, SelectionFunctionSignature,
+};
 
 /// Checks if a formula φ is the empty clause
 fn is_bottom(φ: &SupFormula) -> bool {
@@ -86,21 +88,24 @@ fn backward_simplification(
 /// Applies superposition inferences to all currently kept formulas.
 /// Cost is quadratic in the size of working set of formulas, as for binary
 /// inference rules it compares every formula with every other formula once
-fn generating_inferences(kept: &Vec<SupFormula>) -> Vec<SupFormula> {
+fn generating_inferences(
+    kept: &Vec<SupFormula>,
+    selection_fn: &SelectionFunctionSignature,
+) -> Vec<SupFormula> {
     let mut newly_derived = vec![];
 
     for i in 0..kept.len() {
         println!("\ngenerating inference with {:?}", kept[i]);
         // unary inferences
-        if let Ok(derived) = factoring(&kept[i]) {
+        if let Ok(derived) = factoring(&kept[i], &selection_fn) {
             println!("applied factoring");
             newly_derived.push(derived);
         }
-        if let Ok(derived) = eq_resolution(&kept[i]) {
+        if let Ok(derived) = eq_resolution(&kept[i], &selection_fn) {
             println!("applied eq_resolution");
             newly_derived.push(derived);
         }
-        if let Ok(derived) = eq_factoring(&kept[i]) {
+        if let Ok(derived) = eq_factoring(&kept[i], &selection_fn) {
             println!("applied eq_factoring");
             newly_derived.push(derived);
         }
@@ -111,11 +116,13 @@ fn generating_inferences(kept: &Vec<SupFormula>) -> Vec<SupFormula> {
                 "binary generating inference with {:?} and {:?}",
                 kept[i], kept[j]
             );
-            if let Ok(derived) = resolution(&kept[i], &kept[j]) {
+            if let Ok(derived) = resolution(&kept[i], &kept[j], &selection_fn) {
                 println!("applied resolution");
                 newly_derived.push(derived);
             }
-            if let Ok(derived) = superposition(&kept[i], &kept[j]) {
+            if let Ok(derived) =
+                superposition(&kept[i], &kept[j], &selection_fn)
+            {
                 println!("applied superposition");
                 newly_derived.push(derived);
             }
@@ -125,7 +132,10 @@ fn generating_inferences(kept: &Vec<SupFormula>) -> Vec<SupFormula> {
     newly_derived
 }
 
-pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
+pub fn saturate(
+    clauses: &Vec<SupFormula>,
+    selection_fn: &SelectionFunctionSignature,
+) -> Result<(), String> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
 
@@ -151,7 +161,7 @@ pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
         }
 
         println!("finished simplification loop with kept {:?}", kept);
-        unprocessed = generating_inferences(&kept);
+        unprocessed = generating_inferences(&kept, &selection_fn);
         println!("newly derived unprocessed {:?}", unprocessed);
         if unprocessed.len() == 0 {
             return Err(
@@ -163,13 +173,18 @@ pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
 
 #[cfg(test)]
 mod unit_tests {
-    use crate::type_theory::sup::{
-        saturation::saturate,
-        sup::SupFormula::{Atom, Clause, Not},
+    use crate::{
+        config::SelectionFunction,
+        type_theory::sup::{
+            saturation::saturate,
+            sup::SupFormula::{Atom, Clause, Not},
+            sup_utils::get_selection_fn,
+        },
     };
 
     #[test]
     fn test_simple_saturation() {
+        let selection_fn = get_selection_fn(SelectionFunction::All());
         let a = Atom("A".to_string(), vec![]);
         let b = Atom("B".to_string(), vec![]);
 
@@ -179,7 +194,7 @@ mod unit_tests {
             Not(Box::new(a.clone())),
         ];
         assert!(
-            saturate(&non_contradiction).is_ok(),
+            saturate(&non_contradiction, &selection_fn).is_ok(),
             "Saturation couldnt prove A ⊢ A"
         );
 
@@ -190,7 +205,7 @@ mod unit_tests {
             Not(Box::new(b.clone())),
         ];
         assert!(
-            saturate(&modus_ponens).is_ok(),
+            saturate(&modus_ponens, &selection_fn).is_ok(),
             "Saturation couldnt prove A=>B, A ⊢ B"
         );
 
@@ -201,7 +216,7 @@ mod unit_tests {
             a.clone(),
         ];
         assert!(
-            saturate(&modus_tollens).is_ok(),
+            saturate(&modus_tollens, &selection_fn).is_ok(),
             "Saturation couldnt prove A=>B, ¬B ⊢ ¬A"
         );
     }
