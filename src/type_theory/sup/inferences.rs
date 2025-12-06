@@ -1,65 +1,13 @@
 use crate::type_theory::interface::{Automatic, TypeTheory};
+use crate::type_theory::sup::sup::{
+    Sup,
+    SupFormula::{self, Atom, Clause, Equality, Not},
+};
 use crate::type_theory::sup::sup_utils::{
     find_unifiable_formula, substitute_formula, subsumes, unpack_literals,
     SelectionFunctionSignature,
 };
-use crate::{
-    misc::simple_map,
-    type_theory::sup::sup::{
-        Sup,
-        SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
-        SupTerm::{self, Application, Variable},
-    },
-};
 use std::cmp::{max_by, min_by, Ordering::Less};
-
-fn substitute_term_in_term(
-    base: &SupTerm,
-    target: &SupTerm,
-    body: &SupTerm,
-) -> SupTerm {
-    // TODO if this is for demodulation this should check for alpha equivalence
-    // and return body with the mgu applied
-    if Sup::base_term_equality(base, target).is_ok() {
-        return body.to_owned();
-    }
-    match base {
-        Application(fun_name, args) => Application(
-            fun_name.to_string(),
-            simple_map(args.to_owned(), |arg| {
-                substitute_term_in_term(&arg, target, body)
-            }),
-        ),
-        Variable(_) => base.to_owned(),
-    }
-}
-fn substitute_term_in_type(
-    base: &SupFormula,
-    target: &SupTerm,
-    body: &SupTerm,
-) -> SupFormula {
-    match base {
-        Atom(name, args) => Atom(
-            name.to_string(),
-            simple_map(args.to_owned(), |arg| {
-                substitute_term_in_term(&arg, target, body)
-            }),
-        ),
-        Equality(l, r) => Equality(
-            substitute_term_in_term(&l, target, body),
-            substitute_term_in_term(&r, target, body),
-        ),
-        Not(phi) => Not(Box::new(substitute_term_in_type(phi, target, body))),
-        ForAll(var_name, var_type, predicate) => ForAll(
-            var_name.to_string(),
-            Box::new(substitute_term_in_type(var_type, target, body)),
-            Box::new(substitute_term_in_type(predicate, target, body)),
-        ),
-        Clause(lits) => Clause(simple_map(lits.to_owned(), |lit| {
-            substitute_term_in_type(&lit, target, body)
-        })),
-    }
-}
 
 //########################### SIMPLIFICATION INFERENCES
 #[allow(non_snake_case)]
@@ -72,7 +20,7 @@ pub fn demodulate_first(C: &SupFormula, D: &SupFormula) -> SupFormula {
         let max = max_by(l, r, |l, r| Sup::compare_terms(l, r));
 
         // TODO also support mgu
-        substitute_term_in_type(C, max, min)
+        substitute_formula(C, max, min)
     } else {
         C.to_owned()
     }
@@ -189,7 +137,6 @@ pub fn factoring(
         for j in i + 1..selected.len() {
             // TODO support mgu check here
             if Sup::base_type_equality(&selected[i], &selected[j]).is_ok() {
-                // selected.remove(i);
                 selected.remove(j);
                 literals.extend(selected);
                 // TODO apply mgu to literals
@@ -210,16 +157,18 @@ pub fn eq_resolution(
     selection_fn: &SelectionFunctionSignature,
 ) -> Result<SupFormula, String> {
     let mut lits = unpack_literals(C)?;
-    let selected = selection_fn(&mut lits)?;
+    let mut selected = selection_fn(&mut lits)?;
 
-    for selected_atom in selected.iter() {
-        match selected_atom {
+    for i in 0..selected.len() {
+        match &selected[i] {
             Not(boxed) => {
                 if let Equality(l, r) = &**boxed {
                     // TODO support mgu check here
                     if Sup::base_term_equality(l, r).is_ok() {
                         // TODO apply mgu to literals
                         // TODO reinclude other selected atoms in lits
+                        selected.remove(i);
+                        lits.extend(selected);
                         return Ok(Clause(lits));
                     }
                 }
@@ -319,25 +268,17 @@ pub fn superposition(
 
     macro_rules! sup_inference {
         ($l:expr, $r:expr, $other:expr, $i:expr, $j:expr) => {{
-            println!("l={:?}", $l);
-            println!("r={:?}", $r);
-            println!("other {:?}", $other);
             // TODO: check `other` isnt an equality. in that case find_unifiable should only look in 1 term
             let unifiable_term = find_unifiable_formula(&$other, $l);
-            println!("unifiable {:?}", unifiable_term);
             let (unifiable_term, target, arg) = if unifiable_term.is_some() {
                 (unifiable_term, $l, $r)
             } else {
                 (find_unifiable_formula(&$other, $r), $r, $l)
             };
-            println!("unifiable {:?}", unifiable_term);
-            println!("is some? {:?}", unifiable_term.is_some());
 
             if unifiable_term.is_some() {
-                println!("TRUE!");
                 let other =
                     substitute_formula(&$other, &target, arg);
-                    println!("subst other {:?}", other);
                 let mut new_clause = vec![];
                 new_clause.push(other);
                 new_clause.extend(c_literals);
@@ -357,11 +298,9 @@ pub fn superposition(
             let d_lit = &d_selected[j];
             if let Equality(l, r) = c_lit {
                 sup_inference!(l, r, d_lit, i, j);
-                // sup_inference!(r, l, d_lit, i, j);
             }
             if let Equality(l, r) = d_lit {
                 sup_inference!(l, r, c_lit, i, j);
-                // sup_inference!(r, l, c_lit, i, j);
             }
         }
     }
@@ -429,7 +368,7 @@ mod unit_tests {
 
     #[test]
     fn test_resolution() {
-        let selection_fn = get_selection_fn(SelectionFunction::Maximal());
+        let selection_fn = get_selection_fn(SelectionFunction::All());
         let p = Atom("P".to_string(), vec![Variable("x".to_string())]);
         let ligther = Atom("Q".to_string(), vec![]);
         let heavier = Atom(
@@ -462,15 +401,16 @@ mod unit_tests {
             "Resolution doesnt preserve unrelated literals from right clause"
         );
 
+        let maximal_selection = get_selection_fn(SelectionFunction::Maximal());
         assert!(
-            resolution(&Clause(vec![p.clone(), heavier.clone()]), &Clause(vec![not_p.clone()]), &selection_fn).is_err(),
+            resolution(&Clause(vec![p.clone(), heavier.clone()]), &Clause(vec![not_p.clone()]), &maximal_selection).is_err(),
             "Maximal literal according to KBO doesnt have a negation but resolution was applied regardless"
         );
     }
 
     #[test]
     fn test_factoring() {
-        let selection_fn = get_selection_fn(SelectionFunction::Maximal());
+        let selection_fn = get_selection_fn(SelectionFunction::All());
         let p = Atom("P".to_string(), vec![]);
         let q = Atom("Q".to_string(), vec![Variable("x".to_string())]);
 
@@ -484,7 +424,7 @@ mod unit_tests {
                 &Clause(vec![q.clone(), p.clone(), q.clone()]),
                 &selection_fn
             ),
-            Ok(Clause(vec![p.clone(), q.clone()])),
+            Ok(Clause(vec![q.clone(), p.clone()])),
             "Factoring rule didnt keep the non selected predicate"
         );
         assert!(
@@ -496,7 +436,7 @@ mod unit_tests {
 
     #[test]
     fn test_eq_resolution() {
-        let selection_fn = get_selection_fn(SelectionFunction::Maximal());
+        let selection_fn = get_selection_fn(SelectionFunction::All());
         let s = Variable("x".to_string());
         let t = Application("f".to_string(), vec![Variable("y".to_string())]);
         let neq_ss = Not(Box::new(Equality(s.clone(), s.clone())));
@@ -644,7 +584,7 @@ mod unit_tests {
 
     #[test]
     fn test_superposition() {
-        let selection_fn = get_selection_fn(SelectionFunction::Maximal());
+        let selection_fn = get_selection_fn(SelectionFunction::All());
         // unfiable corresponds to l and s in the vampire paper, not testing unification here
         let unifiable =
             Application("l".to_string(), vec![Variable("x".to_string())]);

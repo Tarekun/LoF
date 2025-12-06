@@ -68,7 +68,8 @@ pub fn is_tautology(φ: &SupFormula) -> bool {
     }
 }
 
-/// Implements standard Knuth-Bendix ordering of terms
+/// Implements standard Knuth-Bendix ordering of terms. Ordering ties are not
+/// broken using the internal names, so ex. `Variable`s are all isomorphic
 pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
     fn weight(term: &SupTerm) -> i32 {
         match term {
@@ -86,7 +87,6 @@ pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
     // in case terms have the same weight
     match (term1, term2) {
         (Variable(_), Variable(_)) => Equal,
-        // (Variable(name1), Variable(name2)) => name1.cmp(name2),
         (Variable(_), Application(_, _)) => Less,
         (Application(_, _), Variable(_)) => Greater,
         (Application(_, args1), Application(_, args2)) => {
@@ -117,7 +117,6 @@ pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
                         }
                     }
                     Equal
-                    // p1.cmp(&p2)
                 }
                 non_eq => non_eq,
             }
@@ -148,12 +147,8 @@ pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
             Equal
         }
         (ForAll(_, _, body1), ForAll(_, _, body2)) => {
-            kbo_types(body1, body2)
             // TODO: revise this
-            // match kbo_types(body1, body2) {
-            //     Equal => v1.cmp(v2),
-            //     non_eq => non_eq,
-            // }
+            kbo_types(body1, body2)
         }
 
         // order formulas by constructor kind if they are different
@@ -350,7 +345,6 @@ pub fn find_unifiable_formula(
 
 /// Selection function to select a non-empty set of *literals* from a `clause`.
 /// This function removes one literal from the input vector and returns it
-
 pub type SelectionFunctionSignature = Box<
     dyn Fn(&mut Vec<SupFormula>) -> Result<Vec<SupFormula>, String>
         + Send
