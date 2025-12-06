@@ -3,8 +3,11 @@ use super::sup::{
     SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
     SupTerm::{self, Application, Variable},
 };
-use crate::type_theory::interface::TypeTheory;
-use std::cmp::Ordering::{self, Equal};
+use crate::{
+    config::SelectionFunction::{self, All, Maximal},
+    type_theory::interface::{Automatic, TypeTheory},
+};
+use std::cmp::Ordering::{self, Equal, Greater, Less};
 
 /// Returns the ordered vector of formal argument types of nested universal quantification
 pub fn get_arg_types(forall: &SupFormula) -> Vec<SupFormula> {
@@ -65,7 +68,8 @@ pub fn is_tautology(φ: &SupFormula) -> bool {
     }
 }
 
-/// Implements standard Knuth-Bendix ordering of terms
+/// Implements standard Knuth-Bendix ordering of terms. Ordering ties are not
+/// broken using the internal names, so ex. `Variable`s are all isomorphic
 pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
     fn weight(term: &SupTerm) -> i32 {
         match term {
@@ -82,10 +86,10 @@ pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
 
     // in case terms have the same weight
     match (term1, term2) {
-        (Variable(name1), Variable(name2)) => name1.cmp(name2),
-        (Variable(_), Application(_, _)) => Ordering::Less,
-        (Application(_, _), Variable(_)) => Ordering::Greater,
-        (Application(f1, args1), Application(f2, args2)) => {
+        (Variable(_), Variable(_)) => Equal,
+        (Variable(_), Application(_, _)) => Less,
+        (Application(_, _), Variable(_)) => Greater,
+        (Application(_, args1), Application(_, args2)) => {
             match args1.len().cmp(&args2.len()) {
                 Ordering::Equal => {
                     for (argl, argr) in args1.iter().zip(args2.iter()) {
@@ -94,7 +98,7 @@ pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
                             non_eq => return non_eq,
                         }
                     }
-                    f1.cmp(f2)
+                    Equal
                 }
                 non_eq => non_eq,
             }
@@ -103,7 +107,7 @@ pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
 }
 pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
     match (φ1, φ2) {
-        (Atom(p1, args1), Atom(p2, args2)) => {
+        (Atom(_, args1), Atom(_, args2)) => {
             match args1.len().cmp(&args2.len()) {
                 Equal => {
                     for (a1, a2) in args1.iter().zip(args2.iter()) {
@@ -112,7 +116,7 @@ pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
                             non_eq => return non_eq,
                         }
                     }
-                    p1.cmp(&p2)
+                    Equal
                 }
                 non_eq => non_eq,
             }
@@ -142,11 +146,9 @@ pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
             }
             Equal
         }
-        (ForAll(v1, _, body1), ForAll(v2, _, body2)) => {
-            match kbo_types(body1, body2) {
-                Equal => v1.cmp(v2),
-                non_eq => non_eq,
-            }
+        (ForAll(_, _, body1), ForAll(_, _, body2)) => {
+            // TODO: revise this
+            kbo_types(body1, body2)
         }
 
         // order formulas by constructor kind if they are different
@@ -178,6 +180,190 @@ pub fn subsumes(C: &SupFormula, D: &SupFormula) -> bool {
     })
 }
 
+#[allow(non_snake_case)]
+/// Given a clause formula, returns the vector of its literals.
+/// Treats literal variants as singleton clauses
+pub fn unpack_literals(C: &SupFormula) -> Result<Vec<SupFormula>, String> {
+    match C {
+        Clause(literals) => Ok(literals.to_owned()),
+        _ => Ok(vec![C.clone()]),
+    }
+}
+
+/// Given a list of literals of some clause, finds and removes all maximal literals
+/// by the use of SUP simplification ordering
+pub fn drop_maximal_literals(clause: &mut Vec<SupFormula>) -> Vec<SupFormula> {
+    if clause.len() == 0 {
+        return vec![];
+    }
+
+    let mut maximal = None;
+    for literal in clause.iter() {
+        match maximal.as_ref() {
+            None => maximal = Some(literal.clone()),
+            Some(current_max)
+                if Sup::compare_types(literal, current_max) == Greater =>
+            {
+                maximal = Some(literal.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let maximal_formula = maximal.unwrap();
+    let (maxes, rest): (Vec<_>, Vec<_>) = clause
+        .drain(..)
+        .partition(|f| Sup::compare_types(f, &maximal_formula) == Equal);
+    *clause = rest;
+
+    maxes
+}
+
+/// Returns a new term identical to `term` where every occurance of `target` is
+/// substituted by `arg`
+pub fn substitute_term(
+    term: &SupTerm,
+    target: &SupTerm,
+    arg: &SupTerm,
+) -> SupTerm {
+    if Sup::base_term_equality(term, target).is_ok() {
+        return arg.to_owned();
+    }
+    match term {
+        Application(fun_name, fun_args) => Application(
+            fun_name.to_string(),
+            fun_args
+                .iter()
+                .map(|fun_arg| substitute_term(fun_arg, target, arg))
+                .collect(),
+        ),
+        // non-recursive cases didnt pass equality against `target` by now
+        _ => term.to_owned(),
+    }
+}
+/// Returns a new formula identical to `formula` where every occurance of `target` is
+/// substituted by `arg`
+pub fn substitute_formula(
+    formula: &SupFormula,
+    target: &SupTerm,
+    arg: &SupTerm,
+) -> SupFormula {
+    match formula {
+        Atom(pred_name, pred_args) => Atom(
+            pred_name.to_string(),
+            pred_args
+                .iter()
+                .map(|pred_arg| substitute_term(pred_arg, target, arg))
+                .collect(),
+        ),
+        Equality(l, r) => Equality(
+            substitute_term(l, target, arg),
+            substitute_term(r, target, arg),
+        ),
+        Not(sub) => Not(Box::new(substitute_formula(sub, target, arg))),
+        Clause(sub_formulas) => Clause(
+            sub_formulas
+                .iter()
+                .map(|lit| substitute_formula(lit, target, arg))
+                .collect(),
+        ),
+        ForAll(var_name, var_type, body) => ForAll(
+            var_name.to_string(),
+            Box::new(substitute_formula(var_type, target, arg)),
+            Box::new(substitute_formula(body, target, arg)),
+        ),
+    }
+}
+
+/// Returns a clone of the first subterm of `term` that can be unified with `target`.
+/// Terms&types are read left2right and binders are checked before bodies
+pub fn find_unifiable_term(
+    term: &SupTerm,
+    target: &SupTerm,
+) -> Option<SupTerm> {
+    // TODO: support actual unification
+    if Sup::base_term_equality(term, target).is_ok() {
+        return Some(term.clone());
+    }
+    match term {
+        Application(_, fun_args) => {
+            for arg in fun_args {
+                let rec_result = find_unifiable_term(arg, target);
+                if !rec_result.is_none() {
+                    return rec_result;
+                }
+            }
+            return None;
+        }
+        _ => return None,
+    }
+}
+/// Returns a clone of the first subterm of `formula` that can be unified with `target`.
+/// Terms&types are read left2right and binders are checked before bodies
+pub fn find_unifiable_formula(
+    formula: &SupFormula,
+    target: &SupTerm,
+) -> Option<SupTerm> {
+    match formula {
+        Atom(_, pred_args) => {
+            for arg in pred_args {
+                let rec_result = find_unifiable_term(arg, target);
+                if !rec_result.is_none() {
+                    return rec_result;
+                }
+            }
+            return None;
+        }
+        Equality(l, r) => {
+            let left_result = find_unifiable_term(l, target);
+            if left_result.is_some() {
+                return left_result;
+            } else {
+                return find_unifiable_term(r, target);
+            }
+        }
+        Not(sub) => find_unifiable_formula(sub, target),
+        Clause(sub_formulas) => {
+            for sub in sub_formulas {
+                let rec_result = find_unifiable_formula(sub, target);
+                if !rec_result.is_none() {
+                    return rec_result;
+                }
+            }
+            return None;
+        }
+        ForAll(_, var_type, body) => {
+            let type_result = find_unifiable_formula(var_type, target);
+            if type_result.is_some() {
+                return type_result;
+            } else {
+                return find_unifiable_formula(body, target);
+            }
+        }
+    }
+}
+
+/// Selection function to select a non-empty set of *literals* from a `clause`.
+/// This function removes one literal from the input vector and returns it
+pub type SelectionFunctionSignature = Box<
+    dyn Fn(&mut Vec<SupFormula>) -> Result<Vec<SupFormula>, String>
+        + Send
+        + Sync,
+>;
+
+pub fn get_selection_fn(
+    selection_fn: SelectionFunction,
+) -> SelectionFunctionSignature {
+    Box::new(move |clause: &mut Vec<SupFormula>| match selection_fn {
+        Maximal() => Ok(drop_maximal_literals(clause)),
+        All() => {
+            let selected = clause.clone();
+            *clause = vec![];
+            Ok(selected)
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use crate::type_theory::sup::{
@@ -185,7 +371,9 @@ mod tests {
             SupFormula::{Atom, Clause, Equality, Not},
             SupTerm::{Application, Variable},
         },
-        sup_utils::{is_tautology, kbo_terms, kbo_types, subsumes},
+        sup_utils::{
+            drop_maximal_literals, is_tautology, kbo_terms, kbo_types, subsumes,
+        },
     };
     use std::cmp::Ordering::{Equal, Greater, Less};
 
@@ -282,6 +470,46 @@ mod tests {
             kbo_types(&long, &short),
             Greater,
             "Clause with less literals isnt strictly less than one with more"
+        );
+        assert_eq!(
+            kbo_types(&p, &q),
+            Equal,
+            "Clause with less literals isnt strictly less than one with more"
+        );
+    }
+
+    #[test]
+    fn test_maximal_literal_selection() {
+        let constant_atom = Atom("P".to_string(), vec![]);
+        let negated = Not(Box::new(constant_atom.clone()));
+        let negated_renamed = Not(Box::new(Atom("Q".to_string(), vec![])));
+
+        let mut test = vec![constant_atom.clone(), negated.clone()];
+        assert_eq!(
+            drop_maximal_literals(&mut test),
+            vec![negated.clone()],
+            "Maximal literal selection didnt pick the negated between 2 atoms"
+        );
+        assert_eq!(
+            test,
+            vec![constant_atom.clone()],
+            "Maximal literal selection didnt remove the selected literal from input"
+        );
+
+        assert_eq!(
+            drop_maximal_literals(&mut vec![
+                constant_atom.clone(),
+                negated.clone(),
+                negated_renamed.clone()
+            ]),
+            vec![negated.clone(), negated_renamed.clone()],
+            "Maximal literal selection didnt remove all maximal literals"
+        );
+
+        assert_eq!(
+            drop_maximal_literals(&mut vec![]),
+            vec![],
+            "Maximal literal selection isnt working with empty clause"
         );
     }
 }

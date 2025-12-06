@@ -1,9 +1,12 @@
 use super::sup::SupFormula::{self, Clause};
 use super::sup_utils::subsumes;
 use crate::type_theory::sup::inferences::{
-    demodulate_first, subsumption_resolution_first,
+    demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
+    subsumption_resolution_first, superposition,
 };
-use crate::type_theory::sup::sup_utils::is_tautology;
+use crate::type_theory::sup::sup_utils::{
+    is_tautology, SelectionFunctionSignature,
+};
 
 /// Checks if a formula φ is the empty clause
 fn is_bottom(φ: &SupFormula) -> bool {
@@ -82,7 +85,47 @@ fn backward_simplification(
     simplified_kept
 }
 
-pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
+/// Applies superposition inferences to all currently kept formulas.
+/// Cost is quadratic in the size of working set of formulas, as for binary
+/// inference rules it compares every formula with every other formula once
+fn generating_inferences(
+    kept: &Vec<SupFormula>,
+    selection_fn: &SelectionFunctionSignature,
+) -> Vec<SupFormula> {
+    let mut newly_derived = vec![];
+
+    for i in 0..kept.len() {
+        // unary inferences
+        if let Ok(derived) = factoring(&kept[i], &selection_fn) {
+            newly_derived.push(derived);
+        }
+        if let Ok(derived) = eq_resolution(&kept[i], &selection_fn) {
+            newly_derived.push(derived);
+        }
+        if let Ok(derived) = eq_factoring(&kept[i], &selection_fn) {
+            newly_derived.push(derived);
+        }
+
+        // binary inferences
+        for j in i + 1..kept.len() {
+            if let Ok(derived) = resolution(&kept[i], &kept[j], &selection_fn) {
+                newly_derived.push(derived);
+            }
+            if let Ok(derived) =
+                superposition(&kept[i], &kept[j], &selection_fn)
+            {
+                newly_derived.push(derived);
+            }
+        }
+    }
+
+    newly_derived
+}
+
+pub fn saturate(
+    clauses: &Vec<SupFormula>,
+    selection_fn: &SelectionFunctionSignature,
+) -> Result<(), String> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
 
@@ -95,12 +138,67 @@ pub fn saturate(clauses: &Vec<SupFormula>) -> Result<(), String> {
             termination!(clause, kept);
             let simplified = backward_simplification(&mut kept, &clause);
 
-            //these should subsume and drop some clauses in kept next cycle
             unprocessed.extend(simplified);
             kept.push(clause);
         }
 
-        // generating inferences into unprocessed
+        unprocessed = generating_inferences(&kept, &selection_fn);
+        if unprocessed.len() == 0 {
+            return Err(
+                "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use crate::{
+        config::SelectionFunction,
+        type_theory::sup::{
+            saturation::saturate,
+            sup::SupFormula::{Atom, Clause, Not},
+            sup_utils::get_selection_fn,
+        },
+    };
+
+    #[test]
+    fn test_simple_saturation() {
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let a = Atom("A".to_string(), vec![]);
+        let b = Atom("B".to_string(), vec![]);
+
+        let non_contradiction = vec![
+            a.clone(),
+            // conclusion, trying to prove A |- A
+            Not(Box::new(a.clone())),
+        ];
+        assert!(
+            saturate(&non_contradiction, &selection_fn).is_ok(),
+            "Saturation couldnt prove A ⊢ A"
+        );
+
+        let modus_ponens = vec![
+            Clause(vec![Not(Box::new(a.clone())), b.clone()]),
+            a.clone(),
+            // conclusion, trying to prove A=>B, A ⊢ B
+            Not(Box::new(b.clone())),
+        ];
+        assert!(
+            saturate(&modus_ponens, &selection_fn).is_ok(),
+            "Saturation couldnt prove A=>B, A ⊢ B"
+        );
+
+        let modus_tollens = vec![
+            Clause(vec![Not(Box::new(a.clone())), b.clone()]),
+            Not(Box::new(b.clone())),
+            // trying to prove A=>B, ¬B ⊢ ¬A
+            a.clone(),
+        ];
+        assert!(
+            saturate(&modus_tollens, &selection_fn).is_ok(),
+            "Saturation couldnt prove A=>B, ¬B ⊢ ¬A"
+        );
     }
 }
 

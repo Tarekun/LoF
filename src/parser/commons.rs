@@ -94,19 +94,14 @@ impl LofParser {
         &self,
         input: &'a str,
     ) -> IResult<&'a str, (String, Option<Expression>)> {
-        // println!("inizio di parse_optionally_typed_identifier");
         let (input, identifier) =
             preceded(multispace0, |input| self.parse_identifier(input))(input)?;
-        // println!("post parsing dell'identifier");
-        // println!("parsed: {}", identifier);
-        // println!("remaining: {}", input);
 
         let (input, opt_type) = opt(preceded(
             multispace0,
             preceded(
                 tag(":"),
                 preceded(multispace0, |input| {
-                    // println!("post il preceding tag(':') con input {}", input);
                     self.parse_type_expression(input)
                 }),
             ),

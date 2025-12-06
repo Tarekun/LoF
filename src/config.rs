@@ -5,25 +5,28 @@ pub enum TypeSystem {
     Cic(),
     Fol(),
 }
+#[derive(Debug, Clone)]
+pub enum SelectionFunction {
+    Maximal(),
+    All(),
+}
 
 pub fn id_to_system(system_id: &str) -> Result<TypeSystem, String> {
-    match system_id {
-        "cic" => Ok(TypeSystem::Cic()),
-        "fol" => Ok(TypeSystem::Fol()),
-        other => Err(format!("Unsupported type system id provided: {}", other)),
-    }
+    map_type_system(system_id)
 }
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub system: TypeSystem,
     pub log_level: tracing::Level,
+    pub selection_fn: SelectionFunction,
 }
 impl Default for Config {
     fn default() -> Self {
         Config {
             system: TypeSystem::Cic(),
             log_level: tracing::Level::INFO,
+            selection_fn: SelectionFunction::Maximal(),
         }
     }
 }
@@ -32,6 +35,7 @@ impl Config {
         Config {
             system: type_system,
             log_level: tracing::Level::INFO,
+            selection_fn: SelectionFunction::Maximal(),
         }
     }
 }
@@ -48,7 +52,6 @@ pub fn load_config(config_path: &str) -> Result<Config, String> {
     let overrides: serde_yaml::Value = serde_yaml::from_str(&config_content)
         .map_err(|e| format!("Failed to parse config file: {}", e))?;
 
-    // Override type system if specified
     if let Some(system) = overrides.get("system") {
         if let Some(system_str) = system.as_str() {
             if !system_str.is_empty() {
@@ -56,11 +59,14 @@ pub fn load_config(config_path: &str) -> Result<Config, String> {
             }
         }
     }
-
-    // Override log level if specified
     if let Some(log_level) = overrides.get("log_level") {
         if let Some(level_str) = log_level.as_str() {
             config.log_level = map_log_level(level_str)?;
+        }
+    }
+    if let Some(selection_fn) = overrides.get("selection_fn") {
+        if let Some(selection_fn_str) = selection_fn.as_str() {
+            config.selection_fn = map_selection_fn(selection_fn_str)?;
         }
     }
 
@@ -86,5 +92,18 @@ fn map_log_level(log_level: &str) -> Result<tracing::Level, String> {
             "Invalid log level: {}. Must be one of: info, error, debug, trace, warn",
             log_level
         )),
+    }
+}
+
+fn map_selection_fn(selection_fn: &str) -> Result<SelectionFunction, String> {
+    match selection_fn.to_lowercase().as_str() {
+        "maximal" => Ok(SelectionFunction::Maximal()),
+        "all" => Ok(SelectionFunction::All()),
+        _ => {
+            return Err(format!(
+                "Invalid selection function: {}. Must be one of: maximal, all",
+                selection_fn
+            ))
+        }
     }
 }
