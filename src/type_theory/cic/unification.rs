@@ -309,13 +309,32 @@ pub fn solve_unification(
                     }
                     //TODO figure out what to do with branches
                     (
-                        Match(left_matched_term, _left_branches),
-                        Match(right_matched_term, _right_branches),
+                        Match(left_matched_term, left_branches),
+                        Match(right_matched_term, right_branches),
                     ) => {
+                        if left_branches.len() != right_branches.len() {
+                            return error_obj;
+                        }
+
                         constraints.push_back(Constraint::TypeEq(
                             (*left_matched_term).clone(),
                             (*right_matched_term).clone(),
                         ));
+                        // for unification to work here constructor branch ordering must be the same
+                        // TODO would be nice to have match unification be independent of branch ordering
+                        for i in 0..left_branches.len() {
+                            let (left_pattern, left_body) = &left_branches[i];
+                            let (right_pattern, right_body) =
+                                &right_branches[i];
+                            constraints.push_back(Constraint::TypeEq(
+                                left_pattern.clone(),
+                                right_pattern.clone(),
+                            ));
+                            constraints.push_back(Constraint::TypeEq(
+                                left_body.clone(),
+                                right_body.clone(),
+                            ));
+                        }
 
                         solver(constraints, substitution)
                     }
@@ -336,10 +355,11 @@ mod unit_tests {
     use crate::type_theory::commons::unification::Substitution;
     use crate::type_theory::{
         cic::cic::{
-            CicTerm::{Meta, Product, Variable},
+            Cic,
+            CicTerm::{Match, Meta, Product, Sort, Variable},
             GLOBAL_INDEX,
         },
-        environment::Constraint,
+        environment::Constraint::{self, TypeEq},
     };
     use std::collections::HashMap;
 
@@ -381,6 +401,71 @@ mod unit_tests {
                 expected,
                 "Unification couldnt solve a problem with a function over metavariables"
             );
+    }
+
+    #[test]
+    fn test_match_unification() {
+        let t = Variable("true".to_string(), GLOBAL_INDEX);
+        let expected = {
+            let mut map = HashMap::new();
+            map.insert(1, t.clone());
+            map
+        };
+        let constraints = vec![TypeEq(
+            Match(
+                Box::new(Variable("b".to_string(), 0)),
+                vec![
+                    (t.clone(), Variable("b".to_string(), GLOBAL_INDEX)),
+                    (
+                        Variable("false".to_string(), GLOBAL_INDEX),
+                        Variable("b".to_string(), GLOBAL_INDEX),
+                    ),
+                ],
+            ),
+            Match(
+                Box::new(Variable("b".to_string(), 0)),
+                vec![
+                    (Meta(1), Variable("b".to_string(), GLOBAL_INDEX)),
+                    (
+                        Variable("false".to_string(), GLOBAL_INDEX),
+                        Variable("b".to_string(), GLOBAL_INDEX),
+                    ),
+                ],
+            ),
+        )];
+        assert_eq!(
+            solve_unification(constraints).unwrap(),
+            expected,
+            "Unification couldnt solve a problem of constructor recovery in pattern matching"
+        );
+
+        let body = Sort("TYPE".to_string());
+        let expected = {
+            let mut map = HashMap::new();
+            map.insert(2, body.clone());
+            map
+        };
+        let constraints = vec![TypeEq(
+            Match(
+                Box::new(Variable("b".to_string(), 0)),
+                vec![
+                    (Variable("true".to_string(), GLOBAL_INDEX), body.clone()),
+                    (Variable("false".to_string(), GLOBAL_INDEX), body.clone()),
+                ],
+            ),
+            Match(
+                Box::new(Variable("b".to_string(), 0)),
+                vec![
+                    (Variable("true".to_string(), GLOBAL_INDEX), Meta(2)),
+                    (Variable("false".to_string(), GLOBAL_INDEX), body.clone()),
+                ],
+            ),
+        )];
+        assert_eq!(
+            solve_unification(constraints).unwrap(),
+            expected,
+            "Unification couldnt solve unification of pattern match bodies"
+        );
     }
 
     #[test]
