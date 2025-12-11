@@ -8,7 +8,7 @@ use crate::type_theory::sup::sup_utils::{
     SelectionFunctionSignature,
 };
 use crate::type_theory::sup::unification::{
-    formula_apply_substitution, formulas_unify,
+    formula_apply_substitution, formulas_unify, terms_unify,
 };
 use std::cmp::{max_by, min_by, Ordering::Less};
 
@@ -142,12 +142,9 @@ pub fn factoring(
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
-            // TODO support mgu check here
-            // if Sup::base_type_equality(&selected[i], &selected[j]).is_ok() {
             if let Ok(mgu) = formulas_unify(&selected[i], &selected[j]) {
                 selected.remove(j);
                 literals.extend(selected);
-                // TODO apply mgu to literals
                 return Ok(formula_apply_substitution(&Clause(literals), &mgu));
             }
         }
@@ -171,13 +168,13 @@ pub fn eq_resolution(
         match &selected[i] {
             Not(boxed) => {
                 if let Equality(l, r) = &**boxed {
-                    // TODO support mgu check here
-                    if Sup::base_term_equality(l, r).is_ok() {
-                        // TODO apply mgu to literals
-                        // TODO reinclude other selected atoms in lits
+                    if let Ok(mgu) = terms_unify(l, r) {
                         selected.remove(i);
                         lits.extend(selected);
-                        return Ok(Clause(lits));
+                        return Ok(formula_apply_substitution(
+                            &Clause(lits),
+                            &mgu,
+                        ));
                     }
                 }
             }
@@ -501,8 +498,11 @@ mod unit_tests {
     #[test]
     fn test_eq_resolution() {
         let selection_fn = get_selection_fn(SelectionFunction::All());
-        let s = Variable("x".to_string());
         let t = Application("f".to_string(), vec![Variable("y".to_string())]);
+        let s = Application(
+            "f".to_string(),
+            vec![Variable("y".to_string()), Variable("z".to_string())],
+        );
         let neq_ss = Not(Box::new(Equality(s.clone(), s.clone())));
         let neq_st = Not(Box::new(Equality(s.clone(), t.clone())));
         let p = Atom("P".to_string(), vec![]);
@@ -523,6 +523,27 @@ mod unit_tests {
         assert!(
             eq_resolution(&Clause(vec![neq_st.clone(), p.clone()]), &selection_fn).is_err(),
             "Equality resolution applied with no inconsistent unification available"
+        );
+    }
+
+    #[test]
+    fn test_eq_resolution_unification() {
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let x = Variable("x".to_string());
+        let y = Variable("y".to_string());
+        let z = Variable("z".to_string());
+        let fx = Application("f".to_string(), vec![x.clone()]);
+        let py = Atom("P".to_string(), vec![y.clone(), z.clone()]);
+        let pfx = Atom("P".to_string(), vec![fx.clone(), z.clone()]);
+        let neq = Not(Box::new(Equality(y.clone(), fx.clone())));
+
+        assert_eq!(
+            eq_resolution(
+                &Clause(vec![neq.clone(), py.clone()]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![pfx.clone()])),
+            "Factoring not applied properly with unification available"
         );
     }
 
