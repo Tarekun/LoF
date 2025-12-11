@@ -1,3 +1,4 @@
+use crate::type_theory::fol::fol::FolFormula;
 use crate::type_theory::interface::TypeTheory;
 use crate::type_theory::sup::sup::Sup;
 use crate::type_theory::sup::{
@@ -132,6 +133,51 @@ fn terms_unify_impl(
     }
 
     Ok(mgu.to_owned())
+}
+
+pub fn term_apply_substitution(
+    term: &SupTerm,
+    substitution: &Substitution,
+) -> SupTerm {
+    match term {
+        Variable(var_name) => {
+            substitution.get(var_name).unwrap_or(term).clone()
+        }
+        Application(fun_name, args) => Application(
+            fun_name.to_string(),
+            args.iter()
+                .map(|t| term_apply_substitution(t, substitution))
+                .collect(),
+        ),
+    }
+}
+pub fn formula_apply_substitution(
+    formula: &SupFormula,
+    substitution: &Substitution,
+) -> SupFormula {
+    match formula {
+        Atom(pred_name, args) => Atom(
+            pred_name.to_string(),
+            args.iter()
+                .map(|t| term_apply_substitution(t, substitution))
+                .collect(),
+        ),
+        Equality(l, r) => Equality(
+            term_apply_substitution(l, substitution),
+            term_apply_substitution(r, substitution),
+        ),
+        Not(f) => Not(Box::new(formula_apply_substitution(f, substitution))),
+        Clause(lits) => Clause(
+            lits.iter()
+                .map(|l| formula_apply_substitution(l, substitution))
+                .collect(),
+        ),
+        ForAll(var_name, var_type, body) => ForAll(
+            var_name.to_string(),
+            Box::new(formula_apply_substitution(var_type, substitution)),
+            Box::new(formula_apply_substitution(body, substitution)),
+        ),
+    }
 }
 
 #[cfg(test)]

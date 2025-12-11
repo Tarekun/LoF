@@ -7,6 +7,9 @@ use crate::type_theory::sup::sup_utils::{
     find_unifiable_formula, substitute_formula, subsumes, unpack_literals,
     SelectionFunctionSignature,
 };
+use crate::type_theory::sup::unification::{
+    formula_apply_substitution, formulas_unify,
+};
 use std::cmp::{max_by, min_by, Ordering::Less};
 
 //########################### SIMPLIFICATION INFERENCES
@@ -77,17 +80,27 @@ pub fn subsumption_resolution_first(
 
 //########################### SUP INFERENCES
 macro_rules! resolution_inference {
-    ($atom:expr, $negation:expr) => {{
-        match $atom {
+    ($c_idx:expr, $d_idx:expr, $c_selected:expr, $d_selected:expr, $c_others:expr, $d_others:expr) => {{
+        match $c_selected[$c_idx] {
             Atom(_, _) => {
-                if let Not(inner) = $negation {
-                    // TODO support mcu
-                    Sup::base_type_equality($atom, inner).is_ok()
-                } else {
-                    false
+                if let Not(inner) = &$d_selected[$d_idx] {
+                    if let Ok(mgu) = formulas_unify(&$c_selected[$c_idx], inner)
+                    {
+                        let mut new_clause = vec![];
+                        $c_selected.remove($c_idx);
+                        new_clause.extend($c_selected);
+                        new_clause.extend($c_others);
+                        $d_selected.remove($d_idx);
+                        new_clause.extend($d_selected);
+                        new_clause.extend($d_others);
+                        return Ok(formula_apply_substitution(
+                            &Clause(new_clause),
+                            &mgu,
+                        ));
+                    }
                 }
             }
-            _ => false,
+            _ => {}
         }
     }};
 }
@@ -104,18 +117,12 @@ pub fn resolution(
 
     for i in 0..c_selected.len() {
         for j in 0..d_selected.len() {
-            if resolution_inference!(&c_selected[i], &d_selected[j])
-                || resolution_inference!(&d_selected[j], &c_selected[i])
-            {
-                let mut new_clause = vec![];
-                c_selected.remove(i);
-                new_clause.extend(c_selected);
-                new_clause.extend(c_literals);
-                d_selected.remove(j);
-                new_clause.extend(d_selected);
-                new_clause.extend(d_literals);
-                return Ok(Clause(new_clause));
-            }
+            resolution_inference!(
+                i, j, c_selected, d_selected, c_literals, d_literals
+            );
+            resolution_inference!(
+                j, i, d_selected, c_selected, d_literals, c_literals
+            );
         }
     }
 
@@ -405,6 +412,39 @@ mod unit_tests {
         assert!(
             resolution(&Clause(vec![p.clone(), heavier.clone()]), &Clause(vec![not_p.clone()]), &maximal_selection).is_err(),
             "Maximal literal according to KBO doesnt have a negation but resolution was applied regardless"
+        );
+    }
+
+    #[test]
+    fn test_resolution_unification() {
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let x = Variable("x".to_string());
+        let y = Variable("y".to_string());
+        let fx = Application("f".to_string(), vec![x.clone()]);
+        let py = Atom("P".to_string(), vec![y.clone()]);
+        let pfx = Atom("P".to_string(), vec![fx.clone()]);
+        let qy = Atom("Q".to_string(), vec![y.clone()]);
+        let ry = Atom("R".to_string(), vec![y.clone()]);
+        let qfx = Atom("Q".to_string(), vec![fx.clone()]);
+        let rfx = Atom("R".to_string(), vec![fx.clone()]);
+
+        assert_eq!(
+            resolution(
+                &Clause(vec![py.clone(), qy.clone()]),
+                &Clause(vec![Not(Box::new(pfx.clone())), ry.clone()]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![qfx.clone(), rfx.clone()])),
+            "Resolution couldnt apply unification properly with negation over expanded body"
+        );
+        assert_eq!(
+            resolution(
+                &Clause(vec![Not(Box::new(py.clone())), qy.clone()]),
+                &Clause(vec![pfx.clone(), ry.clone()]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![rfx.clone(), qfx.clone()])),
+            "Resolution couldnt apply unification properly with negation over variable literal"
         );
     }
 
