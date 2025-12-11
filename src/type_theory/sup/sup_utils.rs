@@ -68,6 +68,25 @@ pub fn is_tautology(φ: &SupFormula) -> bool {
     }
 }
 
+/// Returns `true` iff `term` contains `target` inside
+pub fn contains(term: &SupTerm, target: &SupTerm) -> bool {
+    if Sup::base_term_equality(term, target).is_ok() {
+        return true;
+    }
+
+    match term {
+        Application(_, args) => {
+            for arg in args {
+                if contains(arg, target) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
 /// Implements standard Knuth-Bendix ordering of terms. Ordering ties are not
 /// broken using the internal names, so ex. `Variable`s are all isomorphic
 pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {

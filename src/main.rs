@@ -49,6 +49,7 @@ pub mod type_theory {
         pub mod sup;
         mod sup_utils;
         mod type_check;
+        mod unification;
     }
 }
 mod tests {
