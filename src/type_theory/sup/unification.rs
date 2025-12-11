@@ -1,6 +1,7 @@
 use crate::type_theory::fol::fol::FolFormula;
 use crate::type_theory::interface::TypeTheory;
 use crate::type_theory::sup::sup::Sup;
+use crate::type_theory::sup::sup_utils::substitute_term;
 use crate::type_theory::sup::{
     sup::{
         SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
@@ -89,33 +90,45 @@ fn terms_unify_impl(
         "Terms {:?} and {:?} could not be unified",
         term1, term2
     ));
-    fn occurs_check(variable: &SupTerm, body: &SupTerm) -> Result<(), String> {
-        println!("{:?}", variable);
-        println!("{:?}", body);
-        println!("{:?}", contains(body, variable));
-        println!("{:?}", Sup::base_term_equality(body, variable).is_ok());
-        // equality check is to avoid failing on unifications like x=x
-        if contains(body, variable)
-            && !Sup::base_term_equality(body, variable).is_ok()
-        {
-            return Err(format!(
-                "Substitution body {:?} contains a reference to variable {:?}",
-                body, variable
-            ));
-        } else {
+
+    fn add_substitution(
+        var_name: &str,
+        body: &SupTerm,
+        mgu: &mut Substitution,
+    ) -> Result<(), String> {
+        let var_term = &Variable(var_name.to_string());
+        if Sup::base_term_equality(body, var_term).is_ok() {
+            // avoid failing on x=x but do not generate useless assignment
             return Ok(());
         }
+        if contains(body, var_term) {
+            // occurs check
+            return Err(format!(
+                "Substitution body {:?} contains a reference to variable {:?}",
+                body, var_term
+            ));
+        }
+
+        *mgu = mgu
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.to_string(),
+                    substitute_term(v, &Variable(var_name.to_string()), body),
+                )
+            })
+            .collect();
+        mgu.insert(var_name.to_string(), body.clone());
+        return Ok(());
     }
 
     match (term1, term2) {
         // TODO: add occurs check
         (Variable(var_name), _) => {
-            occurs_check(term1, term2)?;
-            mgu.insert(var_name.to_string(), term2.clone());
+            add_substitution(var_name, term2, mgu)?;
         }
         (_, Variable(var_name)) => {
-            occurs_check(term2, term1)?;
-            mgu.insert(var_name.to_string(), term1.clone());
+            add_substitution(var_name, term1, mgu)?;
         }
         (Application(f1, args1), Application(f2, args2)) => {
             // TODO: do function names *must* be equal?
@@ -230,6 +243,30 @@ mod unit_tests {
             terms_unify(&Application("f".to_string(), vec![x.clone()]), &ffx).is_err(),
             "Unification passes on substitution that dont pass the occurs check"
         );
+    }
+
+    #[test]
+    fn test_fully_solved_mgu() {
+        let x = Variable("x".to_string());
+        let y = Variable("y".to_string());
+        let fy = Application("f".to_string(), vec![y.clone()]);
+        let k = Application("k".to_string(), vec![]);
+        let s =
+            Application("container".to_string(), vec![x.clone(), y.clone()]);
+        let t =
+            Application("container".to_string(), vec![fy.clone(), k.clone()]);
+
+        assert_eq!(
+            terms_unify(&s, &t),
+            Ok(HashMap::from([
+                ("y".to_string(), k.clone()),
+                (
+                    "x".to_string(),
+                    Application("f".to_string(), vec![k.clone()])
+                )
+            ])),
+            "Returned MGU didnt solve variable `y` to constant `k` in assignment for variable `x`"
+        )
     }
 
     #[test]

@@ -204,10 +204,11 @@ macro_rules! eq_factoring_checks {
         // match works better then if. only in rust
         match (
             // TODO: implement unification
-            Sup::base_term_equality(max, $s_prime).is_ok(),
+            // Sup::base_term_equality(max, $s_prime).is_ok(),
+            terms_unify(max, $s_prime),
             Sup::compare_terms($t_prime, min),
         ) {
-            (true, Less) => {
+            (Ok(mgu), Less) => {
                 $unselected.push(Equality($s.to_owned(), $t.to_owned()));
                 $unselected.push(Not(Box::new(Equality(
                     min.to_owned(),
@@ -217,7 +218,7 @@ macro_rules! eq_factoring_checks {
                 $selected.remove($i);
 
                 $unselected.extend($selected);
-                return Ok(Clause($unselected));
+                return Ok(formula_apply_substitution(&Clause($unselected), &mgu));
             }
             _ => {}
         }
@@ -666,6 +667,9 @@ mod unit_tests {
             "Equality factoring is passing with t < s constraint violated"
         );
     }
+
+    #[test]
+    fn test_eq_factoring_unification() {}
 
     #[test]
     fn test_superposition() {
