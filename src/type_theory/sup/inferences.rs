@@ -143,11 +143,12 @@ pub fn factoring(
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
             // TODO support mgu check here
-            if Sup::base_type_equality(&selected[i], &selected[j]).is_ok() {
+            // if Sup::base_type_equality(&selected[i], &selected[j]).is_ok() {
+            if let Ok(mgu) = formulas_unify(&selected[i], &selected[j]) {
                 selected.remove(j);
                 literals.extend(selected);
                 // TODO apply mgu to literals
-                return Ok(Clause(literals));
+                return Ok(formula_apply_substitution(&Clause(literals), &mgu));
             }
         }
     }
@@ -420,13 +421,14 @@ mod unit_tests {
         let selection_fn = get_selection_fn(SelectionFunction::All());
         let x = Variable("x".to_string());
         let y = Variable("y".to_string());
+        let z = Variable("z".to_string());
         let fx = Application("f".to_string(), vec![x.clone()]);
         let py = Atom("P".to_string(), vec![y.clone()]);
         let pfx = Atom("P".to_string(), vec![fx.clone()]);
-        let qy = Atom("Q".to_string(), vec![y.clone()]);
-        let ry = Atom("R".to_string(), vec![y.clone()]);
-        let qfx = Atom("Q".to_string(), vec![fx.clone()]);
-        let rfx = Atom("R".to_string(), vec![fx.clone()]);
+        let qy = Atom("Q".to_string(), vec![y.clone(), z.clone()]);
+        let ry = Atom("R".to_string(), vec![y.clone(), z.clone()]);
+        let qfx = Atom("Q".to_string(), vec![fx.clone(), z.clone()]);
+        let rfx = Atom("R".to_string(), vec![fx.clone(), z.clone()]);
 
         assert_eq!(
             resolution(
@@ -472,6 +474,28 @@ mod unit_tests {
                 .is_err(),
             "Factoring rule applied with no unification available"
         );
+    }
+
+    #[test]
+    fn test_factoring_resolution() {
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let x = Variable("x".to_string());
+        let y = Variable("y".to_string());
+        let z = Variable("z".to_string());
+        let fx = Application("f".to_string(), vec![x.clone()]);
+        let py = Atom("P".to_string(), vec![y.clone()]);
+        let pfx = Atom("P".to_string(), vec![fx.clone()]);
+        let qy = Atom("Q".to_string(), vec![y.clone(), z.clone()]);
+        let qfx = Atom("Q".to_string(), vec![fx.clone(), z.clone()]);
+
+        assert_eq!(
+            factoring(
+                &Clause(vec![py.clone(), pfx.clone(), qy.clone()]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![pfx.clone(), qfx.clone()])),
+            ""
+        )
     }
 
     #[test]
