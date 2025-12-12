@@ -5,7 +5,10 @@ use super::sup::{
 };
 use crate::{
     config::SelectionFunction::{self, All, Maximal},
-    type_theory::interface::{Automatic, TypeTheory},
+    type_theory::{
+        interface::{Automatic, TypeTheory},
+        sup::unification::{terms_unify, Substitution},
+    },
 };
 use std::cmp::Ordering::{self, Equal, Greater, Less};
 
@@ -299,10 +302,10 @@ pub fn substitute_formula(
 pub fn find_unifiable_term(
     term: &SupTerm,
     target: &SupTerm,
-) -> Option<SupTerm> {
+) -> Option<(SupTerm, Substitution)> {
     // TODO: support actual unification
-    if Sup::base_term_equality(term, target).is_ok() {
-        return Some(term.clone());
+    if let Ok(mgu) = terms_unify(term, target) {
+        return Some((term.clone(), mgu));
     }
     match term {
         Application(_, fun_args) => {
@@ -322,7 +325,7 @@ pub fn find_unifiable_term(
 pub fn find_unifiable_formula(
     formula: &SupFormula,
     target: &SupTerm,
-) -> Option<SupTerm> {
+) -> Option<(SupTerm, Substitution)> {
     match formula {
         Atom(_, pred_args) => {
             for arg in pred_args {

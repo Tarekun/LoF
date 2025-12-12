@@ -29,7 +29,7 @@ pub fn type_check_tactic(
 //
 //
 fn type_check_suppose(
-    environment: &mut Environment<Cic>,
+    _: &mut Environment<Cic>,
     target: &CicTerm,
     partial_proof: &CicTerm,
     ass_name: &str,

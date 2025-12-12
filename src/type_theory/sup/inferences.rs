@@ -1,4 +1,4 @@
-use crate::type_theory::interface::{Automatic, TypeTheory};
+use crate::type_theory::interface::Automatic;
 use crate::type_theory::sup::sup::{
     Sup,
     SupFormula::{self, Atom, Clause, Equality, Not},
@@ -8,7 +8,8 @@ use crate::type_theory::sup::sup_utils::{
     SelectionFunctionSignature,
 };
 use crate::type_theory::sup::unification::{
-    formula_apply_substitution, formulas_unify, terms_unify,
+    formula_apply_substitution, formulas_unify, term_apply_substitution,
+    terms_unify,
 };
 use std::cmp::{max_by, min_by, Ordering::Less};
 
@@ -274,17 +275,29 @@ pub fn superposition(
 
     macro_rules! sup_inference {
         ($l:expr, $r:expr, $other:expr, $i:expr, $j:expr) => {{
+            println!("l term {:?}", $l);
+            println!("r term {:?}", $r);
             // TODO: check `other` isnt an equality. in that case find_unifiable should only look in 1 term
-            let unifiable_term = find_unifiable_formula(&$other, $l);
-            let (unifiable_term, target, arg) = if unifiable_term.is_some() {
-                (unifiable_term, $l, $r)
+            // println!("checking unification of {:?} inside {:?}", unification_pair);
+            let unification_pair = find_unifiable_formula(&$other, $l);
+            let (unification_pair, target, arg) = if unification_pair.is_some() {
+                println!("other with L with substitution {:?}", unification_pair.clone().unwrap().1);
+                (unification_pair, $l, $r)
             } else {
+                println!("other with R");
                 (find_unifiable_formula(&$other, $r), $r, $l)
             };
+            println!("{:?}", unification_pair);
 
-            if unifiable_term.is_some() {
+            if let Some((_, mgu)) = unification_pair {
+                let other = formula_apply_substitution(&$other, &mgu);
+                let target = term_apply_substitution(&target, &mgu);
+                println!("other: {:?}", $other);
+                println!("target: {:?}", target);
+                println!("arg: {:?}", arg);
                 let other =
-                    substitute_formula(&$other, &target, arg);
+                    substitute_formula(&other, &target, &arg);
+                println!("other: {:?}", $other);
                 let mut new_clause = vec![];
                 new_clause.push(other);
                 new_clause.extend(c_literals);
@@ -293,7 +306,7 @@ pub fn superposition(
                 new_clause.extend(c_selected);
                 d_selected.remove($j);
                 new_clause.extend(d_selected);
-                return Ok(Clause(new_clause));
+                return Ok(formula_apply_substitution(&Clause(new_clause), &mgu));
             }
         }};
     }
@@ -696,7 +709,7 @@ mod unit_tests {
                 Equality(s_prime.clone(), tk.clone()),
                 Not(Box::new(Equality(tk.clone(), t_prime.clone())))
             ])),
-            "non unificato eq_resolution"
+            "Equality resolution not applied properly with unification available"
         );
     }
 
@@ -765,14 +778,14 @@ mod unit_tests {
             "Superposition isnt preserving unralted literals"
         );
 
-        assert_eq!(
+        assert!(
             superposition(
                 &Clause(vec![Equality(r.clone(), unifiable.clone())]),
                 &Clause(vec![p.clone()]),
                 &selection_fn
-            ),
-            Ok(Clause(vec![p_subst.clone()])),
-            "Superposition is dependant on equality terms ordering"
+            )
+            .is_ok(),
+            "Superposition is dependent on equality terms ordering"
         );
         assert_eq!(
             superposition(
@@ -781,7 +794,38 @@ mod unit_tests {
                 &selection_fn
             ),
             Ok(Clause(vec![p_subst.clone()])),
-            "Superposition is dependant on clause ordering"
+            "Superposition is dependent on clause ordering"
+        );
+    }
+
+    #[test]
+    fn test_superposition_unification() {
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+        // expected mgu will be { x -> k }
+        let x = Variable("x".to_string());
+        let k = Application("k".to_string(), vec![]);
+        let s = Application("f".to_string(), vec![k.clone()]);
+        let l = Application("f".to_string(), vec![x.clone()]);
+        let r = Application("r".to_string(), vec![]);
+        let ps = Atom(
+            "P".to_string(),
+            vec![Application("c".to_string(), vec![]), s.clone()],
+        );
+        let pr = Atom(
+            "P".to_string(),
+            vec![Application("c".to_string(), vec![]), r.clone()],
+        );
+        let otherx = Atom("Q".to_string(), vec![x.clone()]);
+        let otherk = Atom("Q".to_string(), vec![k.clone()]);
+
+        assert_eq!(
+            superposition(
+                &Equality(l.clone(), r.clone()),
+                &Clause(vec![ps.clone(), otherx.clone()]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![pr.clone(), otherk.clone()])),
+            "Superposition not applied properly with unification available"
         );
     }
 }

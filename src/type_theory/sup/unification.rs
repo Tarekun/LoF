@@ -1,4 +1,3 @@
-use crate::type_theory::fol::fol::FolFormula;
 use crate::type_theory::interface::TypeTheory;
 use crate::type_theory::sup::sup::Sup;
 use crate::type_theory::sup::sup_utils::substitute_term;
@@ -11,7 +10,7 @@ use crate::type_theory::sup::{
 };
 use std::collections::HashMap;
 
-type Substitution = HashMap<String, SupTerm>;
+pub type Substitution = HashMap<String, SupTerm>;
 
 pub fn terms_unify(
     term1: &SupTerm,
@@ -123,7 +122,6 @@ fn terms_unify_impl(
     }
 
     match (term1, term2) {
-        // TODO: add occurs check
         (Variable(var_name), _) => {
             add_substitution(var_name, term2, mgu)?;
         }
@@ -139,10 +137,9 @@ fn terms_unify_impl(
             for i in 0..args1.len() {
                 terms_unify_impl(&args1[i], &args2[i], mgu)?;
             }
-        }
-        _ => {
-            return error;
-        }
+        } // _ => {
+          //     return error;
+          // }
     }
 
     Ok(mgu.to_owned())
@@ -275,7 +272,6 @@ mod unit_tests {
         let y = Variable("y".to_string());
         // let y = Variable("z".to_string());
         let fx = Application("f".to_string(), vec![x.clone()]);
-        let ffx = Application("f".to_string(), vec![fx.clone()]);
 
         assert!(
             formulas_unify(
