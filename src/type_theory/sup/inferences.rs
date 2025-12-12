@@ -669,7 +669,36 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_eq_factoring_unification() {}
+    fn test_eq_factoring_unification() {
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let k = Application("k".to_string(), vec![]);
+        let k_prime = Application("k_prime".to_string(), vec![]);
+        let s = Application(
+            "s".to_string(),
+            vec![Variable("x".to_string()), Variable("y".to_string())],
+        );
+        let s_prime =
+            Application("s".to_string(), vec![k.clone(), k_prime.clone()]);
+        // terms are constructed to enforce t < s and t' < t
+        let tx = Application("t".to_string(), vec![Variable("x".to_string())]);
+        let tk = Application("t".to_string(), vec![k.clone()]);
+        let t_prime = Variable("t_prime".to_string());
+
+        assert_eq!(
+            eq_factoring(
+                &Clause(vec![
+                    Equality(s.clone(), tx.clone()),
+                    Equality(s_prime.clone(), t_prime.clone())
+                ]),
+                &selection_fn
+            ),
+            Ok(Clause(vec![
+                Equality(s_prime.clone(), tk.clone()),
+                Not(Box::new(Equality(tk.clone(), t_prime.clone())))
+            ])),
+            "non unificato eq_resolution"
+        );
+    }
 
     #[test]
     fn test_superposition() {

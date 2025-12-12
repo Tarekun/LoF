@@ -128,8 +128,14 @@ pub fn saturate(
 ) -> Result<(), String> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
+    let max = 100;
+    let mut count = 0;
 
     loop {
+        println!(
+            "simplification inferences with {} unprocessed",
+            unprocessed.len()
+        );
         while !unprocessed.is_empty() {
             let clause = pick_clause(&mut unprocessed)?;
 
@@ -142,11 +148,18 @@ pub fn saturate(
             kept.push(clause);
         }
 
+        println!("generating inferences with {} kept", kept.len());
+        println!("{:?}", kept);
         unprocessed = generating_inferences(&kept, &selection_fn);
         if unprocessed.len() == 0 {
             return Err(
                 "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
             );
+        }
+
+        count += 1;
+        if count > max {
+            return Err("gira da troppo".to_string());
         }
     }
 }
@@ -158,6 +171,7 @@ mod unit_tests {
         type_theory::sup::{
             saturation::saturate,
             sup::SupFormula::{Atom, Clause, Not},
+            sup::SupTerm::{Application, Variable},
             sup_utils::get_selection_fn,
         },
     };
@@ -198,6 +212,55 @@ mod unit_tests {
         assert!(
             saturate(&modus_tollens, &selection_fn).is_ok(),
             "Saturation couldnt prove A=>B, ¬B ⊢ ¬A"
+        );
+    }
+
+    #[test]
+    fn test_unification_resolultion() {
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let zero = Application("zero".to_string(), vec![]);
+        let one = Application("s".to_string(), vec![zero.clone()]);
+        let two = Application("s".to_string(), vec![one.clone()]);
+        let x = Variable("x".to_string());
+        let y = Variable("y".to_string());
+        let z = Variable("z".to_string());
+        let three = Variable("3_skolem_witness".to_string());
+        // let three = Application("3_skolem_witness".to_string(), vec![]);
+        let target = Atom(
+            "Add".to_string(),
+            vec![one.clone(), two.clone(), three.clone()],
+        );
+
+        assert!(
+            saturate(
+                &vec![
+                    // ∀y. Add(0,y,y)  ≡  0+y=y
+                    Atom(
+                        "Add".to_string(),
+                        vec![zero.clone(), y.clone(), y.clone()]
+                    ),
+                    // ∀x,y,z. Add(x,y,z) ⇒ Add(s x, y, s z)  ≡  x+y=z => x+1+y=z+1
+                    Clause(vec![
+                        Not(Box::new(Atom(
+                            "Add".to_string(),
+                            vec![x.clone(), y.clone(), z.clone()]
+                        ))),
+                        Atom(
+                            "Add".to_string(),
+                            vec![
+                                Application("s".to_string(), vec![x.clone()]),
+                                y.clone(),
+                                Application("s".to_string(), vec![z.clone()])
+                            ]
+                        )
+                    ]),
+                    // ¬ ∃z. Add(1,2,z)  ≡  1+2=z
+                    Not(Box::new(target))
+                ],
+                &selection_fn
+            )
+            .is_ok(),
+            "unable to solve addition problem"
         );
     }
 }
