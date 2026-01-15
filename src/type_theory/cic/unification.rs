@@ -17,18 +17,6 @@ pub fn cic_unification(
     Ok(solve_unification(constraints).is_ok())
 }
 
-pub fn instatiate_metas(
-    term: &CicTerm,
-    unifier: &HashMap<i32, CicTerm>,
-) -> CicTerm {
-    //TODO make this function efficient, this creates a quadratic cost
-    let mut term = term.clone();
-    for (index, body) in unifier {
-        term = substitute_meta(&term, &index, &body);
-    }
-    term
-}
-
 pub fn solve_unification(
     constraints: Vec<Constraint<Cic>>,
 ) -> Result<HashMap<i32, CicTerm>, String> {
@@ -197,60 +185,15 @@ pub fn solve_unification(
     solver(constraints.into_iter().collect(), HashMap::new())
 }
 
-pub fn equal_under_substitution(
-    environment: &mut Environment<Cic>,
-    term1: &CicTerm,
-    term2: &CicTerm,
-) -> bool {
-    match (term1, term2) {
-        (Variable(name1, dbi1), Variable(name2, dbi2)) => {
-            let mut res: bool = name1 == name2;
-
-            if let Some((_, body)) = environment.get_from_deltas(&name1) {
-                res = res || body == *term2;
-            }
-            if let Some((_, body)) = environment.get_from_deltas(&name2) {
-                res = res || body == *term1;
-            }
-            //TODO probably i only need this
-            res = res || *dbi1 == *dbi2;
-
-            res
-        }
-        (Sort(name1), Sort(name2)) => name1 == name2,
-        (Meta(index1), Meta(index2)) => index1 == index2,
-        (Abstraction(_, domain1, body1), Abstraction(_, domain2, body2)) => {
-            equal_under_substitution(environment, domain1, domain2)
-                && equal_under_substitution(environment, body1, body2)
-        }
-        (Product(_, domain1, codomain1), Product(_, domain2, codomain2)) => {
-            equal_under_substitution(environment, domain1, domain2)
-                && equal_under_substitution(environment, codomain1, codomain2)
-        }
-        (Application(fun1, arg1), Application(fun2, arg2)) => {
-            equal_under_substitution(environment, fun1, fun2)
-                && equal_under_substitution(environment, arg1, arg2)
-        }
-        (Match(term1, pattern1), Match(term2, pattern2)) => {
-            //TODO i dont want to do this now
-            false
-        }
-        // terms arent structurally equal
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod unit_tests {
-    use crate::type_theory::interface::TypeTheory;
     use crate::type_theory::{
         cic::{
             cic::{
-                Cic,
-                CicTerm::{Meta, Product, Sort, Variable},
+                CicTerm::{Meta, Product, Variable},
                 GLOBAL_INDEX,
             },
-            unification::{equal_under_substitution, solve_unification},
+            unification::solve_unification,
         },
         environment::Constraint,
     };
@@ -304,25 +247,6 @@ mod unit_tests {
 
     #[test]
     fn test_structurally_equal_terms() {}
-
-    #[test]
-    fn test_substitution() {
-        let mut test_env = Cic::default_environment();
-        test_env.add_substitution_with_type(
-            "T",
-            &Variable("Bool".to_string(), GLOBAL_INDEX),
-            &Sort("TYPE".to_string()),
-        );
-
-        assert!(
-            equal_under_substitution(
-                &mut test_env,
-                &Variable("T".to_string(), 0),
-                &Variable("Bool".to_string(), GLOBAL_INDEX)
-            ),
-            "Equality up2 substitution refutes basic substitution check"
-        );
-    }
 
     #[test]
     fn test_aplha_with_substitution() {

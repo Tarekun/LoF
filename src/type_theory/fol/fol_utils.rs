@@ -286,7 +286,7 @@ pub fn negation_normal_form(φ: &FolFormula) -> FolFormula {
             }
             Not(ψ) => match &**ψ {
                 // simplify double negation
-                Not(γ) => solver(&*γ, negate),
+                Not(gamma) => solver(&*gamma, negate),
                 // ¬(φ ∧ ψ ∧ γ) => ¬φ ∨ ¬ψ ∨ ¬γ
                 Conjunction(formulas) => {
                     Disjunction(simple_map(formulas.to_owned(), |ψ| {
@@ -546,9 +546,9 @@ pub fn conjunction_normal_form(φ: &FolFormula) -> Vec<FolFormula> {
                     } else {
                         let mut distributed_result = vec![];
                         for literal in result {
-                            for γ in &ψ_clauses {
+                            for gamma in &ψ_clauses {
                                 let distributed_literal =
-                                    combine_disjunctions(&literal, γ);
+                                    combine_disjunctions(&literal, gamma);
                                 distributed_result.push(distributed_literal);
                             }
                         }

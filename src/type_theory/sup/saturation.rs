@@ -158,6 +158,7 @@ mod unit_tests {
         type_theory::sup::{
             saturation::saturate,
             sup::SupFormula::{Atom, Clause, Not},
+            sup::SupTerm::{Application, Variable},
             sup_utils::get_selection_fn,
         },
     };
@@ -200,91 +201,53 @@ mod unit_tests {
             "Saturation couldnt prove A=>B, ¬B ⊢ ¬A"
         );
     }
+
+    #[test]
+    fn test_unification_resolution() {
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let zero = Application("zero".to_string(), vec![]);
+        let one = Application("s".to_string(), vec![zero.clone()]);
+        let two = Application("s".to_string(), vec![one.clone()]);
+        let x = Variable("x".to_string());
+        let y = Variable("y".to_string());
+        let z = Variable("z".to_string());
+        let three = Variable("3_skolem_witness".to_string());
+        // let three = Application("3_skolem_witness".to_string(), vec![]);
+        let target = Atom(
+            "Add".to_string(),
+            vec![one.clone(), two.clone(), three.clone()],
+        );
+
+        assert!(
+            saturate(
+                &vec![
+                    // ∀y. Add(0,y,y)  ≡  0+y=y
+                    Atom(
+                        "Add".to_string(),
+                        vec![zero.clone(), y.clone(), y.clone()]
+                    ),
+                    // ∀x,y,z. Add(x,y,z) ⇒ Add(s x, y, s z)  ≡  x+y=z => x+1+y=z+1
+                    Clause(vec![
+                        Not(Box::new(Atom(
+                            "Add".to_string(),
+                            vec![x.clone(), y.clone(), z.clone()]
+                        ))),
+                        Atom(
+                            "Add".to_string(),
+                            vec![
+                                Application("s".to_string(), vec![x.clone()]),
+                                y.clone(),
+                                Application("s".to_string(), vec![z.clone()])
+                            ]
+                        )
+                    ]),
+                    // ¬ ∃z. Add(1,2,z)  ≡  1+2=z
+                    Not(Box::new(target))
+                ],
+                &selection_fn
+            )
+            .is_ok(),
+            "unable to solve addition problem"
+        );
+    }
 }
-
-// // Attempt to unify two terms, returning a most-general unifier σ if successful.
-// fn unify_terms(t1: &SupTerm, t2: &SupTerm) -> Option<Substitution> {
-//     fn solver(t1: &SupTerm, t2: &SupTerm, σ: &mut Substitution) -> bool {
-//         let s1 = apply_subst_term(t1, σ);
-//         let s2 = apply_subst_term(t2, σ);
-
-//         match (&s1, &s2) {
-//             (Variable(x), _) => {
-//                 σ.insert(x.clone(), s2.clone());
-//                 true
-//             }
-//             (_, Variable(x)) => {
-//                 σ.insert(x.clone(), s1.clone());
-//                 true
-//             }
-//             (Application(f1, args1), Application(f2, args2))
-//                 if f1 == f2 && args1.len() == args2.len() =>
-//             {
-//                 for (a1, a2) in args1.iter().zip(args2.iter()) {
-//                     if !solver(a1, a2, σ) {
-//                         return false;
-//                     }
-//                 }
-//                 true
-//             }
-//             _ => false,
-//         }
-//     }
-
-//     let mut σ = Substitution::new();
-//     if solver(t1, t2, &mut σ) {
-//         Some(σ)
-//     } else {
-//         None
-//     }
-// }
-
-// // Attempt to unify two literals if they are complementary (one positive, one negated).
-// // Returns a substitution σ if they unify, else None.
-// fn unify_literals(l1: &Literal, l2: &Literal) -> Option<Substitution> {
-//     match (l1, l2) {
-//         (Literal::Pred(p, args1), Literal::NotPred(q, args2))
-//         | (Literal::NotPred(p, args1), Literal::Pred(q, args2)) => {
-//             if p == q && args1.len() == args2.len() {
-//                 // unify the argument lists
-//                 let mut σ = Substitution::new();
-//                 for (t1, t2) in args1.iter().zip(args2.iter()) {
-//                     if let Some(sub) = unify_terms(
-//                         &apply_subst_term(t1, &σ),
-//                         &apply_subst_term(t2, &σ),
-//                     ) {
-//                         // merge sub into σ
-//                         for (k, v) in sub {
-//                             σ.insert(k, v);
-//                         }
-//                     } else {
-//                         return None;
-//                     }
-//                 }
-//                 return Some(σ);
-//             }
-//         }
-//         (Literal::Eq(s1, t1), Literal::NotEq(s2, t2))
-//         | (Literal::NotEq(s1, t1), Literal::Eq(s2, t2)) => {
-//             // unify equalities vs. inequalities similarly
-//             // (This resolution is analogous to predicates.)
-//             let mut σ = Substitution::new();
-//             if let Some(sub) = unify_terms(s1, s2) {
-//                 for (k, v) in sub {
-//                     σ.insert(k, v);
-//                 }
-//                 if let Some(sub2) = unify_terms(
-//                     &apply_subst_term(t1, &σ),
-//                     &apply_subst_term(t2, &σ),
-//                 ) {
-//                     for (k, v) in sub2 {
-//                         σ.insert(k, v);
-//                     }
-//                     return Some(σ);
-//                 }
-//             }
-//         }
-//         _ => {}
-//     }
-//     None
-// }
