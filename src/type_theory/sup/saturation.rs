@@ -128,14 +128,8 @@ pub fn saturate(
 ) -> Result<(), String> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
-    let max = 100;
-    let mut count = 0;
 
     loop {
-        println!(
-            "simplification inferences with {} unprocessed",
-            unprocessed.len()
-        );
         while !unprocessed.is_empty() {
             let clause = pick_clause(&mut unprocessed)?;
 
@@ -148,18 +142,11 @@ pub fn saturate(
             kept.push(clause);
         }
 
-        println!("generating inferences with {} kept", kept.len());
-        println!("{:?}", kept);
         unprocessed = generating_inferences(&kept, &selection_fn);
         if unprocessed.len() == 0 {
             return Err(
                 "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
             );
-        }
-
-        count += 1;
-        if count > max {
-            return Err("gira da troppo".to_string());
         }
     }
 }
@@ -216,7 +203,7 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_unification_resolultion() {
+    fn test_unification_resolution() {
         let selection_fn = get_selection_fn(SelectionFunction::All());
         let zero = Application("zero".to_string(), vec![]);
         let one = Application("s".to_string(), vec![zero.clone()]);
@@ -264,90 +251,3 @@ mod unit_tests {
         );
     }
 }
-
-// // Attempt to unify two terms, returning a most-general unifier σ if successful.
-// fn unify_terms(t1: &SupTerm, t2: &SupTerm) -> Option<Substitution> {
-//     fn solver(t1: &SupTerm, t2: &SupTerm, σ: &mut Substitution) -> bool {
-//         let s1 = apply_subst_term(t1, σ);
-//         let s2 = apply_subst_term(t2, σ);
-
-//         match (&s1, &s2) {
-//             (Variable(x), _) => {
-//                 σ.insert(x.clone(), s2.clone());
-//                 true
-//             }
-//             (_, Variable(x)) => {
-//                 σ.insert(x.clone(), s1.clone());
-//                 true
-//             }
-//             (Application(f1, args1), Application(f2, args2))
-//                 if f1 == f2 && args1.len() == args2.len() =>
-//             {
-//                 for (a1, a2) in args1.iter().zip(args2.iter()) {
-//                     if !solver(a1, a2, σ) {
-//                         return false;
-//                     }
-//                 }
-//                 true
-//             }
-//             _ => false,
-//         }
-//     }
-
-//     let mut σ = Substitution::new();
-//     if solver(t1, t2, &mut σ) {
-//         Some(σ)
-//     } else {
-//         None
-//     }
-// }
-
-// // Attempt to unify two literals if they are complementary (one positive, one negated).
-// // Returns a substitution σ if they unify, else None.
-// fn unify_literals(l1: &Literal, l2: &Literal) -> Option<Substitution> {
-//     match (l1, l2) {
-//         (Literal::Pred(p, args1), Literal::NotPred(q, args2))
-//         | (Literal::NotPred(p, args1), Literal::Pred(q, args2)) => {
-//             if p == q && args1.len() == args2.len() {
-//                 // unify the argument lists
-//                 let mut σ = Substitution::new();
-//                 for (t1, t2) in args1.iter().zip(args2.iter()) {
-//                     if let Some(sub) = unify_terms(
-//                         &apply_subst_term(t1, &σ),
-//                         &apply_subst_term(t2, &σ),
-//                     ) {
-//                         // merge sub into σ
-//                         for (k, v) in sub {
-//                             σ.insert(k, v);
-//                         }
-//                     } else {
-//                         return None;
-//                     }
-//                 }
-//                 return Some(σ);
-//             }
-//         }
-//         (Literal::Eq(s1, t1), Literal::NotEq(s2, t2))
-//         | (Literal::NotEq(s1, t1), Literal::Eq(s2, t2)) => {
-//             // unify equalities vs. inequalities similarly
-//             // (This resolution is analogous to predicates.)
-//             let mut σ = Substitution::new();
-//             if let Some(sub) = unify_terms(s1, s2) {
-//                 for (k, v) in sub {
-//                     σ.insert(k, v);
-//                 }
-//                 if let Some(sub2) = unify_terms(
-//                     &apply_subst_term(t1, &σ),
-//                     &apply_subst_term(t2, &σ),
-//                 ) {
-//                     for (k, v) in sub2 {
-//                         σ.insert(k, v);
-//                     }
-//                     return Some(σ);
-//                 }
-//             }
-//         }
-//         _ => {}
-//     }
-//     None
-// }

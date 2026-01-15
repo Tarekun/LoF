@@ -73,6 +73,8 @@ pub fn is_tautology(φ: &SupFormula) -> bool {
 
 /// Returns `true` iff `term` contains `target` inside
 pub fn contains(term: &SupTerm, target: &SupTerm) -> bool {
+    // TODO this should be syntactic equality specifically. now this is implemented by
+    // base_term_equality but itd be nice to be explicit here
     if Sup::base_term_equality(term, target).is_ok() {
         return true;
     }

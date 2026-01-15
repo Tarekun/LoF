@@ -20,10 +20,12 @@ use std::cmp::{max_by, min_by, Ordering::Less};
 /// only the first argument `C` will be simplified
 pub fn demodulate_first(C: &SupFormula, D: &SupFormula) -> SupFormula {
     if let Equality(l, r) = D {
+        // TODO check l/r arent isomorphic
         let min = min_by(l, r, |l, r| Sup::compare_terms(l, r));
         let max = max_by(l, r, |l, r| Sup::compare_terms(l, r));
 
         // TODO also support mgu
+        // TODO verify this is correct. the paper references the requirement of (l=r) > C
         substitute_formula(C, max, min)
     } else {
         C.to_owned()
@@ -204,8 +206,6 @@ macro_rules! eq_factoring_checks {
         // definitions are "unstable" with multipled conditions
         // match works better then if. only in rust
         match (
-            // TODO: implement unification
-            // Sup::base_term_equality(max, $s_prime).is_ok(),
             terms_unify(max, $s_prime),
             Sup::compare_terms($t_prime, min),
         ) {
@@ -275,29 +275,19 @@ pub fn superposition(
 
     macro_rules! sup_inference {
         ($l:expr, $r:expr, $other:expr, $i:expr, $j:expr) => {{
-            println!("l term {:?}", $l);
-            println!("r term {:?}", $r);
             // TODO: check `other` isnt an equality. in that case find_unifiable should only look in 1 term
-            // println!("checking unification of {:?} inside {:?}", unification_pair);
             let unification_pair = find_unifiable_formula(&$other, $l);
             let (unification_pair, target, arg) = if unification_pair.is_some() {
-                println!("other with L with substitution {:?}", unification_pair.clone().unwrap().1);
                 (unification_pair, $l, $r)
             } else {
-                println!("other with R");
                 (find_unifiable_formula(&$other, $r), $r, $l)
             };
-            println!("{:?}", unification_pair);
 
             if let Some((_, mgu)) = unification_pair {
                 let other = formula_apply_substitution(&$other, &mgu);
                 let target = term_apply_substitution(&target, &mgu);
-                println!("other: {:?}", $other);
-                println!("target: {:?}", target);
-                println!("arg: {:?}", arg);
                 let other =
                     substitute_formula(&other, &target, &arg);
-                println!("other: {:?}", $other);
                 let mut new_clause = vec![];
                 new_clause.push(other);
                 new_clause.extend(c_literals);

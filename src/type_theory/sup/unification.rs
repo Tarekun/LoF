@@ -129,7 +129,6 @@ fn terms_unify_impl(
             add_substitution(var_name, term1, mgu)?;
         }
         (Application(f1, args1), Application(f2, args2)) => {
-            // TODO: do function names *must* be equal?
             if f1 != f2 || args1.len() != args2.len() {
                 return error;
             }
@@ -137,9 +136,7 @@ fn terms_unify_impl(
             for i in 0..args1.len() {
                 terms_unify_impl(&args1[i], &args2[i], mgu)?;
             }
-        } // _ => {
-          //     return error;
-          // }
+        }
     }
 
     Ok(mgu.to_owned())
