@@ -63,7 +63,7 @@ impl LofParser {
         let (input, args) = self.typed_parameter_list(input)?;
         let (input, _) = preceded(multispace0, tag(":"))(input)?;
         let (input, output_type) =
-            preceded(multispace1, |input| self.parse_type_expression(input))(
+            preceded(multispace0, |input| self.parse_type_expression(input))(
                 input,
             )?;
 
@@ -484,6 +484,10 @@ mod unit_tests {
                 )
             )),
             "Function parser cant cope with arguments that have application types"
+        );
+        assert!(
+            parser.parse_function("fun f(n:Nat):Nat{n}").is_ok(),
+            "Function parser cant cope with dense notation"
         );
         assert!(
             parser.parse_function(
