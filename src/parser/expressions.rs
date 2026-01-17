@@ -12,7 +12,7 @@ use nom::{
     combinator::{map, opt},
     error::{Error, ErrorKind},
     multi::{many0, many1},
-    sequence::{delimited, preceded},
+    sequence::{delimited, preceded, tuple},
     IResult,
 };
 use std::collections::HashMap;
@@ -48,14 +48,24 @@ impl LofParser {
     ) -> IResult<&'a str, Expression> {
         let (input, _) =
             preceded(multispace0, alt((tag("λ"), tag("\\lambda "))))(input)?;
-        let (input, var_name) =
-            preceded(multispace0, |input| self.parse_identifier(input))(input)?;
-        let (input, _) = preceded(multispace0, tag(":"))(input)?;
-        //TODO should allow product type expressions here or only predefined type vars?
-        let (input, type_var) =
-            preceded(multispace0, |input| self.parse_type_expression(input))(
-                input,
-            )?;
+
+        let (input, opt_param) = opt(preceded(
+            multispace0,
+            //TODO: use optionally type identifier for abstractions at some point
+            tuple((
+                |input| self.parse_identifier(input),
+                preceded(multispace0, char(':')),
+                preceded(multispace0, |input| {
+                    self.parse_type_expression(input)
+                }),
+            )),
+        ))(input)?;
+        let (var_name, type_var) = if let Some((name, _, typ)) = opt_param {
+            (name.to_string(), typ)
+        } else {
+            ("it".to_string(), VarUse("Unit".to_string()))
+        };
+
         let (input, _) = preceded(multispace0, char('.'))(input)?;
         let (input, body) =
             preceded(multispace0, |input| self.parse_expression(input))(input)?;
@@ -503,9 +513,8 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_type_theory_terms() {
+    fn test_var() {
         let parser = LofParser::new(Config::default());
-        // variable
         assert!(
             parser.parse_var("test").is_ok(),
             "Parser cant read variables"
@@ -515,19 +524,15 @@ mod unit_tests {
             ("\n", VarUse("test".to_string())),
             "Variable parser cant cope with whitespaces"
         );
+    }
 
-        // abstraction
+    #[test]
+    fn test_abs() {
+        let parser = LofParser::new(Config::default());
+
         assert!(
             parser.parse_abs("λx:T.x").is_ok(),
             "Parser cant read lambda abstractions"
-        );
-        assert!(
-            parser.parse_abs("λ \tx   :\tT \t . \t x  \n").is_ok(),
-            "Abstraction parser cant cope with whitespaces"
-        );
-        assert!(
-            parser.parse_abs("\\lambda   x :T .  x").is_ok(),
-            "Abstraction parser cant use 'lambda' keyword"
         );
         assert_eq!(
             parser.parse_abs("λn:nat.n").unwrap(),
@@ -541,8 +546,32 @@ mod unit_tests {
             ),
             "Abstraction struct isnt properly built"
         );
+        assert!(
+            parser.parse_abs("λ \tx   :\tT \t . \t x  \n").is_ok(),
+            "Abstraction parser cant cope with whitespaces"
+        );
+        assert!(
+            parser.parse_abs("\\lambda   x :T .  x").is_ok(),
+            "Abstraction parser cant use 'lambda' keyword"
+        );
+        assert_eq!(
+            parser.parse_abs("λ. TYPE"),
+            Ok((
+                "",
+                Abstraction(
+                    "it".to_string(),
+                    Box::new(VarUse("Unit".to_string())),
+                    Box::new(VarUse("TYPE".to_string()))
+                )
+            ),),
+            "Abstraction parser doesnt construct proper argumentless abstraction"
+        )
+    }
 
-        // type abstraction
+    #[test]
+    fn test_type_abs() {
+        let parser = LofParser::new(Config::default());
+
         assert!(
             parser.parse_type_abs("ΠT:TYPE.T").is_ok(),
             "Parser cant read type abstractions"
