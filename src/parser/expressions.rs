@@ -739,6 +739,10 @@ mod unit_tests {
             parser.parse_match_branch("| cons ? h l => l,").is_ok(),
             "Parser cant read pattern matching branches with inferator"
         );
+        assert!(
+            parser.parse_match_branch("| O => let x := O; x,").is_ok(),
+            "Match branch parser doesnt support let definition in the branch"
+        );
     }
 
     #[test]
