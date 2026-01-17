@@ -498,6 +498,12 @@ mod unit_tests {
                 .is_ok(),
             "Top level stm parser doesnt recognize functions"
         );
+        assert!(
+            parser
+                .parse_function("fun f (x:Unit) : Unit { let y := O; y }")
+                .is_ok(),
+            "Function parser doesnt support let definition in the branch"
+        );
 
         assert!(
             parser.parse_function("rec f : TYPE { TYPE }").is_err(),
