@@ -365,6 +365,7 @@ impl LofParser {
             |input| self.parse_abs(input),
             |input| self.parse_type_abs(input),
             |input| self.parse_arrow_type(input),
+            |input| self.let_def(input),
             |input| self.parse_pattern_match(input),
             // parse_app must come before parens for some reason
             |input| self.parse_app(input),
@@ -665,7 +666,7 @@ mod unit_tests {
         let parser = LofParser::new(Config::default());
 
         assert!(
-            parser.let_def("let z: Nat := zero;\nz").is_ok(),
+            parser.let_def("let z: Nat := zero;\nbody").is_ok(),
             "Parser cant read let definitions"
         );
         assert!(
@@ -694,6 +695,10 @@ mod unit_tests {
                 )
             ),
             "Let definition struct isnt properly constructed"
+        );
+        assert!(
+            parser.parse_node("let z: Nat := zero;\nbody").is_ok(),
+            "Top level parser cant read let definitions"
         );
     }
 
