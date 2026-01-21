@@ -102,7 +102,7 @@ fn generating_inferences(
         if let Ok((derived, _)) = eq_resolution(&kept[i], &selection_fn) {
             newly_derived.push(derived);
         }
-        if let Ok(derived) = eq_factoring(&kept[i], &selection_fn) {
+        if let Ok((derived, _)) = eq_factoring(&kept[i], &selection_fn) {
             newly_derived.push(derived);
         }
 
@@ -113,7 +113,7 @@ fn generating_inferences(
             {
                 newly_derived.push(derived);
             }
-            if let Ok(derived) =
+            if let Ok((derived, _)) =
                 superposition(&kept[i], &kept[j], &selection_fn)
             {
                 newly_derived.push(derived);

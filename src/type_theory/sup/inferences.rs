@@ -225,7 +225,7 @@ macro_rules! eq_factoring_checks {
                 $selected.remove($i);
 
                 $unselected.extend($selected);
-                return Ok(formula_apply_substitution(&Clause($unselected), &mgu));
+                return Ok((formula_apply_substitution(&Clause($unselected), &mgu), mgu));
             }
             _ => {}
         }
@@ -235,7 +235,7 @@ macro_rules! eq_factoring_checks {
 pub fn eq_factoring(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<SupFormula, String> {
+) -> Result<(SupFormula, Substitution), String> {
     let mut literals: Vec<SupFormula> = unpack_literals(C)?;
     let mut selected = selection_fn(&mut literals)?;
 
@@ -273,7 +273,7 @@ pub fn superposition(
     C: &SupFormula,
     D: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<SupFormula, String> {
+) -> Result<(SupFormula, Substitution), String> {
     let mut c_literals = unpack_literals(C)?;
     let mut d_literals = unpack_literals(D)?;
     let mut c_selected = selection_fn(&mut c_literals)?;
@@ -302,7 +302,7 @@ pub fn superposition(
                 new_clause.extend(c_selected);
                 d_selected.remove($j);
                 new_clause.extend(d_selected);
-                return Ok(formula_apply_substitution(&Clause(new_clause), &mgu));
+                return Ok((formula_apply_substitution(&Clause(new_clause), &mgu), mgu));
             }
         }};
     }
@@ -600,77 +600,87 @@ mod unit_tests {
         let t_prime = Variable("t_prime".to_string());
         let rest = Atom("P".to_string(), vec![]);
 
-        assert_eq!(
-            eq_factoring(
-                &Clause(vec![
+        assert!(
+            matches!(
+                eq_factoring(
+                    &Clause(vec![
+                        Equality(unifiable.clone(), t.clone()),
+                        Equality(unifiable.clone(), t_prime.clone()),
+                    ]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[
                     Equality(unifiable.clone(), t.clone()),
-                    Equality(unifiable.clone(), t_prime.clone()),
-                ]),
-                &selection_fn
+                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+                ],
             ),
-            Ok(Clause(vec![
-                Equality(unifiable.clone(), t.clone()),
-                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-            ])),
             "Equality factoring isnt working as expected"
         );
-        assert_eq!(
-            eq_factoring(
-                &Clause(vec![
-                    Equality(t.clone(), unifiable.clone()),
-                    Equality(unifiable.clone(), t_prime.clone()),
-                ]),
-                &selection_fn
+        assert!(
+            matches!(
+                eq_factoring(
+                    &Clause(vec![
+                        Equality(t.clone(), unifiable.clone()),
+                        Equality(unifiable.clone(), t_prime.clone()),
+                    ]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[
+                    Equality(t.clone(), unifiable.clone()), // keep this swap consistent with the arguments
+                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+                ],
             ),
-            Ok(Clause(vec![
-                Equality(t.clone(), unifiable.clone()), // keep this swap consistent with the arguments
-                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-            ])),
             "Equality factoring result depends on ordering of first equality (not even order-equivariant)"
         );
-        assert_eq!(
-            eq_factoring(
-                &Clause(vec![
+        assert!(
+            matches!(
+                eq_factoring(
+                    &Clause(vec![
+                        Equality(unifiable.clone(), t.clone()),
+                        Equality(t_prime.clone(), unifiable.clone()),
+                    ]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[
                     Equality(unifiable.clone(), t.clone()),
-                    Equality(t_prime.clone(), unifiable.clone()),
-                ]),
-                &selection_fn
+                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+                ],
             ),
-            Ok(Clause(vec![
-                Equality(unifiable.clone(), t.clone()),
-                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-            ])),
             "Equality factoring result depends on ordering of second equality"
         );
-        assert_eq!(
-            eq_factoring(
-                &Clause(vec![
-                    Equality(unifiable.clone(), t_prime.clone()),
+        assert!(
+            matches!(
+                eq_factoring(
+                    &Clause(vec![
+                        Equality(unifiable.clone(), t_prime.clone()),
+                        Equality(unifiable.clone(), t.clone()),
+                    ]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[
                     Equality(unifiable.clone(), t.clone()),
-                ]),
-                &selection_fn
+                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+                ],
             ),
-            Ok(Clause(vec![
-                Equality(unifiable.clone(), t.clone()),
-                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-            ])),
             "Equality factoring result depends on relative ordering of equality literals"
         );
 
-        assert_eq!(
-            eq_factoring(
-                &Clause(vec![
+        assert!(
+            matches!(
+                eq_factoring(
+                    &Clause(vec![
+                        Equality(unifiable.clone(), t.clone()),
+                        Equality(unifiable.clone(), t_prime.clone()),
+                        rest.clone()
+                    ]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[
                     Equality(unifiable.clone(), t.clone()),
-                    Equality(unifiable.clone(), t_prime.clone()),
+                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
                     rest.clone()
-                ]),
-                &selection_fn
+                ],
             ),
-            Ok(Clause(vec![
-                Equality(unifiable.clone(), t.clone()),
-                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                rest.clone()
-            ])),
             "Equality factoring isnt preserving other literals"
         );
         assert!(
@@ -715,18 +725,20 @@ mod unit_tests {
         let tk = Application("t".to_string(), vec![k.clone()]);
         let t_prime = Variable("t_prime".to_string());
 
-        assert_eq!(
-            eq_factoring(
-                &Clause(vec![
-                    Equality(s.clone(), tx.clone()),
-                    Equality(s_prime.clone(), t_prime.clone())
-                ]),
-                &selection_fn
+        assert!(
+            matches!(
+                eq_factoring(
+                    &Clause(vec![
+                        Equality(s.clone(), tx.clone()),
+                        Equality(s_prime.clone(), t_prime.clone())
+                    ]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[
+                    Equality(s_prime.clone(), tk.clone()),
+                    Not(Box::new(Equality(tk.clone(), t_prime.clone())))
+                ],
             ),
-            Ok(Clause(vec![
-                Equality(s_prime.clone(), tk.clone()),
-                Not(Box::new(Equality(tk.clone(), t_prime.clone())))
-            ])),
             "Equality resolution not applied properly with unification available"
         );
     }
@@ -746,53 +758,61 @@ mod unit_tests {
         let p_subst = Atom("L".to_string(), vec![r.clone()]);
         let q = Atom("Q".to_string(), vec![]);
 
-        assert_eq!(
-            superposition(
-                &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                &Clause(vec![p.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                superposition(
+                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
+                    &Clause(vec![p.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[p_subst.clone()],
             ),
-            Ok(Clause(vec![p_subst.clone()])),
             "Superposition isnt working with predicates"
         );
-        assert_eq!(
-            superposition(
-                &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                &Clause(vec![Equality(t.clone(), t_prime.clone())]),
-                &selection_fn
+        assert!(
+            matches!(
+                superposition(
+                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
+                    &Clause(vec![Equality(t.clone(), t_prime.clone())]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[Equality(t_subst.clone(), t_prime.clone())],
             ),
-            Ok(Clause(vec![Equality(t_subst.clone(), t_prime.clone())])),
             "Superposition isnt working with equalities"
         );
-        assert_eq!(
-            superposition(
-                &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                &Clause(vec![Not(Box::new(Equality(
-                    t.clone(),
+        assert!(
+            matches!(
+                superposition(
+                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
+                    &Clause(vec![Not(Box::new(Equality(
+                        t.clone(),
+                        t_prime.clone()
+                    )))]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[Not(Box::new(Equality(
+                    t_subst.clone(),
                     t_prime.clone()
-                )))]),
-                &selection_fn
+                )))],
             ),
-            Ok(Clause(vec![Not(Box::new(Equality(
-                t_subst.clone(),
-                t_prime.clone()
-            )))])),
             "Superposition isnt working with negated equalities"
         );
-        assert_eq!(
-            superposition(
-                &Clause(vec![
-                    Equality(unifiable.clone(), r.clone()),
-                    Not(Box::new(q.clone()))
-                ]),
-                &Clause(vec![p.clone(), q.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                superposition(
+                    &Clause(vec![
+                        Equality(unifiable.clone(), r.clone()),
+                        Not(Box::new(q.clone()))
+                    ]),
+                    &Clause(vec![p.clone(), q.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[
+                    p_subst.clone(),
+                    Not(Box::new(q.clone())),
+                    q.clone(),
+                ],
             ),
-            Ok(Clause(vec![
-                p_subst.clone(),
-                Not(Box::new(q.clone())),
-                q.clone(),
-            ])),
             "Superposition isnt preserving unralted literals"
         );
 
@@ -805,13 +825,15 @@ mod unit_tests {
             .is_ok(),
             "Superposition is dependent on equality terms ordering"
         );
-        assert_eq!(
-            superposition(
-                &Clause(vec![p.clone()]),
-                &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                &selection_fn
+        assert!(
+            matches!(
+                superposition(
+                    &Clause(vec![p.clone()]),
+                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[p_subst.clone()],
             ),
-            Ok(Clause(vec![p_subst.clone()])),
             "Superposition is dependent on clause ordering"
         );
     }
@@ -836,13 +858,15 @@ mod unit_tests {
         let otherx = Atom("Q".to_string(), vec![x.clone()]);
         let otherk = Atom("Q".to_string(), vec![k.clone()]);
 
-        assert_eq!(
-            superposition(
-                &Equality(l.clone(), r.clone()),
-                &Clause(vec![ps.clone(), otherx.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                superposition(
+                    &Equality(l.clone(), r.clone()),
+                    &Clause(vec![ps.clone(), otherx.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c ==&[pr.clone(), otherk.clone()],
             ),
-            Ok(Clause(vec![pr.clone(), otherk.clone()])),
             "Superposition not applied properly with unification available"
         );
     }
