@@ -64,6 +64,8 @@ pub enum Statement {
         Vec<(String, Expression)>,
     ),
     Auto(Expression),
+    /// formulas
+    Solve(Vec<Expression>),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum Tactic<E> {

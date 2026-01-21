@@ -1,10 +1,11 @@
 use super::api::Statement::{
-    Auto, Axiom, Comment, EmptyRoot, Fun, Global, Inductive, Theorem,
+    Auto, Axiom, Comment, EmptyRoot, Fun, Global, Inductive, Solve, Theorem,
 };
 use super::api::{Expression, LofAst, LofParser, Statement};
 use crate::config::id_to_system;
 use crate::misc::Union;
 use crate::parser::api::Notation;
+use nom::multi::separated_list1;
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag},
@@ -178,10 +179,17 @@ impl LofParser {
     }
     //
     //
-    // fn prolog_query<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
-    //     let (input, _) = preceded(multispace0, tag("solve"))(input)?;
+    fn prolog_query<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+        let (input, _) = preceded(multispace0, tag("solve"))(input)?;
+        let (input, goals) = preceded(
+            multispace1,
+            separated_list1(preceded(multispace0, tag(",")), |i| {
+                self.parse_type_expression(i)
+            }),
+        )(input)?;
 
-    // }
+        return Ok((input, Solve(goals)));
+    }
     //
     //
     pub fn parse_theory_block<'a>(
@@ -264,6 +272,7 @@ impl LofParser {
             |input| self.parse_theory_block(input),
             |input| self.parse_notation(input),
             |input| self.auto(input),
+            |input| self.prolog_query(input),
         ))(input)
     }
 }
@@ -280,7 +289,7 @@ mod unit_tests {
             LofAst::Exp,
             LofParser, Notation,
             Statement::{
-                Auto, Axiom, Comment, EmptyRoot, Fun, Global, Inductive,
+                Auto, Axiom, Comment, EmptyRoot, Fun, Global, Inductive, Solve,
                 Theorem,
             },
         },
@@ -777,6 +786,49 @@ mod unit_tests {
         assert!(
             parser.parse_statement("auto ;").is_err(),
             "Auto parser accepts command with no formula to prove"
+        );
+    }
+
+    #[test]
+    fn test_solve() {
+        let parser = LofParser::new(Config::new(TypeSystem::Cic()));
+
+        assert_eq!(
+            parser.parse_statement("solve P x"),
+            Ok((
+                "",
+                Solve(vec![Application(
+                    Box::new(VarUse("P".to_string())),
+                    vec![VarUse("x".to_string())]
+                )])
+            )),
+            "Variable solving parser isnt producing the proper value"
+        );
+        assert_eq!(
+            parser.parse_statement("solve P x, Q y"),
+            Ok((
+                "",
+                Solve(vec![Application(
+                    Box::new(VarUse("P".to_string())),
+                    vec![VarUse("x".to_string())]
+                ),Application(
+                    Box::new(VarUse("Q".to_string())),
+                    vec![VarUse("y".to_string())]
+                )])
+            )),
+            "Variable solving parser isnt producing the proper value with multiple goals"
+        );
+        assert!(
+            parser.parse_statement("solvePx").is_err(),
+            "Variable solving parser is accepting expression with no whitespaces"
+        );
+        assert!(
+            parser
+                .parse_statement(
+                    "solve   \t\r  P  \t\r x    \t\t ,  \t\n\r  Q    y    "
+                )
+                .is_ok(),
+            "Variable solving parser cant cope with whitespaces"
         );
     }
 }

@@ -36,6 +36,7 @@ const RESERVED_KEYWORDS: &[&str] = &[
     "suppose",
     "by",
     "sugar",
+    "query",
 ];
 
 impl LofParser {
