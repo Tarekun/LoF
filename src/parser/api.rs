@@ -66,6 +66,8 @@ pub enum Statement {
     Auto(Expression),
     /// formulas
     Solve(Vec<Expression>),
+    /// head, [subgoals]
+    HClause(Expression, Vec<Expression>),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum Tactic<E> {
