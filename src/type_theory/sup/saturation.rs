@@ -99,7 +99,7 @@ fn generating_inferences(
         if let Ok((derived, _)) = factoring(&kept[i], &selection_fn) {
             newly_derived.push(derived);
         }
-        if let Ok(derived) = eq_resolution(&kept[i], &selection_fn) {
+        if let Ok((derived, _)) = eq_resolution(&kept[i], &selection_fn) {
             newly_derived.push(derived);
         }
         if let Ok(derived) = eq_factoring(&kept[i], &selection_fn) {

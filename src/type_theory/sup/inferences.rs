@@ -169,7 +169,7 @@ pub fn factoring(
 pub fn eq_resolution(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<SupFormula, String> {
+) -> Result<(SupFormula, Substitution), String> {
     let mut lits = unpack_literals(C)?;
     let mut selected = selection_fn(&mut lits)?;
 
@@ -180,9 +180,9 @@ pub fn eq_resolution(
                     if let Ok(mgu) = terms_unify(l, r) {
                         selected.remove(i);
                         lits.extend(selected);
-                        return Ok(formula_apply_substitution(
-                            &Clause(lits),
-                            &mgu,
+                        return Ok((
+                            formula_apply_substitution(&Clause(lits), &mgu),
+                            mgu,
                         ));
                     }
                 }
@@ -533,17 +533,21 @@ mod unit_tests {
         let neq_st = Not(Box::new(Equality(s.clone(), t.clone())));
         let p = Atom("P".to_string(), vec![]);
 
-        assert_eq!(
-            eq_resolution(&Clause(vec![neq_ss.clone()]), &selection_fn),
-            Ok(Clause(vec![])),
+        assert!(
+            matches!(
+                eq_resolution(&Clause(vec![neq_ss.clone()]), &selection_fn),
+                Ok((Clause(ref c), _)) if c == &[],
+            ),
             "Equality resolution didnt simplify clause with difference of identical terms"
         );
-        assert_eq!(
-            eq_resolution(
-                &Clause(vec![neq_ss.clone(), p.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                eq_resolution(
+                    &Clause(vec![neq_ss.clone(), p.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[p.clone()],
             ),
-            Ok(Clause(vec![p.clone()])),
             "Equality resolution doesnt preserve unprocessed terms"
         );
         assert!(
@@ -563,12 +567,14 @@ mod unit_tests {
         let pfx = Atom("P".to_string(), vec![fx.clone(), z.clone()]);
         let neq = Not(Box::new(Equality(y.clone(), fx.clone())));
 
-        assert_eq!(
-            eq_resolution(
-                &Clause(vec![neq.clone(), py.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                eq_resolution(
+                    &Clause(vec![neq.clone(), py.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[pfx.clone()],
             ),
-            Ok(Clause(vec![pfx.clone()])),
             "Factoring not applied properly with unification available"
         );
     }
