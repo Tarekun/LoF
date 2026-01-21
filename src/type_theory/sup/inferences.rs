@@ -142,7 +142,7 @@ pub fn resolution(
 pub fn factoring(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<SupFormula, String> {
+) -> Result<(SupFormula, Substitution), String> {
     let mut literals = unpack_literals(C)?;
     let mut selected = selection_fn(&mut literals)?;
 
@@ -151,7 +151,10 @@ pub fn factoring(
             if let Ok(mgu) = formulas_unify(&selected[i], &selected[j]) {
                 selected.remove(j);
                 literals.extend(selected);
-                return Ok(formula_apply_substitution(&Clause(literals), &mgu));
+                return Ok((
+                    formula_apply_substitution(&Clause(literals), &mgu),
+                    mgu,
+                ));
             }
         }
     }
@@ -470,17 +473,21 @@ mod unit_tests {
         let p = Atom("P".to_string(), vec![]);
         let q = Atom("Q".to_string(), vec![Variable("x".to_string())]);
 
-        assert_eq!(
-            factoring(&Clause(vec![q.clone(), q.clone()]), &selection_fn),
-            Ok(Clause(vec![q.clone()])),
+        assert!(
+            matches!(
+                factoring(&Clause(vec![q.clone(), q.clone()]), &selection_fn),
+                Ok((Clause(ref c), _)) if c == &[q.clone()],
+            ),
             "Factoring rule didnt remove the duplicate predicate"
         );
-        assert_eq!(
-            factoring(
-                &Clause(vec![q.clone(), p.clone(), q.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                factoring(
+                    &Clause(vec![q.clone(), p.clone(), q.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[q.clone(), p.clone()],
             ),
-            Ok(Clause(vec![q.clone(), p.clone()])),
             "Factoring rule didnt keep the non selected predicate"
         );
         assert!(
@@ -502,13 +509,15 @@ mod unit_tests {
         let qy = Atom("Q".to_string(), vec![y.clone(), z.clone()]);
         let qfx = Atom("Q".to_string(), vec![fx.clone(), z.clone()]);
 
-        assert_eq!(
-            factoring(
-                &Clause(vec![py.clone(), pfx.clone(), qy.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                factoring(
+                    &Clause(vec![py.clone(), pfx.clone(), qy.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[pfx.clone(), qfx.clone()],
             ),
-            Ok(Clause(vec![pfx.clone(), qfx.clone()])),
-            ""
+            "Factoring couldnt apply unification properly"
         )
     }
 

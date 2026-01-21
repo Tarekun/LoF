@@ -96,7 +96,7 @@ fn generating_inferences(
 
     for i in 0..kept.len() {
         // unary inferences
-        if let Ok(derived) = factoring(&kept[i], &selection_fn) {
+        if let Ok((derived, _)) = factoring(&kept[i], &selection_fn) {
             newly_derived.push(derived);
         }
         if let Ok(derived) = eq_resolution(&kept[i], &selection_fn) {
