@@ -1,4 +1,6 @@
-use super::api::Statement::{Auto, Theorem};
+use super::api::Statement::{
+    Auto, Axiom, Comment, EmptyRoot, Fun, Global, Inductive, Theorem,
+};
 use super::api::{Expression, LofAst, LofParser, Statement};
 use crate::config::id_to_system;
 use crate::misc::Union;
@@ -33,7 +35,7 @@ impl LofParser {
     }
     //
     //
-    pub fn global<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn global<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
         let (input, _) = preceded(multispace0, tag("global"))(input)?;
         let (input, (var_name, opt_type)) = preceded(multispace1, |input| {
             self.parse_optionally_typed_identifier(input)
@@ -45,12 +47,12 @@ impl LofParser {
 
         Ok((
             input,
-            Statement::Global(var_name.to_string(), opt_type, Box::new(term)),
+            Global(var_name.to_string(), opt_type, Box::new(term)),
         ))
     }
     //
     //
-    pub fn parse_function<'a>(
+    fn parse_function<'a>(
         &self,
         input: &'a str,
     ) -> IResult<&'a str, Statement> {
@@ -74,7 +76,7 @@ impl LofParser {
 
         Ok((
             input,
-            Statement::Fun(
+            Fun(
                 fun_name.to_string(),
                 args,
                 Box::new(output_type),
@@ -85,10 +87,7 @@ impl LofParser {
     }
     //
     //
-    pub fn parse_theorem<'a>(
-        &self,
-        input: &'a str,
-    ) -> IResult<&'a str, Statement> {
+    fn parse_theorem<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
         let (input, _) = preceded(
             multispace0,
             alt((tag("theorem"), tag("lemma"), tag("proposition"))),
@@ -114,23 +113,17 @@ impl LofParser {
     }
     //
     //
-    pub fn parse_comment<'a>(
-        &self,
-        input: &'a str,
-    ) -> IResult<&'a str, Statement> {
+    fn parse_comment<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
         let (input, _) = multispace0(input)?;
         let (input, _) = tag("#")(input)?;
         let (input, _) = not_line_ending(input)?;
         let (input, _) = opt(line_ending)(input)?;
 
-        Ok((input, Statement::Comment()))
+        Ok((input, Comment()))
     }
     //
     //
-    pub fn parse_axiom<'a>(
-        &self,
-        input: &'a str,
-    ) -> IResult<&'a str, Statement> {
+    fn parse_axiom<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
         let (input, _) = preceded(multispace0, tag("axiom"))(input)?;
         let (input, axiom_name) =
             preceded(multispace1, |input| self.parse_identifier(input))(input)?;
@@ -139,14 +132,11 @@ impl LofParser {
             preceded(multispace0, |input| self.parse_expression(input))(input)?;
         let (input, _) = preceded(multispace0, char(';'))(input)?;
 
-        Ok((
-            input,
-            Statement::Axiom(axiom_name.to_string(), Box::new(formula)),
-        ))
+        Ok((input, Axiom(axiom_name.to_string(), Box::new(formula))))
     }
     //
     //
-    pub fn parse_inductive_constructor<'a>(
+    fn parse_inductive_constructor<'a>(
         &self,
         input: &'a str,
     ) -> IResult<&'a str, (String, Expression)> {
@@ -158,7 +148,7 @@ impl LofParser {
 
         Ok((input, (constructor_name.to_string(), constructor_type)))
     }
-    pub fn parse_inductive_def<'a>(
+    fn parse_inductive_def<'a>(
         &self,
         input: &'a str,
     ) -> IResult<&'a str, Statement> {
@@ -178,7 +168,7 @@ impl LofParser {
 
         Ok((
             input,
-            Statement::Inductive(
+            Inductive(
                 inductive_type_name.to_string(),
                 parameters,
                 Box::new(ariety),
@@ -186,6 +176,12 @@ impl LofParser {
             ),
         ))
     }
+    //
+    //
+    // fn prolog_query<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    //     let (input, _) = preceded(multispace0, tag("solve"))(input)?;
+
+    // }
     //
     //
     pub fn parse_theory_block<'a>(
@@ -201,9 +197,9 @@ impl LofParser {
         match id_to_system(system_id) {
             Ok(type_system) => {
                 if type_system == self.config.system {
-                    return Ok((input, Statement::EmptyRoot(nodes)));
+                    return Ok((input, EmptyRoot(nodes)));
                 } else {
-                    return Ok((input, Statement::EmptyRoot(vec![])));
+                    return Ok((input, EmptyRoot(vec![])));
                 }
             }
             // TODO return a better error here
@@ -215,7 +211,7 @@ impl LofParser {
     }
     //
     //
-    pub fn auto<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn auto<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
         let (input, _) = preceded(multispace0, tag("auto"))(input)?;
         let (input, formula) =
             preceded(multispace1, |input| self.parse_expression(input))(input)?;
@@ -249,7 +245,7 @@ impl LofParser {
             },
         );
 
-        Ok((input, Statement::Comment()))
+        Ok((input, Comment()))
     }
     //
     //
@@ -284,7 +280,7 @@ mod unit_tests {
             LofAst::Exp,
             LofParser, Notation,
             Statement::{
-                self, Auto, Axiom, Comment, EmptyRoot, Global, Inductive,
+                Auto, Axiom, Comment, EmptyRoot, Fun, Global, Inductive,
                 Theorem,
             },
         },
@@ -417,7 +413,7 @@ mod unit_tests {
             parser.parse_function("fun f (n: Nat): Nat { s n }"),
             Ok((
                 "",
-                Statement::Fun(
+                Fun(
                     "f".to_string(),
                     vec![("n".to_string(), VarUse("Nat".to_string()))],
                     Box::new(VarUse("Nat".to_string())),
@@ -434,7 +430,7 @@ mod unit_tests {
             parser.parse_function("fun rec f (n: Nat): Nat { f n }"),
             Ok((
                 "",
-                Statement::Fun(
+                Fun(
                     "f".to_string(),
                     vec![("n".to_string(), VarUse("Nat".to_string()))],
                     Box::new(VarUse("Nat".to_string())),
@@ -452,7 +448,7 @@ mod unit_tests {
             parser.parse_function("fun f : TYPE { TYPE }"),
             Ok((
                 "",
-                Statement::Fun(
+                Fun(
                     "f".to_string(),
                     vec![],
                     Box::new(VarUse("TYPE".to_string())),
@@ -466,7 +462,7 @@ mod unit_tests {
             parser.parse_function("fun f (l: List Nat): List Nat { l }"),
             Ok((
                 "",
-                Statement::Fun(
+                Fun(
                     "f".to_string(),
                     vec![(
                         "l".to_string(),
@@ -645,7 +641,7 @@ mod unit_tests {
             .unwrap(),
             (
                 "",
-                Statement::Inductive(
+                Inductive(
                     "T".to_string(),
                     vec![],
                     Box::new(VarUse("TYPE".to_string())),
