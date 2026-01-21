@@ -9,7 +9,7 @@ use crate::type_theory::sup::sup_utils::{
 };
 use crate::type_theory::sup::unification::{
     formula_apply_substitution, formulas_unify, term_apply_substitution,
-    terms_unify,
+    terms_unify, Substitution,
 };
 use std::cmp::{max_by, min_by, Ordering::Less};
 
@@ -96,9 +96,12 @@ macro_rules! resolution_inference {
                         $d_selected.remove($d_idx);
                         new_clause.extend($d_selected);
                         new_clause.extend($d_others);
-                        return Ok(formula_apply_substitution(
-                            &Clause(new_clause),
-                            &mgu,
+                        return Ok((
+                            formula_apply_substitution(
+                                &Clause(new_clause),
+                                &mgu,
+                            ),
+                            mgu,
                         ));
                     }
                 }
@@ -112,7 +115,7 @@ pub fn resolution(
     C: &SupFormula,
     D: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<SupFormula, String> {
+) -> Result<(SupFormula, Substitution), String> {
     let mut c_literals = unpack_literals(C)?;
     let mut d_literals = unpack_literals(D)?;
     let mut c_selected = selection_fn(&mut c_literals)?;
@@ -386,27 +389,33 @@ mod unit_tests {
         );
         let not_p = Not(Box::new(p.clone()));
 
-        assert_eq!(
-            resolution(&Clause(vec![p.clone()]), &Clause(vec![not_p.clone()]), &selection_fn),
-            Ok(Clause(vec![])),
+        assert!(
+            matches!(
+                resolution(&Clause(vec![p.clone()]), &Clause(vec![not_p.clone()]), &selection_fn),
+                Ok((Clause(ref c), _)) if c.is_empty()
+            ),
             "Resolution doesnt derive empty clause from contraddictory literals"
         );
-        assert_eq!(
-            resolution(
-                &Clause(vec![p.clone(), ligther.clone()]),
-                &Clause(vec![not_p.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                resolution(
+                    &Clause(vec![p.clone(), ligther.clone()]),
+                    &Clause(vec![not_p.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref lits), _)) if lits == &[ligther.clone()]
             ),
-            Ok(Clause(vec![ligther.clone()])),
             "Resolution doesnt preserve unrelated literals from left clause"
         );
-        assert_eq!(
-            resolution(
-                &Clause(vec![p.clone()]),
-                &Clause(vec![not_p.clone(), ligther.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                resolution(
+                    &Clause(vec![p.clone()]),
+                    &Clause(vec![not_p.clone(), ligther.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref lits), _)) if lits == &[ligther.clone()]
             ),
-            Ok(Clause(vec![ligther.clone()])),
             "Resolution doesnt preserve unrelated literals from right clause"
         );
 
@@ -431,22 +440,26 @@ mod unit_tests {
         let qfx = Atom("Q".to_string(), vec![fx.clone(), z.clone()]);
         let rfx = Atom("R".to_string(), vec![fx.clone(), z.clone()]);
 
-        assert_eq!(
-            resolution(
-                &Clause(vec![py.clone(), qy.clone()]),
-                &Clause(vec![Not(Box::new(pfx.clone())), ry.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                resolution(
+                    &Clause(vec![py.clone(), qy.clone()]),
+                    &Clause(vec![Not(Box::new(pfx.clone())), ry.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[qfx.clone(), rfx.clone()],
             ),
-            Ok(Clause(vec![qfx.clone(), rfx.clone()])),
             "Resolution couldnt apply unification properly with negation over expanded body"
         );
-        assert_eq!(
-            resolution(
-                &Clause(vec![Not(Box::new(py.clone())), qy.clone()]),
-                &Clause(vec![pfx.clone(), ry.clone()]),
-                &selection_fn
+        assert!(
+            matches!(
+                resolution(
+                    &Clause(vec![Not(Box::new(py.clone())), qy.clone()]),
+                    &Clause(vec![pfx.clone(), ry.clone()]),
+                    &selection_fn
+                ),
+                Ok((Clause(ref c), _)) if c == &[rfx.clone(), qfx.clone()],
             ),
-            Ok(Clause(vec![rfx.clone(), qfx.clone()])),
             "Resolution couldnt apply unification properly with negation over variable literal"
         );
     }
