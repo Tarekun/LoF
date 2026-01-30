@@ -1,11 +1,20 @@
 use std::{
     collections::{HashMap, VecDeque},
-    fmt::Debug,
+    fmt::{self, Debug},
 };
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq)]
 pub struct Substitution<T> {
     mappings: HashMap<String, T>,
+}
+impl<T: fmt::Debug> fmt::Debug for Substitution<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Θ = {{")?;
+        for (var, term) in &self.mappings {
+            writeln!(f, "  {} -> {:?}", var, term)?;
+        }
+        write!(f, "}}")
+    }
 }
 impl<T: Debug + Clone + PartialEq> Substitution<T> {
     /// Creates an empty substitution of variables
@@ -62,14 +71,15 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
                         var_name, previous_subst, body
                     ));
                 } else {
+                    // trying to add the same substitution again, nothing to do
                     return Ok(())
                 }
             } else {
                 (var_name.to_string(), body.to_owned())
             };
 
+        // occurs check
         if occurs(&body, &var_name) {
-            // occurs check
             return Err(format!(
                 "Substitution body {:?} contains a reference to variable {:?}",
                 body, var_name
@@ -109,6 +119,10 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
 
     pub fn names(&self) -> Vec<&String> {
         self.mappings.keys().collect()
+    }
+
+    pub fn resolvent(&self, name: &str) -> Option<&T> {
+        self.mappings.get(name)
     }
 }
 

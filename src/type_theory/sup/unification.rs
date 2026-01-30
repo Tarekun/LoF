@@ -54,9 +54,10 @@ fn terms_unify_with_base(
         explode,
         occurs,
     )?;
-    return Ok(mgu.reduce(|term, var_name, arg| {
+
+    Ok(mgu.reduce(|term, var_name, arg| {
         substitute_term(term, &Variable(var_name.to_string()), arg)
-    }));
+    }))
 }
 
 // TODO: see if i can integrate this in the general unification algorithm
@@ -239,6 +240,7 @@ mod unit_tests {
                     Application("f".to_string(), vec![k.clone()])
                 )
             ])),
+            // TODO: im not really sure this should be enforced at the terms_unify but whatever for now
             "Returned MGU didnt solve variable `y` to constant `k` in assignment for variable `x`"
         )
     }

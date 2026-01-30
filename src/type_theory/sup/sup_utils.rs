@@ -8,6 +8,61 @@ use crate::type_theory::{
     sup::unification::terms_unify,
 };
 use std::cmp::Ordering::{self, Equal, Greater, Less};
+use std::fmt;
+
+impl fmt::Debug for SupTerm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Variable(name) => write!(f, "{}", name),
+            Application(name, args) => {
+                if args.len() == 0 {
+                    write!(f, "<{}>", name)
+                } else {
+                    write!(f, "{}(", name)?;
+                    for i in 0..args.len() - 1 {
+                        write!(f, "{:?}, ", args[i])?;
+                    }
+                    write!(f, "{:?})", args[args.len() - 1])
+                }
+            }
+        }
+    }
+}
+impl fmt::Debug for SupFormula {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Atom(name, args) => {
+                if args.len() == 0 {
+                    write!(f, "{}", name)
+                } else {
+                    write!(f, "{}(", name)?;
+                    for i in 0..args.len() - 1 {
+                        write!(f, "{:?}, ", args[i])?;
+                    }
+                    write!(f, "{:?})", args[args.len() - 1])
+                }
+            }
+            Clause(lits) => {
+                if lits.len() == 0 {
+                    write!(f, "⊥")
+                } else {
+                    for i in 0..lits.len() - 1 {
+                        write!(f, "{:?} ∨ ", lits[i])?;
+                    }
+                    write!(f, "{:?}", lits[lits.len() - 1])
+                }
+            }
+            Not(psi) => match &**psi {
+                Equality(s, t) => write!(f, "{:?}≠{:?}", s, t),
+                _ => write!(f, "¬{:?}", psi),
+            },
+            Equality(l, r) => write!(f, "{:?} = {:?}", l, r),
+            ForAll(var_name, var_type, psi) => {
+                write!(f, "∀{}:{:?}. {:?}", var_name, var_type, psi)
+            }
+        }
+    }
+}
 
 /// Returns the ordered vector of formal argument types of nested universal quantification
 pub fn get_arg_types(forall: &SupFormula) -> Vec<SupFormula> {
@@ -273,7 +328,6 @@ pub fn find_unifiable_term(
     term: &SupTerm,
     target: &SupTerm,
 ) -> Option<(SupTerm, Substitution<SupTerm>)> {
-    // TODO: support actual unification
     if let Ok(mgu) = terms_unify(term, target) {
         return Some((term.clone(), mgu));
     }
@@ -332,6 +386,65 @@ pub fn find_unifiable_formula(
                 return find_unifiable_formula(body, target);
             }
         }
+    }
+}
+
+/// Replaces every occurance of variables of `names`  in `term` with new fresh names
+/// to avoid names clashes
+pub fn term_refresh_variables(term: &SupTerm) -> SupTerm {
+    fn fresh_number_suffix(input: &str) -> String {
+        // split into prefix and numeric suffix
+        let mut split_index = input.len();
+        for (i, c) in input.char_indices().rev() {
+            if c.is_ascii_digit() {
+                split_index = i;
+            } else {
+                break;
+            }
+        }
+        let (prefix, suffix) = input.split_at(split_index);
+
+        let number = if suffix.is_empty() {
+            0
+        } else {
+            suffix.parse::<i32>().unwrap_or(0)
+        };
+        format!("{}{}", prefix, number + 1)
+    }
+
+    match term {
+        Variable(var_name) => Variable(fresh_number_suffix(var_name)),
+        Application(fun, args) => Application(
+            fun.to_string(),
+            args.into_iter()
+                .map(|arg| term_refresh_variables(arg))
+                .collect(),
+        ),
+    }
+}
+pub fn type_refresh_variables(formula: &SupFormula) -> SupFormula {
+    match formula {
+        Atom(name, args) => Atom(
+            name.to_string(),
+            args.into_iter()
+                .map(|arg| term_refresh_variables(arg))
+                .collect(),
+        ),
+        Clause(literals) => Clause(
+            literals
+                .into_iter()
+                .map(|lit| type_refresh_variables(lit))
+                .collect(),
+        ),
+        Not(psi) => Not(Box::new(type_refresh_variables(psi))),
+        Equality(l, r) => {
+            Equality(term_refresh_variables(l), term_refresh_variables(r))
+        }
+        ForAll(var_name, var_type, psi) => ForAll(
+            var_name.to_string(),
+            Box::new(type_refresh_variables(var_type)),
+            Box::new(type_refresh_variables(psi)),
+        ),
     }
 }
 

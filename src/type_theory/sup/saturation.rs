@@ -1,11 +1,16 @@
 use super::sup::SupFormula::{self, Clause};
+use super::sup::SupTerm::Variable;
 use super::sup_utils::subsumes;
+use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::sup::freedom::SelectionFunctionSignature;
 use crate::type_theory::sup::inferences::{
     demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
     subsumption_resolution_first, superposition,
 };
-use crate::type_theory::sup::sup_utils::is_tautology;
+use crate::type_theory::sup::sup::SupTerm;
+use crate::type_theory::sup::sup_utils::{
+    is_tautology, substitute_term, type_refresh_variables,
+};
 
 /// Checks if a formula φ is the empty clause
 fn is_bottom(φ: &SupFormula) -> bool {
@@ -32,9 +37,11 @@ fn is_redundant(C: &SupFormula, kept: &Vec<SupFormula>) -> bool {
 /// * it's redundant: move to the next one
 macro_rules! termination {
     // dry like a mf
-    ($clause:expr, $kept:expr) => {
+    ($clause:expr, $kept:expr, $mgu:expr) => {
         if is_bottom(&$clause) {
-            return Ok(());
+            return Ok($mgu.reduce(|term, var_name, arg| {
+                substitute_term(term, &Variable(var_name.to_string()), arg)
+            }));
         }
         if is_redundant(&$clause, &$kept) {
             continue;
@@ -88,53 +95,81 @@ fn backward_simplification(
 /// Cost is quadratic in the size of working set of formulas, as for binary
 /// inference rules it compares every formula with every other formula once
 fn generating_inferences(
-    kept: &Vec<SupFormula>,
+    kept: &mut Vec<SupFormula>,
     selection_fn: &SelectionFunctionSignature,
-) -> Vec<SupFormula> {
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut newly_derived = vec![];
+    let mut solving_mgu = Substitution::empty();
 
     for i in 0..kept.len() {
         // unary inferences
-        let (derived, _) = factoring(&kept[i], &selection_fn);
+        let (derived, mgu) = factoring(&kept[i], &selection_fn);
         newly_derived.extend(derived);
-        let (derived, _) = eq_resolution(&kept[i], &selection_fn);
+        kept[i] = type_refresh_variables(&kept[i]);
+        solving_mgu.merge(mgu);
+        let (derived, mgu) = eq_resolution(&kept[i], &selection_fn);
         newly_derived.extend(derived);
-        let (derived, _) = eq_factoring(&kept[i], &selection_fn);
+        kept[i] = type_refresh_variables(&kept[i]);
+        solving_mgu.merge(mgu);
+        let (derived, mgu) = eq_factoring(&kept[i], &selection_fn);
         newly_derived.extend(derived);
+        kept[i] = type_refresh_variables(&kept[i]);
+        solving_mgu.merge(mgu);
 
         // binary inferences
         for j in i + 1..kept.len() {
-            let (derived, _) = resolution(&kept[i], &kept[j], &selection_fn);
+            let (derived, mgu) = resolution(&kept[i], &kept[j], &selection_fn);
+            println!(
+                "resolution applied to [{:?}] and [{:?}]\nnewly derived {:?}\n",
+                kept[i], kept[j], derived
+            );
             newly_derived.extend(derived);
-            let (derived, _) = superposition(&kept[i], &kept[j], &selection_fn);
+            kept[i] = type_refresh_variables(&kept[i]);
+            kept[j] = type_refresh_variables(&kept[j]);
+            solving_mgu.merge(mgu);
+
+            let (derived, mgu) =
+                superposition(&kept[i], &kept[j], &selection_fn);
             newly_derived.extend(derived);
+            kept[i] = type_refresh_variables(&kept[i]);
+            kept[j] = type_refresh_variables(&kept[j]);
+            solving_mgu.merge(mgu);
         }
     }
 
-    newly_derived
+    (newly_derived, solving_mgu)
 }
 
 pub fn saturate(
     clauses: &Vec<SupFormula>,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(), String> {
+) -> Result<Substitution<SupTerm>, String> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
+    let mut solving_mgu = Substitution::empty();
+    println!("saturation starting set:");
+    for clause in clauses {
+        println!("{:?}", clause);
+    }
+    println!();
 
     loop {
         while !unprocessed.is_empty() {
             let clause = pick_clause(&mut unprocessed)?;
 
-            termination!(clause, kept);
+            termination!(clause, kept, solving_mgu);
             let clause = forward_simplification(&kept, clause);
-            termination!(clause, kept);
+            termination!(clause, kept, solving_mgu);
             let simplified = backward_simplification(&mut kept, &clause);
 
             unprocessed.extend(simplified);
             kept.push(clause);
         }
 
-        unprocessed = generating_inferences(&kept, &selection_fn);
+        let (new_unprocessed, mgu) =
+            generating_inferences(&mut kept, &selection_fn);
+        unprocessed = new_unprocessed;
+        solving_mgu.merge(mgu);
         if unprocessed.len() == 0 {
             return Err(
                 "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
@@ -150,7 +185,7 @@ mod unit_tests {
         type_theory::sup::{
             freedom::get_selection_fn,
             saturation::saturate,
-            sup::SupFormula::{Atom, Clause, Not},
+            sup::SupFormula::{Atom, Clause, Equality, Not},
             sup::SupTerm::{self, Application, Variable},
         },
     };
@@ -165,75 +200,69 @@ mod unit_tests {
         Application("+".to_string(), vec![n, m])
     }
 
-    // #[test]
-    // fn test_predicate_logic_solving() {
-    //     let zero = Application("0".to_string(), vec![]);
-    //     let selection_fn = get_selection_fn(SelectionFunction::All());
+    #[test]
+    fn predicate_logic_solving() {
+        let zero = Application("0".to_string(), vec![]);
+        let selection_fn = get_selection_fn(SelectionFunction::All());
 
-    //     // forall x. add(0, x, x)
-    //     // add(0,X,X).
-    //     let ax1 =
-    //         Atom("add".to_string(), vec![zero.clone(), var("x"), var("x")]);
-    //     // forall n m p. add(n,m,p) => add(s(n),m,s(p))
-    //     // add(s(N),M,s(P)) :- add(N,M,P).
-    //     let ax2 = Clause(vec![
-    //         Atom("add".to_string(), vec![s(var("n")), var("m"), s(var("p"))]),
-    //         Not(Box::new(Atom(
-    //             "add".to_string(),
-    //             vec![var("n"), var("m"), var("p")],
-    //         ))),
-    //     ]);
-    //     // ?- add(1,2,R)
-    //     let neg_target = Not(Box::new(Atom(
-    //         "add".to_string(),
-    //         vec![
-    //             s(zero.clone()),
-    //             s(s(zero.clone())),
-    //             Variable("R".to_string()),
-    //         ],
-    //     )));
+        // forall x. add(0, x, x)
+        // add(0,X,X).
+        let ax1 =
+            Atom("add".to_string(), vec![zero.clone(), var("x"), var("x")]);
+        // forall n m p. add(n,m,p) => add(s(n),m,s(p))
+        // add(s(N),M,s(P)) :- add(N,M,P).
+        let ax2 = Clause(vec![
+            Atom("add".to_string(), vec![s(var("n")), var("m"), s(var("p"))]),
+            Not(Box::new(Atom(
+                "add".to_string(),
+                vec![var("n"), var("m"), var("p")],
+            ))),
+        ]);
+        // ?- add(1,2,R)
+        let neg_target = Not(Box::new(Atom(
+            "add".to_string(),
+            vec![
+                s(zero.clone()),
+                s(s(zero.clone())),
+                Variable("R".to_string()),
+            ],
+        )));
 
-    //     let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
-    //     assert_eq!(
-    //         mgu.clone().unwrap().resolvent("R"),
-    //         Some(&s(s(s(zero.clone())))),
-    //         "Variable solution of the addition problem is not the expected"
-    //     );
-    // }
+        let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
+        assert_eq!(
+            mgu.clone().unwrap().resolvent("R"),
+            Some(&s(s(s(zero.clone())))),
+            "Variable solution of the addition problem is not the expected"
+        );
+    }
 
-    // #[test]
-    // fn test_equality_logic_solving() {
-    //     let zero = Application("0".to_string(), vec![]);
-    //     let selection_fn = get_selection_fn(SelectionFunction::All());
+    #[test]
+    fn equality_logic_solving() {
+        let zero = Application("0".to_string(), vec![]);
+        let selection_fn = get_selection_fn(SelectionFunction::All());
 
-    //     // forall x. 0+x = x
-    //     let ax1 = Equality(add(zero.clone(), var("x")), var("x"));
-    //     // forall n m p. n+m = p  =>  s(n)+m = s(p)
-    //     let ax2 = Clause(vec![
-    //         Not(Box::new(Equality(add(var("n"), var("m")), var("p")))),
-    //         Equality(add(s(var("n")), var("m")), s(var("p"))),
-    //     ]);
-    //     let neg_target = Not(Box::new(Equality(
-    //         add(s(zero.clone()), var("R")),
-    //         s(s(s(zero.clone()))),
-    //     )));
+        // forall x. 0+x = x
+        let ax1 = Equality(add(zero.clone(), var("x")), var("x"));
+        // forall n m p. n+m = p  =>  s(n)+m = s(p)
+        let ax2 = Clause(vec![
+            Equality(add(s(var("n")), var("m")), s(var("p"))),
+            Not(Box::new(Equality(add(var("n"), var("m")), var("p")))),
+        ]);
+        let neg_target = Not(Box::new(Equality(
+            add(s(zero.clone()), var("R")),
+            s(s(s(zero.clone()))),
+        )));
 
-    //     // assert_eq!(
-    //     //     superposition(&neg_target, &ax2, &selection_fn),
-    //     //     Err("".to_string()),
-    //     //     "problema"
-    //     // );
-
-    //     let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
-    //     println!("{:?}", mgu.clone().unwrap());
-    //     assert_eq!(
-    //         mgu.unwrap().resolvent("R"),
-    //         // either this or an equivalent expression has to pass
-    //         Some(&s(s(zero.clone()))),
-    //         "Variable solution of the addition problem is not the expected"
-    //     );
-    //     panic!();
-    // }
+        let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
+        println!("{:?}", mgu.clone().unwrap());
+        assert_eq!(
+            mgu.unwrap().resolvent("R"),
+            // either this or an equivalent expression has to pass
+            Some(&s(s(zero.clone()))),
+            "Variable solution of the addition problem is not the expected"
+        );
+        panic!();
+    }
 
     #[test]
     fn test_simple_saturation() {
