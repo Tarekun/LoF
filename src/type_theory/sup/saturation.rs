@@ -96,22 +96,24 @@ fn generating_inferences(
 
     for i in 0..kept.len() {
         // unary inferences
-        if let Ok(derived) = factoring(&kept[i], &selection_fn) {
+        if let Ok((derived, _)) = factoring(&kept[i], &selection_fn) {
             newly_derived.push(derived);
         }
-        if let Ok(derived) = eq_resolution(&kept[i], &selection_fn) {
+        if let Ok((derived, _)) = eq_resolution(&kept[i], &selection_fn) {
             newly_derived.push(derived);
         }
-        if let Ok(derived) = eq_factoring(&kept[i], &selection_fn) {
+        if let Ok((derived, _)) = eq_factoring(&kept[i], &selection_fn) {
             newly_derived.push(derived);
         }
 
         // binary inferences
         for j in i + 1..kept.len() {
-            if let Ok(derived) = resolution(&kept[i], &kept[j], &selection_fn) {
+            if let Ok((derived, _)) =
+                resolution(&kept[i], &kept[j], &selection_fn)
+            {
                 newly_derived.push(derived);
             }
-            if let Ok(derived) =
+            if let Ok((derived, _)) =
                 superposition(&kept[i], &kept[j], &selection_fn)
             {
                 newly_derived.push(derived);
