@@ -63,7 +63,7 @@ impl LofParser {
         let (input, args) = self.typed_parameter_list(input)?;
         let (input, _) = preceded(multispace0, tag(":"))(input)?;
         let (input, output_type) =
-            preceded(multispace1, |input| self.parse_type_expression(input))(
+            preceded(multispace0, |input| self.parse_type_expression(input))(
                 input,
             )?;
 
@@ -486,6 +486,10 @@ mod unit_tests {
             "Function parser cant cope with arguments that have application types"
         );
         assert!(
+            parser.parse_function("fun f(n:Nat):Nat{n}").is_ok(),
+            "Function parser cant cope with dense notation"
+        );
+        assert!(
             parser.parse_function(
                 "fun  \t \r f \r  \t  ( \t\r x \r\t :  \tNat  )  :  Nat  {  x  }"
             )
@@ -497,6 +501,12 @@ mod unit_tests {
                 .parse_statement("fun f (l: List Nat): List Nat { l }")
                 .is_ok(),
             "Top level stm parser doesnt recognize functions"
+        );
+        assert!(
+            parser
+                .parse_function("fun f (x:Unit) : Unit { let y := O; y }")
+                .is_ok(),
+            "Function parser doesnt support let definition in the branch"
         );
 
         assert!(

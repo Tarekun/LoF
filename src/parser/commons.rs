@@ -9,7 +9,7 @@ use crate::misc::simple_map;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
-    character::complete::{char, multispace0, multispace1},
+    character::complete::{char, multispace0},
     combinator::{opt, recognize},
     error::{Error, ErrorKind},
     multi::many0,
@@ -115,7 +115,7 @@ impl LofParser {
         input: &'a str,
     ) -> IResult<&'a str, Vec<(String, Expression)>> {
         many0(preceded(
-            multispace1,
+            multispace0,
             delimited(
                 preceded(multispace0, char('(')),
                 |input| self.parse_typed_identifier(input),
