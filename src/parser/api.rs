@@ -64,6 +64,8 @@ pub enum Statement {
         Vec<(String, Expression)>,
     ),
     Auto(Expression),
+    /// formulas
+    Solve(Vec<Expression>),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum Tactic<E> {
@@ -103,6 +105,7 @@ impl LofParser {
         alt((
             map(|input| self.parse_expression(input), LofAst::Exp),
             map(|input| self.parse_statement(input), LofAst::Stm),
+            // TODO why tf was this here? find why + test if it needs to stay here
             map(|input| self.parse_theory_block(input), LofAst::Stm),
         ))(input)
     }
