@@ -1,5 +1,6 @@
 use super::api::Statement::{
-    Auto, Axiom, Comment, EmptyRoot, Fun, Global, Inductive, Solve, Theorem,
+    Auto, Axiom, Comment, EmptyRoot, Fun, Global, HClause, Inductive, Solve,
+    Theorem,
 };
 use super::api::{Expression, LofAst, LofParser, Statement};
 use crate::config::id_to_system;
@@ -229,6 +230,26 @@ impl LofParser {
     }
     //
     //
+    fn horn_clause<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+        let (input, _) = preceded(multispace0, tag("hclause"))(input)?;
+        let (input, head) =
+            preceded(multispace0, |i| self.parse_type_expression(i))(input)?;
+        let (input, subgoals) = opt(preceded(
+            preceded(multispace0, tag("<-")),
+            preceded(
+                multispace0,
+                separated_list1(preceded(multispace0, tag(",")), |i| {
+                    self.parse_type_expression(i)
+                }),
+            ),
+        ))(input)?;
+        let (input, _) = preceded(multispace0, tag(";"))(input)?;
+
+        let subgoals = subgoals.unwrap_or_else(Vec::new);
+        Ok((input, HClause(head, subgoals)))
+    }
+    //
+    //
     pub fn parse_notation<'a>(
         &self,
         input: &'a str,
@@ -273,6 +294,7 @@ impl LofParser {
             |input| self.parse_notation(input),
             |input| self.auto(input),
             |input| self.prolog_query(input),
+            |input| self.horn_clause(input),
         ))(input)
     }
 }
@@ -289,8 +311,8 @@ mod unit_tests {
             LofAst::Exp,
             LofParser, Notation,
             Statement::{
-                Auto, Axiom, Comment, EmptyRoot, Fun, Global, Inductive, Solve,
-                Theorem,
+                Auto, Axiom, Comment, EmptyRoot, Fun, Global, HClause,
+                Inductive, Solve, Theorem,
             },
         },
     };
@@ -839,6 +861,45 @@ mod unit_tests {
                 )
                 .is_ok(),
             "Variable solving parser cant cope with whitespaces"
+        );
+    }
+
+    #[test]
+    fn test_horn_clause() {
+        let parser = LofParser::new(Config::new(TypeSystem::Cic()));
+
+        assert_eq!(
+            parser.parse_statement("hclause P <- Q;"),
+            Ok((
+                "",
+                HClause(VarUse("P".to_string()), vec![VarUse("Q".to_string())])
+            )),
+            "Horn clause parser is prducing proper value"
+        );
+        assert_eq!(
+            parser.parse_statement("hclause P <- Q, R, S;"),
+            Ok((
+                "",
+                HClause(VarUse("P".to_string()), vec![VarUse("Q".to_string()), VarUse("R".to_string()), VarUse("S".to_string())])
+            )),
+            "Horn clause parser is prducing proper value with multiple subgoals"
+        );
+        assert_eq!(
+            parser.parse_statement("hclause A;"),
+            Ok(("", HClause(VarUse("A".to_string()), vec![]))),
+            "Horn clause parser is prducing proper value with empty subgoals"
+        );
+        assert!(
+            parser.parse_statement("hclause  \r\t P \r\r\t   <-\n\t\r  Q   , \n  \t\t\r   R  ,\n   S\t\n;").is_ok(),
+            "Horn clause parser cant cope with whitespaces"
+        );
+        assert!(
+            parser.parse_statement("hclause P<-Q,R,S;").is_ok(),
+            "Horn clause parser cant cope with dense notation"
+        );
+        assert!(
+            parser.parse_statement("hclause P x y <- Q x, R y;").is_ok(),
+            "Horn clause parser cant cope with generalized predicates"
         );
     }
 }
