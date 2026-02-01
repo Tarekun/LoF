@@ -4,7 +4,7 @@ use crate::{
         cic::{
             cic::{
                 Cic,
-                CicTerm::{self, Application, Product, Sort, Variable},
+                CicTerm::{self, Application, Product, Sort, Variable, Meta},
                 GLOBAL_INDEX, PLACEHOLDER_DBI,
             },
             cic_utils::{
@@ -12,7 +12,7 @@ use crate::{
                 clone_product_with_different_result, get_applied_function,
                 get_arg_types, get_prod_innermost, get_variables_as_terms,
                 index_variables, is_instance_of, make_multiarg_fun_type,
-                substitute,
+                substitute, substitute_meta,
             },
             evaluation::evaluate_inductive,
         },
@@ -90,9 +90,9 @@ fn type_check_pattern(
     ) -> Result<CicTerm, String> {
         match variables.len() {
             0 => Ok(constr_type.clone()),
-            1.. => match variables[0] {
-                Variable(_, _) => match constr_type {
-                    Product(var_name, _, codomain) => {
+            1.. => match constr_type  {
+                Product(var_name, domain, codomain) => match variables[0] {
+                    Variable(_, _) => {
                         // TODO if the variable is an argument to the type it should be type checked
                         // (if its constructor argument its simply a new binded variable)
                         let reduced_codomain =
@@ -100,19 +100,33 @@ fn type_check_pattern(
                         // doesnt need to update the context, here var_name is a type variable, not a term
                         solver(
                             &reduced_codomain,
+                            // TODO dont reclone this vector
                             variables[1..].to_vec(),
                             environment,
                         )
                     }
-                    _ => Err("Mismatch in number of variables for constructor"
-                        .to_string()),
+                    Meta(idx) => {
+                        let _ = Cic::type_check_type(domain, environment);
+                        // let reduced_codomain = substitute_meta(&codomain, &idx, domain);
+                        solver(
+                            &codomain,
+                            // &reduced_codomain,
+                            // TODO dont reclone this vector
+                            variables[1..].to_vec(),
+                            environment,
+                        )
+                    }
+                    // TODO to extend functionality for constr argument expansion in the pattern
+                    // simply support other cases here (eg nested applications)
+                    _ => Err(format!(
+                        "Found illegal term in place of variable {:?}",
+                        variables[0],
+                    )),
                 },
-                // TODO to extend functionality for constr argument expansion in the pattern
-                // simply support other cases here (eg nested applications)
-                _ => Err(format!(
-                    "Found illegal term in place of variable {:?}",
-                    variables[0],
-                )),
+                _ => Err("Mismatch in number of variables for constructor"
+                    .to_string()),
+    
+                
             },
         }
     }
@@ -154,6 +168,7 @@ pub fn type_check_match(
                 )
             );
         }
+        println!("{:?} and {:?} did unify", result_type, matching_type);
 
         //body type checking
         let pattern_assumptions =
