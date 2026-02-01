@@ -102,6 +102,10 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
             mappings: reduced_mappings,
         }
     }
+
+    pub fn names(&self) -> Vec<&String> {
+        self.mappings.keys().into_iter().collect()
+    }
 }
 
 /// Expression-agnostic Hindley-Milner style unification algorithm.

@@ -4,6 +4,7 @@ use crate::runtime::program::{
     ProgramNode::{OfExp, OfStm},
     Schedule,
 };
+use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::{Constraint, Environment};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -126,6 +127,18 @@ pub trait Kernel: TypeTheory {
     ) -> Result<Self::Type, String>
     where
         Self: Sized;
+}
+
+pub trait TypeInference: TypeTheory {
+    fn type_unify(
+        type1: &Self::Type,
+        type2: &Self::Type,
+    ) -> Result<Substitution<Self::Type>, String>;
+
+    fn apply_so_substitution(
+        typ: &Self::Type,
+        mgu: &Substitution<Self::Type>,
+    ) -> Self::Type;
 }
 
 /// Refiner module, implements unification
