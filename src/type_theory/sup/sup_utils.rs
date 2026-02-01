@@ -6,8 +6,9 @@ use super::sup::{
 use crate::{
     config::SelectionFunction::{self, All, Maximal},
     type_theory::{
+        commons::unification::Substitution,
         interface::{Automatic, TypeTheory},
-        sup::unification::{terms_unify, Substitution},
+        sup::unification::terms_unify,
     },
 };
 use std::cmp::Ordering::{self, Equal, Greater, Less};
@@ -304,7 +305,7 @@ pub fn substitute_formula(
 pub fn find_unifiable_term(
     term: &SupTerm,
     target: &SupTerm,
-) -> Option<(SupTerm, Substitution)> {
+) -> Option<(SupTerm, Substitution<SupTerm>)> {
     // TODO: support actual unification
     if let Ok(mgu) = terms_unify(term, target) {
         return Some((term.clone(), mgu));
@@ -327,7 +328,7 @@ pub fn find_unifiable_term(
 pub fn find_unifiable_formula(
     formula: &SupFormula,
     target: &SupTerm,
-) -> Option<(SupTerm, Substitution)> {
+) -> Option<(SupTerm, Substitution<SupTerm>)> {
     match formula {
         Atom(_, pred_args) => {
             for arg in pred_args {

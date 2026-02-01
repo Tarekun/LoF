@@ -15,15 +15,17 @@ use crate::type_theory::cic::elaboration::{
 use crate::type_theory::cic::type_check::{
     type_check_inductive, type_check_match,
 };
+use crate::type_theory::cic::unification::cic_so_unification;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
     type_check_axiom, type_check_fo_universal, type_check_function,
     type_check_global, type_check_let, type_check_theorem, type_check_variable,
     u_type_check_abstraction, u_type_check_application,
 };
+use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::{Constraint, Environment};
 use crate::type_theory::interface::{
-    Interactive, Kernel, Reducer, Refiner, TypeTheory,
+    Interactive, Kernel, Reducer, Refiner, TypeInference, TypeTheory,
 };
 use std::collections::HashMap;
 use tracing::debug;
@@ -247,6 +249,29 @@ impl Kernel for Cic {
               //     type_check_auto::<Cic>(environment, formula)
               // }
         }
+    }
+}
+
+impl TypeInference for Cic {
+    fn type_unify(
+        type1: &CicTerm,
+        type2: &CicTerm,
+    ) -> Result<Substitution<CicTerm>, String> {
+        cic_so_unification(type1, type2)
+    }
+    fn apply_so_substitution(
+        typ: &CicTerm,
+        substitution: &Substitution<CicTerm>,
+    ) -> CicTerm {
+        let mut solved_exp = typ.to_owned();
+        for index in substitution.names() {
+            solved_exp = substitute_meta(
+                &solved_exp,
+                &index.parse().unwrap(),
+                substitution.get(index).unwrap(),
+            )
+        }
+        solved_exp
     }
 }
 

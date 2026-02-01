@@ -158,7 +158,7 @@ pub fn application_args(application: &CicTerm) -> Vec<CicTerm> {
     }
 }
 
-/// Given a multiarg application term, returns the outermost term element (ie the function
+/// Given a multiarg application term, returns the innermost term element (ie the function
 /// being applied)
 pub fn get_applied_function(application: &CicTerm) -> CicTerm {
     match application {

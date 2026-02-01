@@ -1,4 +1,6 @@
+use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::interface::Automatic;
+use crate::type_theory::sup::sup::SupTerm;
 use crate::type_theory::sup::sup::{
     Sup,
     SupFormula::{self, Atom, Clause, Equality, Not},
@@ -9,7 +11,7 @@ use crate::type_theory::sup::sup_utils::{
 };
 use crate::type_theory::sup::unification::{
     formula_apply_substitution, formulas_unify, term_apply_substitution,
-    terms_unify, Substitution,
+    terms_unify,
 };
 use std::cmp::{max_by, min_by, Ordering::Less};
 
@@ -25,6 +27,7 @@ pub fn demodulate_first(C: &SupFormula, D: &SupFormula) -> SupFormula {
         let max = max_by(l, r, |l, r| Sup::compare_terms(l, r));
 
         // TODO also support mgu
+        // TODO also return mgu
         // TODO verify this is correct. the paper references the requirement of (l=r) > C
         substitute_formula(C, max, min)
     } else {
@@ -38,6 +41,7 @@ pub fn subsumption_resolution_first(
     C: &SupFormula,
     D: &SupFormula,
 ) -> SupFormula {
+    // TODO also support/return mgu
     let Ok(c_lits) = unpack_literals(C) else {
         return C.to_owned();
     };
@@ -115,7 +119,7 @@ pub fn resolution(
     C: &SupFormula,
     D: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution), String> {
+) -> Result<(SupFormula, Substitution<SupTerm>), String> {
     let mut c_literals = unpack_literals(C)?;
     let mut d_literals = unpack_literals(D)?;
     let mut c_selected = selection_fn(&mut c_literals)?;
@@ -142,7 +146,7 @@ pub fn resolution(
 pub fn factoring(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution), String> {
+) -> Result<(SupFormula, Substitution<SupTerm>), String> {
     let mut literals = unpack_literals(C)?;
     let mut selected = selection_fn(&mut literals)?;
 
@@ -169,7 +173,7 @@ pub fn factoring(
 pub fn eq_resolution(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution), String> {
+) -> Result<(SupFormula, Substitution<SupTerm>), String> {
     let mut lits = unpack_literals(C)?;
     let mut selected = selection_fn(&mut lits)?;
 
@@ -235,7 +239,7 @@ macro_rules! eq_factoring_checks {
 pub fn eq_factoring(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution), String> {
+) -> Result<(SupFormula, Substitution<SupTerm>), String> {
     let mut literals: Vec<SupFormula> = unpack_literals(C)?;
     let mut selected = selection_fn(&mut literals)?;
 
@@ -273,7 +277,7 @@ pub fn superposition(
     C: &SupFormula,
     D: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution), String> {
+) -> Result<(SupFormula, Substitution<SupTerm>), String> {
     let mut c_literals = unpack_literals(C)?;
     let mut d_literals = unpack_literals(D)?;
     let mut c_selected = selection_fn(&mut c_literals)?;
@@ -509,14 +513,14 @@ mod unit_tests {
         let qy = Atom("Q".to_string(), vec![y.clone(), z.clone()]);
         let qfx = Atom("Q".to_string(), vec![fx.clone(), z.clone()]);
 
-        assert!(
-            matches!(
-                factoring(
-                    &Clause(vec![py.clone(), pfx.clone(), qy.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[pfx.clone(), qfx.clone()],
-            ),
+        let (derived, _) = factoring(
+            &Clause(vec![py.clone(), pfx.clone(), qy.clone()]),
+            &selection_fn,
+        )
+        .unwrap();
+        assert_eq!(
+            derived,
+            Clause(vec![pfx.clone(), qfx.clone()]),
             "Factoring couldnt apply unification properly"
         )
     }

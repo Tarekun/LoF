@@ -1,26 +1,169 @@
 use super::cic::CicTerm;
 use super::cic::CicTerm::{
-    Abstraction, Application, Match, Meta, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
 };
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
-use crate::type_theory::cic::cic_utils::substitute_meta;
+use crate::type_theory::cic::cic_utils::{
+    application_args, get_applied_function, substitute_meta,
+};
+use crate::type_theory::commons::unification::{unify, Substitution};
 use crate::type_theory::environment::{Constraint, Environment};
 use std::collections::{HashMap, VecDeque};
 
+fn is_metavariable(term: &CicTerm) -> Option<String> {
+    match term {
+        Meta(idx) => Some(format!("{}", idx)),
+        _ => None,
+    }
+}
+fn structurally_equal(term1: &CicTerm, term2: &CicTerm) -> bool {
+    match (term1, term2) {
+        (Sort(_), Sort(_)) => true,
+        (Meta(_), Meta(_)) => true,
+        (Variable(name1, dbi1), Variable(name2, dbi2)) => {
+            // same dbi1 and if they are global constants then also the constant symbols must be the same
+            dbi1 == dbi2 && (*dbi1 != GLOBAL_INDEX || name1 == name2)
+        }
+        (Abstraction(_, type1, body1), Abstraction(_, type2, body2)) => {
+            structurally_equal(type1, type2) && structurally_equal(body1, body2)
+        }
+        (Product(_, type1, body1), Product(_, type2, body2)) => {
+            structurally_equal(type1, type2) && structurally_equal(body1, body2)
+        }
+        (Application(_, _), Application(_, _)) => {
+            // TODO: review if this is enough/too much
+            structurally_equal(
+                &get_applied_function(term1),
+                &get_applied_function(term2),
+            ) && application_args(term1).len() == application_args(term2).len()
+        }
+        (Let(_, _, body1, scope1), Let(_, _, body2, scope2)) => {
+            structurally_equal(body1, body2)
+                && structurally_equal(scope1, scope2)
+        }
+        // TODO this explosion is order dependent on the branches, itd be nice to
+        // reorder branches in some deterministic way
+        (Match(matched1, branches1), Match(matched2, branches2)) => {
+            if !structurally_equal(matched1, matched2) {
+                return false;
+            }
+            for (b1, b2) in branches1.iter().zip(branches2.iter()) {
+                let (pattern1, body1) = b1;
+                let (pattern2, body2) = b2;
+                if !(structurally_equal(pattern1, pattern2)
+                    || structurally_equal(body1, body2))
+                {
+                    return false;
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
+fn explode(term: &CicTerm) -> Vec<CicTerm> {
+    match term {
+        Abstraction(_, var_type, body) => {
+            vec![(**var_type).to_owned(), (**body).to_owned()]
+        }
+        Product(_, var_type, body) => {
+            vec![(**var_type).to_owned(), (**body).to_owned()]
+        }
+        Application(left, right) => {
+            vec![(**left).to_owned(), (**right).to_owned()]
+        }
+        // TODO this explosion is order dependent on the branches, itd be nice to
+        // reorder branches in some deterministic way
+        Match(matched_term, branches) => {
+            let mut subexpressions = vec![(**matched_term).to_owned()];
+            for (pattern, body) in branches {
+                subexpressions.push(pattern.to_owned());
+                subexpressions.push(body.to_owned());
+            }
+            subexpressions
+        }
+        // TODO figure out what to do with opt_type
+        Let(_, opt_type, body, scope) => {
+            vec![(**body).to_owned(), (**scope).to_owned()]
+        }
+        _ => vec![],
+    }
+}
+fn occurs_meta_check(meta_index: i32, term: &CicTerm) -> Result<(), String> {
+    match term {
+        Meta(index) => {
+            if meta_index == *index {
+                Err("Unification Failure: cyclical metavariable reference"
+                    .to_string())
+            } else {
+                Ok(())
+            }
+        }
+        Abstraction(_, arg_type, body) => {
+            occurs_meta_check(meta_index, arg_type)?;
+            occurs_meta_check(meta_index, body)
+        }
+        Product(_, arg_type, body) => {
+            occurs_meta_check(meta_index, arg_type)?;
+            occurs_meta_check(meta_index, body)
+        }
+        Application(left, right) => {
+            occurs_meta_check(meta_index, &left)?;
+            occurs_meta_check(meta_index, &right)
+        }
+        Match(matched, branches) => {
+            for (pattern, body) in branches {
+                occurs_meta_check(meta_index, pattern)?;
+                occurs_meta_check(meta_index, body)?;
+            }
+            occurs_meta_check(meta_index, &matched)
+        }
+        Let(_, opt_type, body, scope) => {
+            if let Some(typ) = &**opt_type {
+                occurs_meta_check(meta_index, typ)?;
+            }
+            occurs_meta_check(meta_index, body)?;
+            occurs_meta_check(meta_index, scope)
+        }
+        _ => Ok(()),
+    }
+}
+fn occurs(term: &CicTerm, name: &str) -> bool {
+    occurs_meta_check(name.parse().unwrap(), term).is_err()
+}
+
+/// Second order unification of meta-variable for type inference
+pub fn cic_so_unification(
+    term1: &CicTerm,
+    term2: &CicTerm,
+) -> Result<Substitution<CicTerm>, String> {
+    Ok(unify(
+        term1,
+        term2,
+        is_metavariable,
+        structurally_equal,
+        explode,
+        occurs,
+    )?
+    .reduce(|term, idx, arg| substitute_meta(term, &idx.parse().unwrap(), arg)))
+}
+
 pub fn cic_unification(
-    environment: &mut Environment<Cic>,
+    _: &mut Environment<Cic>,
     term1: &CicTerm,
     term2: &CicTerm,
 ) -> Result<bool, String> {
-    let mut constraints = environment.get_constraints();
-    constraints.push(Constraint::TypeEq(term1.to_owned(), term2.to_owned()));
-    Ok(solve_unification(constraints).is_ok())
+    Ok(cic_so_unification(term1, term2).is_ok())
 }
 
+// TODO fully get rid of this function. nowhere in the code this should be used
 pub fn solve_unification(
     constraints: Vec<Constraint<Cic>>,
 ) -> Result<HashMap<i32, CicTerm>, String> {
-    fn occurs_check(meta_index: i32, term: &CicTerm) -> Result<(), String> {
+    fn occurs_meta_check(
+        meta_index: i32,
+        term: &CicTerm,
+    ) -> Result<(), String> {
         match term {
             Meta(index) => {
                 if meta_index == *index {
@@ -31,23 +174,23 @@ pub fn solve_unification(
                 }
             }
             Abstraction(_, arg_type, body) => {
-                occurs_check(meta_index, arg_type)?;
-                occurs_check(meta_index, body)
+                occurs_meta_check(meta_index, arg_type)?;
+                occurs_meta_check(meta_index, body)
             }
             Product(_, arg_type, body) => {
-                occurs_check(meta_index, arg_type)?;
-                occurs_check(meta_index, body)
+                occurs_meta_check(meta_index, arg_type)?;
+                occurs_meta_check(meta_index, body)
             }
             Application(left, right) => {
-                occurs_check(meta_index, &left)?;
-                occurs_check(meta_index, &right)
+                occurs_meta_check(meta_index, &left)?;
+                occurs_meta_check(meta_index, &right)
             }
             Match(matched, branches) => {
                 for (pattern, body) in branches {
-                    occurs_check(meta_index, pattern)?;
-                    occurs_check(meta_index, body)?;
+                    occurs_meta_check(meta_index, pattern)?;
+                    occurs_meta_check(meta_index, body)?;
                 }
-                occurs_check(meta_index, &matched)
+                occurs_meta_check(meta_index, &matched)
             }
             _ => Ok(()),
         }
@@ -61,7 +204,7 @@ pub fn solve_unification(
         if let Meta(_) = term {
             return Err("TF am i supposed todo with this?".to_string());
         }
-        occurs_check(index, &term)?;
+        occurs_meta_check(index, &term)?;
 
         // this update introduces a quadratic cost in the overall algo
         let mut substitution: HashMap<i32, CicTerm> = substitution
@@ -166,8 +309,8 @@ pub fn solve_unification(
                     }
                     //TODO figure out what to do with branches
                     (
-                        Match(left_matched_term, left_branches),
-                        Match(right_matched_term, right_branches),
+                        Match(left_matched_term, _left_branches),
+                        Match(right_matched_term, _right_branches),
                     ) => {
                         constraints.push_back(Constraint::TypeEq(
                             (*left_matched_term).clone(),
@@ -187,13 +330,14 @@ pub fn solve_unification(
 
 #[cfg(test)]
 mod unit_tests {
+    use crate::type_theory::cic::unification::{
+        cic_so_unification, solve_unification,
+    };
+    use crate::type_theory::commons::unification::Substitution;
     use crate::type_theory::{
-        cic::{
-            cic::{
-                CicTerm::{Meta, Product, Variable},
-                GLOBAL_INDEX,
-            },
-            unification::solve_unification,
+        cic::cic::{
+            CicTerm::{Meta, Product, Variable},
+            GLOBAL_INDEX,
         },
         environment::Constraint,
     };
@@ -202,15 +346,9 @@ mod unit_tests {
     #[test]
     fn test_dhm() {
         let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let constraints = vec![Constraint::TypeEq(Meta(0), nat.clone())];
-        let expected = {
-            let mut map = HashMap::new();
-            map.insert(0, nat.clone());
-            map
-        };
         assert_eq!(
-            solve_unification(constraints).unwrap(),
-            expected,
+            cic_so_unification(&Meta(0), &nat).unwrap(),
+            Substitution::from([("0".to_string(), nat.clone())]),
             "Unification couldnt solve one simple constraint"
         );
 
@@ -239,10 +377,10 @@ mod unit_tests {
             map
         };
         assert_eq!(
-            solve_unification(constraints).unwrap(),
-            expected,
-            "Unification couldnt solve a problem with a function over metavariables"
-        );
+                solve_unification(constraints).unwrap(),
+                expected,
+                "Unification couldnt solve a problem with a function over metavariables"
+            );
     }
 
     #[test]
