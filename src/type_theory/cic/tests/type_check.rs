@@ -2,17 +2,17 @@
 mod tests {
     use crate::type_theory::cic::{
         cic::{
-            Cic,
-            CicStm::{Fun, InductiveDef},
-            CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable},
-            GLOBAL_INDEX
+            Cic, CicStm::{Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, FIRST_INDEX, GLOBAL_INDEX, PLACEHOLDER_DBI
         }, cic_utils::make_multiarg_fun_type, type_check::{inductive_eliminator, type_check_inductive}
     };
     use crate::type_theory::interface::Kernel;
     use crate::type_theory::interface::TypeTheory;
 
     fn var(name: &str) -> CicTerm {
-        Variable(name.to_string(), GLOBAL_INDEX)
+        Variable(name.to_string(), PLACEHOLDER_DBI)
+    }
+    fn vardbi(name: &str, dbi: i32) -> CicTerm {
+        Variable(name.to_string(), dbi)
     }
     fn app(fun_name: &str, mut args: Vec<CicTerm>) -> CicTerm {
         if args.len() == 0 {
@@ -598,7 +598,7 @@ mod tests {
             "nil",
             &make_multiarg_fun_type(
                 &vec![("T".to_string(), Sort("TYPE".to_string()))],
-                &app("List", vec![var("T")]),
+                &app("List", vec![vardbi("T", FIRST_INDEX)]),
             ),
         );
         test_env.add_to_context(
@@ -606,10 +606,10 @@ mod tests {
             &make_multiarg_fun_type(
                 &vec![
                     ("T".to_string(), Sort("TYPE".to_string())),
-                    ("h".to_string(), var("T")),
-                    ("l".to_string(), app("List", vec![var("T")])),
+                    ("h".to_string(), vardbi("T", FIRST_INDEX)),
+                    ("l".to_string(), app("List", vec![vardbi("T", FIRST_INDEX)])),
                 ],
-                &app("List", vec![var("T")]),
+                &app("List", vec![vardbi("T", FIRST_INDEX)]),
             ),
         );
 

@@ -4,7 +4,7 @@ use super::cic::CicTerm::{
 };
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::{
-    application_args, get_applied_function, substitute_meta,
+    application_args, get_applied_function, is_constant, substitute_meta,
 };
 use crate::type_theory::commons::unification::{unify, Substitution};
 use crate::type_theory::environment::{Constraint, Environment};
@@ -12,7 +12,14 @@ use std::collections::{HashMap, VecDeque};
 
 fn is_metavariable(term: &CicTerm) -> Option<String> {
     match term {
-        Meta(idx) => Some(format!("{}", idx)),
+        Meta(idx) => Some(format!("metavariable_{}", idx)),
+        Variable(var_name, _dbi) => {
+            if !is_constant(term) {
+                Some(format!("variable_{}", var_name))
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
@@ -22,7 +29,7 @@ fn structurally_equal(term1: &CicTerm, term2: &CicTerm) -> bool {
         (Meta(_), Meta(_)) => true,
         (Variable(name1, dbi1), Variable(name2, dbi2)) => {
             // same dbi1 and if they are global constants then also the constant symbols must be the same
-            dbi1 == dbi2 && (*dbi1 != GLOBAL_INDEX || name1 == name2)
+            dbi1 == dbi2 && (!is_constant(term1) || name1 == name2)
         }
         (Abstraction(_, type1, body1), Abstraction(_, type2, body2)) => {
             structurally_equal(type1, type2) && structurally_equal(body1, body2)
@@ -128,8 +135,53 @@ fn occurs_meta_check(meta_index: i32, term: &CicTerm) -> Result<(), String> {
         _ => Ok(()),
     }
 }
+fn occurs_var_check(term: &CicTerm, name: &str) -> bool {
+    match term {
+        Sort(_) => false,
+        Variable(var_name, _) => var_name == name,
+        Abstraction(var_name, var_type, body) => {
+            (var_name != name && occurs_var_check(var_type, name))
+                || (var_name != name && occurs_var_check(body, name))
+        }
+        Product(var_name, var_type, body) => {
+            (var_name != name && occurs_var_check(var_type, name))
+                || (var_name != name && occurs_var_check(body, name))
+        }
+        Application(func, arg) => {
+            occurs_var_check(func, name) || occurs_var_check(arg, name)
+        }
+        Match(scrutinee, branches) => {
+            occurs_var_check(scrutinee, name)
+                || branches.iter().any(|(pattern, body)| {
+                    occurs_var_check(pattern, name)
+                        || occurs_var_check(body, name)
+                })
+        }
+        Let(var_name, var_type, value, body) => {
+            let type_occurs = if let Some(ty) = var_type.as_ref() {
+                occurs_var_check(ty, name)
+            } else {
+                false
+            };
+            (var_name != name && type_occurs)
+                || (var_name != name && occurs_var_check(value, name))
+                || (var_name != name && occurs_var_check(body, name))
+        }
+        Meta(_) => false,
+    }
+}
 fn occurs(term: &CicTerm, name: &str) -> bool {
-    occurs_meta_check(name.parse().unwrap(), term).is_err()
+    if name.starts_with("metavariable_") {
+        occurs_meta_check(
+            name.strip_prefix("metavariable_").unwrap().parse().unwrap(),
+            term,
+        )
+        .is_err()
+    } else if name.starts_with("variable_") {
+        occurs_var_check(term, name.strip_prefix("variable_").unwrap())
+    } else {
+        panic!("TF?");
+    }
 }
 
 /// Second order unification of meta-variable for type inference
@@ -349,14 +401,16 @@ pub fn solve_unification(
 
 #[cfg(test)]
 mod unit_tests {
+    use crate::type_theory::cic::cic::FIRST_INDEX;
     use crate::type_theory::cic::unification::{
         cic_so_unification, solve_unification,
     };
     use crate::type_theory::commons::unification::Substitution;
     use crate::type_theory::{
         cic::cic::{
-            Cic,
-            CicTerm::{Match, Meta, Product, Sort, Variable},
+            CicTerm::{
+                self, Application, Match, Meta, Product, Sort, Variable,
+            },
             GLOBAL_INDEX,
         },
         environment::Constraint::{self, TypeEq},
@@ -364,11 +418,25 @@ mod unit_tests {
     use std::collections::HashMap;
 
     #[test]
+    fn prova() {
+        fn var(name: &str) -> CicTerm {
+            Variable(name.to_string(), -100)
+        }
+        let listbool =
+            Application(Box::new(var("List")), Box::new(var("Bool")));
+        let listt = Application(
+            Box::new(var("List")),
+            Box::new(Variable("T".to_string(), FIRST_INDEX)),
+        );
+        assert!(cic_so_unification(&listbool, &listt).is_ok(), "nook");
+    }
+
+    #[test]
     fn test_dhm() {
         let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
         assert_eq!(
             cic_so_unification(&Meta(0), &nat).unwrap(),
-            Substitution::from([("0".to_string(), nat.clone())]),
+            Substitution::from([("metavariable_0".to_string(), nat.clone())]),
             "Unification couldnt solve one simple constraint"
         );
 

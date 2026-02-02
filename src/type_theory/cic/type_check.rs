@@ -4,7 +4,7 @@ use crate::{
         cic::{
             cic::{
                 Cic,
-                CicTerm::{self, Application, Product, Sort, Variable, Meta},
+                CicTerm::{self, Application, Meta, Product, Sort, Variable},
                 GLOBAL_INDEX, PLACEHOLDER_DBI,
             },
             cic_utils::{
@@ -12,9 +12,9 @@ use crate::{
                 clone_product_with_different_result, get_applied_function,
                 get_arg_types, get_prod_innermost, get_variables_as_terms,
                 index_variables, is_instance_of, make_multiarg_fun_type,
-                substitute, substitute_meta,
+                substitute,
             },
-            evaluation::evaluate_inductive,
+            evaluation::evaluate_inductive, unification::cic_so_unification,
         },
         commons::type_check::type_check_variable,
         environment::Environment,
@@ -47,9 +47,9 @@ fn type_constr_vars(
     ) -> Result<Vec<(String, CicTerm)>, String> {
         match variables.len() {
             0 => Ok(vec![]),
-            1.. => match &variables[0] {
-                Variable(var_name, _) => match constr_type {
-                    Product(type_var, domain, codomain) => {
+            1.. => match constr_type {
+                Product(type_var, domain, codomain) => match &variables[0] {
+                    Variable(var_name, _) => {
                         let reduced_codomain =
                             substitute(&codomain, type_var, &variables[0]);
                         let mut typed_vars = solver(
@@ -60,13 +60,25 @@ fn type_constr_vars(
                             .insert(0, (var_name.to_string(), *(domain.clone())));
                         Ok(typed_vars)
                     }
+                    Meta(_) => {
+                        //TODO this function has no env now, figure out if this check is needed here
+                        // after all type_constr_vars is called after type_check_pattern that already did these checks
+                        // let _ = Cic::type_check_type(domain, environment); 
+                        // make sure ? can be unified with domain (eg no occurs check failure)
+                        let _ = cic_so_unification(domain, &variables[0])?;
+                        // simply recur, if user used a ? here they're not using this variable in the rest of the term
+                        solver(
+                            codomain,
+                            variables[1..].to_vec(),
+                        )
+                    }
                     _ => Err(format!(
-                        "Mismatch in number of variables for constructor"
+                        "Found illegal term in place of variable {:?}",
+                        variables[0]
                     )),
                 },
                 _ => Err(format!(
-                    "Found illegal term in place of variable {:?}",
-                    variables[0]
+                    "Mismatch in number of variables for constructor"
                 )),
             },
         }
@@ -105,8 +117,11 @@ fn type_check_pattern(
                             environment,
                         )
                     }
-                    Meta(idx) => {
+                    Meta(_) => {
+                        // make sure domain is a type to make sure a metavariable is allowed
                         let _ = Cic::type_check_type(domain, environment);
+                        // make sure ? can be unified with domain (eg no occurs check failure)
+                        let _ = cic_so_unification(domain, &variables[0])?;
                         // let reduced_codomain = substitute_meta(&codomain, &idx, domain);
                         solver(
                             &codomain,
