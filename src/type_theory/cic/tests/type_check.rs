@@ -2,15 +2,30 @@
 mod tests {
     use crate::type_theory::cic::{
         cic::{
-            Cic,
-            CicStm::{Fun, InductiveDef},
-            CicTerm::{Abstraction, Application, Match, Meta, Product, Sort, Variable, Let},
-            GLOBAL_INDEX
-        },
-        type_check::{inductive_eliminator, type_check_inductive},
+            Cic, CicStm::{Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, FIRST_INDEX, GLOBAL_INDEX, PLACEHOLDER_DBI
+        }, cic_utils::make_multiarg_fun_type, type_check::{inductive_eliminator, type_check_inductive}
     };
     use crate::type_theory::interface::Kernel;
     use crate::type_theory::interface::TypeTheory;
+
+    fn var(name: &str) -> CicTerm {
+        Variable(name.to_string(), PLACEHOLDER_DBI)
+    }
+    fn vardbi(name: &str, dbi: i32) -> CicTerm {
+        Variable(name.to_string(), dbi)
+    }
+    fn app(fun_name: &str, mut args: Vec<CicTerm>) -> CicTerm {
+        if args.len() == 0 {
+            var(fun_name)
+        } else {
+            let last_arg = args.pop().unwrap();
+            let partially_applied = app(fun_name, args);
+            Application(
+                Box::new(partially_applied),
+                Box::new(last_arg.clone()),
+            )
+        }
+    }
 
     #[test]
     fn test_type_check_sort_n_vars() {
@@ -564,6 +579,55 @@ mod tests {
         //     .is_ok(),
         //     "match type checking doesnt support unification in pattern"
         // );
+    }
+
+    #[test]
+    fn test_match_inference() {
+        let mut test_env = Cic::default_environment();
+        test_env.add_to_context(
+            "List",
+            &make_multiarg_fun_type(
+                &vec![("T".to_string(), Sort("TYPE".to_string()))],
+                &Sort("TYPE".to_string()),
+            ),
+        );
+        test_env.add_to_context("Bool", &Sort("TYPE".to_string()));
+        // test_env.add_to_context("T", &Sort("TYPE".to_string()));
+        test_env.add_to_context("true", &var("Bool"));
+        test_env.add_to_context(
+            "nil",
+            &make_multiarg_fun_type(
+                &vec![("T".to_string(), Sort("TYPE".to_string()))],
+                &app("List", vec![vardbi("T", FIRST_INDEX)]),
+            ),
+        );
+        test_env.add_to_context(
+            "cons",
+            &make_multiarg_fun_type(
+                &vec![
+                    ("T".to_string(), Sort("TYPE".to_string())),
+                    ("h".to_string(), vardbi("T", FIRST_INDEX)),
+                    ("l".to_string(), app("List", vec![vardbi("T", FIRST_INDEX)])),
+                ],
+                &app("List", vec![vardbi("T", FIRST_INDEX)]),
+            ),
+        );
+
+        let tt = var("true");
+        let matched = app("nil", vec![var("Bool")]);
+        let matc = Match(
+            Box::new(matched),
+            vec![
+                (app("nil", vec![Meta(0)]), tt.clone()),
+                (app("cons", vec![Meta(0), var("h"), var("l")]), tt.clone()),
+            ],
+        );
+
+        assert_eq!(
+            Cic::type_check_term(&matc, &mut test_env),
+            Ok(var("Bool")),
+            "Match type checking fails when pattern make use of metavariables"
+        );
     }
 
     #[test]

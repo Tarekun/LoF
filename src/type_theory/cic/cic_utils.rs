@@ -177,6 +177,14 @@ pub fn is_instance_of(term: &CicTerm, name: &str) -> bool {
     }
 }
 
+/// Returns `true` if `term` corresponds to a constant symbol, `false` otherwise
+pub fn is_constant(term: &CicTerm) -> bool {
+    match term {
+        Variable(_, dbi) => *dbi == GLOBAL_INDEX,
+        _ => false,
+    }
+}
+
 /// Given a `term` returns `true` if it contains a reference to the variable `name`
 pub fn references(term: &CicTerm, name: &str) -> bool {
     match term {
