@@ -183,7 +183,6 @@ pub fn type_check_match(
                 )
             );
         }
-        println!("{:?} and {:?} did unify", result_type, matching_type);
 
         //body type checking
         let pattern_assumptions =

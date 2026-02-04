@@ -10,7 +10,7 @@ use crate::type_theory::commons::unification::{unify, Substitution};
 use crate::type_theory::environment::{Constraint, Environment};
 use std::collections::{HashMap, VecDeque};
 
-fn is_metavariable(term: &CicTerm) -> Option<String> {
+fn is_substitutable(term: &CicTerm) -> Option<String> {
     match term {
         Meta(idx) => Some(format!("metavariable_{}", idx)),
         Variable(var_name, _dbi) => {
@@ -180,7 +180,7 @@ fn occurs(term: &CicTerm, name: &str) -> bool {
     } else if name.starts_with("variable_") {
         occurs_var_check(term, name.strip_prefix("variable_").unwrap())
     } else {
-        panic!("TF?");
+        panic!("CIC occurs check is being called on a name that isnt formed by any of the 2 prefixes used. this shuold NOT happen");
     }
 }
 
@@ -192,7 +192,7 @@ pub fn cic_so_unification(
     Ok(unify(
         term1,
         term2,
-        is_metavariable,
+        is_substitutable,
         structurally_equal,
         explode,
         occurs,
@@ -403,13 +403,15 @@ pub fn solve_unification(
 mod unit_tests {
     use crate::type_theory::cic::cic::FIRST_INDEX;
     use crate::type_theory::cic::unification::{
-        cic_so_unification, solve_unification,
+        cic_so_unification, explode, is_substitutable, occurs,
+        solve_unification,
     };
     use crate::type_theory::commons::unification::Substitution;
     use crate::type_theory::{
         cic::cic::{
             CicTerm::{
-                self, Application, Match, Meta, Product, Sort, Variable,
+                self, Abstraction, Application, Let, Match, Meta, Product,
+                Sort, Variable,
             },
             GLOBAL_INDEX,
         },
@@ -418,7 +420,7 @@ mod unit_tests {
     use std::collections::HashMap;
 
     #[test]
-    fn prova() {
+    fn test_variable_ground_unification() {
         fn var(name: &str) -> CicTerm {
             Variable(name.to_string(), -100)
         }
@@ -537,56 +539,224 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_structurally_equal_terms() {}
+    fn test_substitutability() {
+        assert_eq!(
+            is_substitutable(&Meta(420)),
+            Some("metavariable_420".to_string()),
+            "is_substitutable check doesnt return proper naming for a metavariable"
+        );
+        assert_eq!(
+            is_substitutable(&Variable("super_idol".to_string(), 69)),
+            Some("variable_super_idol".to_string()),
+            "is_substitutable check doesnt return proper naming for a variable"
+        );
+        assert!(
+            is_substitutable(&Sort("TYPE".to_string())).is_none(),
+            "is_substitutable check returns a key for a term different from [meta]variables"
+        );
+        assert!(
+            is_substitutable(&Application(Box::new(Variable("".to_string(), 0)), Box::new(Meta(0)))).is_none(),
+            "is_substitutable check returns a key for a term different from [meta]variables"
+        );
+        assert!(
+            is_substitutable(&Product("".to_string(), Box::new(Meta(0)), Box::new(Variable("".to_string(), 0)))).is_none(),
+            "is_substitutable check returns a key for a term different from [meta]variables"
+        );
+        assert!(
+            is_substitutable(&Abstraction("".to_string(), Box::new(Meta(0)), Box::new(Variable("".to_string(), 0)))).is_none(),
+            "is_substitutable check returns a key for a term different from [meta]variables"
+        );
+        assert!(
+            is_substitutable(&Match(
+                Box::new(Variable("".to_string(), 0)),
+                vec![
+                    (Variable("".to_string(), 0), Meta(0))
+                ]
+            )).is_none(),
+            "is_substitutable check returns a key for a term different from [meta]variables"
+        );
+        assert!(
+            is_substitutable(&Let("".to_string(), Box::new(Some(Meta(0))), Box::new(Variable("".to_string(), 0)), Box::new(Sort("TYPE".to_string())))).is_none(),
+            "is_substitutable check returns a key for a term different from [meta]variables"
+        );
+    }
 
     #[test]
-    fn test_aplha_with_substitution() {
-        //TODO: in principle this test is interesting: it tests that unification
-        //can find a solution by performing -reduction
-        //however i want to approach this in a different way with a controllable
-        //number of reduction steps to perform on terms, rather than ad hoc swappings
-        //with variables when unification fails
-
-        // let mut test_env = Cic::default_environment();
-        // test_env.add_substitution_with_type(
-        //     "T",
-        //     &Variable("Nat".to_string(), GLOBAL_INDEX),
-        //     &Sort("TYPE".to_string()),
-        // );
-
+    fn test_explosion() {
+        let subterm1 = Sort("dope".to_string());
+        let subterm2 = Sort("dope".to_string());
+        assert_eq!(
+            explode(&Sort("".to_string())),
+            vec![],
+            "CIC explosion doesnt produce the proper subcomponents vector"
+        );
+        assert_eq!(
+            explode(&Meta(63)),
+            vec![],
+            "CIC explosion doesnt produce the proper subcomponents vector"
+        );
+        assert_eq!(
+            explode(&Variable("".to_string(), 0)),
+            vec![],
+            "CIC explosion doesnt produce the proper subcomponents vector"
+        );
+        assert_eq!(
+            explode(&Abstraction(
+                "".to_string(),
+                Box::new(subterm1.clone()),
+                Box::new(subterm2.clone())
+            )),
+            vec![subterm1.clone(), subterm2.clone()],
+            "CIC explosion doesnt produce the proper subcomponents vector"
+        );
+        assert_eq!(
+            explode(&Product(
+                "".to_string(),
+                Box::new(subterm1.clone()),
+                Box::new(subterm2.clone())
+            )),
+            vec![subterm1.clone(), subterm2.clone()],
+            "CIC explosion doesnt produce the proper subcomponents vector"
+        );
+        assert_eq!(
+            explode(&Application(
+                Box::new(subterm1.clone()),
+                Box::new(subterm2.clone())
+            )),
+            vec![subterm1.clone(), subterm2.clone()],
+            "CIC explosion doesnt produce the proper subcomponents vector"
+        );
+        // TODO: test these too
         // assert_eq!(
-        //     cic_unification(
-        //         &mut test_env,
-        //         &Product(
-        //             "_".to_string(),
-        //             Box::new(Variable("Unit".to_string(), GLOBAL_INDEX)),
-        //             Box::new(Variable("T".to_string(), GLOBAL_INDEX)),
-        //         ),
-        //         &Product(
-        //             "x".to_string(),
-        //             Box::new(Variable("Unit".to_string(), GLOBAL_INDEX)),
-        //             Box::new(Variable("Nat".to_string(), GLOBAL_INDEX)),
-        //         ),
-        //     ),
-        //     Ok(true),
-        //     "Equality up2 substitution refutes substitution check over codomains of functions"
+        //     explode(&Match(subterm1.clone(), vec![(subterm2.clone(), ?)])),
+        //     vec![],
+        //     "CIC explosion doesnt produce the proper subcomponents vector"
         // );
+        // assert_eq!(
+        //     explode(&Let("".to_string())),
+        //     vec![],
+        //     "CIC explosion doesnt produce the proper subcomponents vector"
+        // );
+    }
 
-        // assert!(
-        //     Cic::terms_unify(
-        //         &mut test_env,
-        //         &Product(
-        //             "_".to_string(),
-        //             Box::new(Variable("Unit".to_string(), GLOBAL_INDEX)),
-        //             Box::new(Variable("T".to_string(), GLOBAL_INDEX)),
-        //         ),
-        //         &Product(
-        //             "x".to_string(),
-        //             Box::new(Variable("Unit".to_string(), GLOBAL_INDEX)),
-        //             Box::new(Variable("Nat".to_string(), GLOBAL_INDEX)),
-        //         ),
-        //     ),
-        //     "Equality up2 substitution refutes substitution check over codomains of functions"
-        // );
+    #[test]
+    fn test_cic_occurs() {
+        let variable = Variable("name".to_string(), 0);
+        let name_key = "variable_name";
+        let meta = Meta(16 * 29);
+        let meta_key = &format!("metavariable_{}", 16 * 29);
+        let random = Sort("TYPE".to_string());
+
+        assert!(
+            occurs(&variable, name_key),
+            "occurs check doesnt see variable"
+        );
+        assert!(
+            occurs(
+                &Application(
+                    Box::new(Variable("f".to_string(), GLOBAL_INDEX)),
+                    Box::new(variable.clone())
+                ),
+                name_key
+            ),
+            "occurs check doesnt see variable"
+        );
+        assert!(
+            occurs(
+                &Let(
+                    "".to_string(),
+                    Box::new(None),
+                    Box::new(Variable("exp".to_string(), 0)),
+                    Box::new(variable.clone())
+                ),
+                name_key
+            ),
+            "occurs check doesnt see variable"
+        );
+
+        assert!(
+            occurs(&meta, meta_key),
+            "occurs check doesnt see metavariable"
+        );
+        assert!(
+            occurs(
+                &Abstraction(
+                    "T".to_string(),
+                    Box::new(meta.clone()),
+                    Box::new(random.clone())
+                ),
+                meta_key
+            ),
+            "occurs check doesnt see metavariable"
+        );
+        assert!(
+            occurs(
+                &Application(
+                    Box::new(Variable("nil".to_string(), GLOBAL_INDEX)),
+                    Box::new(meta.clone())
+                ),
+                meta_key
+            ),
+            "occurs check doesnt see metavariable"
+        );
+
+        assert!(
+            occurs(
+                &Match(
+                    Box::new(Variable("".to_string(), 42)),
+                    vec![
+                        (Variable("true".to_string(), 0), variable.clone()),
+                        (Variable("false".to_string(), 0), meta.clone())
+                    ]
+                ),
+                name_key
+            ),
+            "occurs check doesnt see variable"
+        );
+        assert!(
+            occurs(
+                &Match(
+                    Box::new(Variable("".to_string(), 42)),
+                    vec![
+                        (Variable("true".to_string(), 0), variable.clone()),
+                        (Variable("false".to_string(), 0), meta.clone())
+                    ]
+                ),
+                meta_key
+            ),
+            "occurs check doesnt see metavariable"
+        );
+        assert!(
+            !occurs(
+                &Match(
+                    Box::new(Variable("".to_string(), 42)),
+                    vec![
+                        (Variable("true".to_string(), 0), variable.clone()),
+                        (Variable("false".to_string(), 0), meta.clone())
+                    ]
+                ),
+                "variable_missing_key"
+            ),
+            "occurs passes on unreferenced variable"
+        );
+        assert!(
+            !occurs(&Sort(name_key.to_string()), name_key),
+            "occurs check passes on a sort which isnt a substitutable term"
+        );
+        assert!(
+            !occurs(&Sort(format!("{}", meta_key)), meta_key),
+            "occurs check passes on a sort which isnt a substitutable term"
+        );
+        assert!(
+            !occurs(
+                &Abstraction(
+                    "T".to_string(),
+                    Box::new(Sort("TYPE".to_string())),
+                    Box::new(Sort("TYPE".to_string()))
+                ),
+                name_key
+            ),
+            "occurs check passes on a term that doesnt reference the variable"
+        );
     }
 }
