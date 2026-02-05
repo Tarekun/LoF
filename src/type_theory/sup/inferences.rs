@@ -175,23 +175,36 @@ pub fn factoring(
 
 #[allow(non_snake_case)]
 pub fn eq_resolution(
-    C: &SupFormula,
+    C: &mut SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut lits = unpack_literals(C);
-    let mut selected = selection_fn(&mut lits);
+    let selected = selection_fn(&mut lits);
+
+    let mut newly_derived = vec![];
+    let mut full_mgu = Substitution::empty();
 
     for i in 0..selected.len() {
         match &selected[i] {
             Not(boxed) => {
                 if let Equality(l, r) = &**boxed {
                     if let Ok(mgu) = terms_unify(l, r) {
-                        selected.remove(i);
-                        lits.extend(selected);
-                        return Ok((
-                            formula_apply_substitution(&Clause(lits), &mgu),
-                            mgu,
+                        // selected.remove(i);
+                        // lits.extend(selected);
+
+                        let mut new_clause = selected.clone();
+                        new_clause.remove(i);
+                        new_clause.extend(lits.clone());
+
+                        newly_derived.push(formula_apply_substitution(
+                            &Clause(new_clause),
+                            &mgu,
                         ));
+                        full_mgu.merge(mgu);
+                        // return Ok((
+                        //     formula_apply_substitution(&Clause(lits), &mgu),
+                        //     mgu,
+                        // ));
                     }
                 }
             }
@@ -199,10 +212,7 @@ pub fn eq_resolution(
         }
     }
 
-    Err(format!(
-        "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
-        C, selected
-    ))
+    (newly_derived, full_mgu)
 }
 
 /// macro that checks for equality factoring appliability. it assumes that the macro is called
@@ -553,25 +563,30 @@ mod unit_tests {
         let neq_st = Not(Box::new(Equality(s.clone(), t.clone())));
         let p = Atom("P".to_string(), vec![]);
 
-        assert!(
-            matches!(
-                eq_resolution(&Clause(vec![neq_ss.clone()]), &selection_fn),
-                Ok((Clause(ref c), _)) if c == &[],
-            ),
+        let (derived, _) =
+            eq_resolution(&mut Clause(vec![neq_ss.clone()]), &selection_fn);
+        assert_eq!(
+            derived,
+            vec![Clause(vec![])],
             "Equality resolution didnt simplify clause with difference of identical terms"
         );
-        assert!(
-            matches!(
-                eq_resolution(
-                    &Clause(vec![neq_ss.clone(), p.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[p.clone()],
-            ),
+
+        let (derived, _) = eq_resolution(
+            &mut Clause(vec![neq_ss.clone(), p.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![p.clone()])],
             "Equality resolution doesnt preserve unprocessed terms"
         );
-        assert!(
-            eq_resolution(&Clause(vec![neq_st.clone(), p.clone()]), &selection_fn).is_err(),
+
+        let (derived, _) = eq_resolution(
+            &mut Clause(vec![neq_st.clone(), p.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,vec![],
             "Equality resolution applied with no inconsistent unification available"
         );
     }
@@ -587,14 +602,13 @@ mod unit_tests {
         let pfx = Atom("P".to_string(), vec![fx.clone(), z.clone()]);
         let neq = Not(Box::new(Equality(y.clone(), fx.clone())));
 
-        assert!(
-            matches!(
-                eq_resolution(
-                    &Clause(vec![neq.clone(), py.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[pfx.clone()],
-            ),
+        let (derived, _) = eq_resolution(
+            &mut Clause(vec![neq.clone(), py.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![pfx.clone()])],
             "Factoring not applied properly with unification available"
         );
     }
