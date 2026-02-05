@@ -42,12 +42,8 @@ pub fn subsumption_resolution_first(
     D: &SupFormula,
 ) -> SupFormula {
     // TODO also support/return mgu
-    let Ok(c_lits) = unpack_literals(C) else {
-        return C.to_owned();
-    };
-    let Ok(d_lits) = unpack_literals(D) else {
-        return C.to_owned();
-    };
+    let c_lits = unpack_literals(C);
+    let d_lits = unpack_literals(D);
     let [c_first, c_rest @ ..] = c_lits.as_slice() else {
         return C.to_owned();
     };
@@ -91,11 +87,11 @@ pub fn resolution(
     C: &mut SupFormula,
     D: &mut SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(Vec<SupFormula>, Substitution<SupTerm>), String> {
-    let mut c_literals = unpack_literals(C)?;
-    let mut d_literals = unpack_literals(D)?;
-    let c_selected = selection_fn(&mut c_literals)?;
-    let d_selected = selection_fn(&mut d_literals)?;
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
+    let mut c_literals = unpack_literals(C);
+    let mut d_literals = unpack_literals(D);
+    let c_selected = selection_fn(&mut c_literals);
+    let d_selected = selection_fn(&mut d_literals);
 
     let mut newly_derived = vec![];
     let mut full_mgu = Substitution::empty();
@@ -143,7 +139,7 @@ pub fn resolution(
         }
     }
 
-    Ok((newly_derived, full_mgu))
+    (newly_derived, full_mgu)
 }
 
 #[allow(non_snake_case)]
@@ -151,8 +147,8 @@ pub fn factoring(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
 ) -> Result<(SupFormula, Substitution<SupTerm>), String> {
-    let mut literals = unpack_literals(C)?;
-    let mut selected = selection_fn(&mut literals)?;
+    let mut literals = unpack_literals(C);
+    let mut selected = selection_fn(&mut literals);
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
@@ -178,8 +174,8 @@ pub fn eq_resolution(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
 ) -> Result<(SupFormula, Substitution<SupTerm>), String> {
-    let mut lits = unpack_literals(C)?;
-    let mut selected = selection_fn(&mut lits)?;
+    let mut lits = unpack_literals(C);
+    let mut selected = selection_fn(&mut lits);
 
     for i in 0..selected.len() {
         match &selected[i] {
@@ -244,8 +240,8 @@ pub fn eq_factoring(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
 ) -> Result<(SupFormula, Substitution<SupTerm>), String> {
-    let mut literals: Vec<SupFormula> = unpack_literals(C)?;
-    let mut selected = selection_fn(&mut literals)?;
+    let mut literals: Vec<SupFormula> = unpack_literals(C);
+    let mut selected = selection_fn(&mut literals);
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
@@ -281,11 +277,14 @@ pub fn superposition(
     C: &SupFormula,
     D: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
-    let mut c_literals = unpack_literals(C)?;
-    let mut d_literals = unpack_literals(D)?;
-    let mut c_selected = selection_fn(&mut c_literals)?;
-    let mut d_selected = selection_fn(&mut d_literals)?;
+) -> Result<(Vec<SupFormula>, Substitution<SupTerm>), String> {
+    // ) -> Result<(SupFormula, Substitution<SupTerm>), String> {
+    let mut c_literals = unpack_literals(C);
+    let mut d_literals = unpack_literals(D);
+    let mut c_selected = selection_fn(&mut c_literals);
+    let mut d_selected = selection_fn(&mut d_literals);
+    let mut derived = vec![];
+    let mut total_mgu = Substitution::empty();
 
     macro_rules! sup_inference {
         ($l:expr, $r:expr, $other:expr, $i:expr, $j:expr) => {{
@@ -405,8 +404,7 @@ mod unit_tests {
             &mut Clause(vec![p.clone()]),
             &mut Clause(vec![not_p.clone()]),
             &selection_fn,
-        )
-        .unwrap();
+        );
         assert_eq!(
             derived, vec![Clause(vec![])],
             "Resolution doesnt derive empty clause from contraddictory literals"
@@ -416,8 +414,7 @@ mod unit_tests {
             &mut Clause(vec![p.clone(), ligther.clone()]),
             &mut Clause(vec![not_p.clone()]),
             &selection_fn,
-        )
-        .unwrap();
+        );
         assert_eq!(
             derived,
             vec![Clause(vec![ligther.clone()])],
@@ -428,8 +425,7 @@ mod unit_tests {
             &mut Clause(vec![p.clone()]),
             &mut Clause(vec![not_p.clone(), ligther.clone()]),
             &selection_fn,
-        )
-        .unwrap();
+        );
         assert_eq!(
             derived,
             vec![Clause(vec![ligther.clone()])],
@@ -441,8 +437,7 @@ mod unit_tests {
             &mut Clause(vec![p.clone(), heavier.clone()]),
             &mut Clause(vec![not_p.clone()]),
             &maximal_selection,
-        )
-        .unwrap_or((vec![], Substitution::empty()));
+        );
         assert_eq!(
             derived,vec![],
             "Maximal literal according to KBO doesnt have a negation but resolution was applied regardless"
@@ -467,8 +462,7 @@ mod unit_tests {
             &mut Clause(vec![py.clone(), qy.clone()]),
             &mut Clause(vec![Not(Box::new(pfx.clone())), ry.clone()]),
             &selection_fn,
-        )
-        .unwrap();
+        );
         assert_eq!(
             derived,
             vec![Clause(vec![qfx.clone(), rfx.clone()])],
@@ -479,8 +473,7 @@ mod unit_tests {
             &mut Clause(vec![Not(Box::new(py.clone())), qy.clone()]),
             &mut Clause(vec![pfx.clone(), ry.clone()]),
             &selection_fn,
-        )
-        .unwrap();
+        );
         assert_eq!(
             derived,
             vec![Clause(vec![rfx.clone(), qfx.clone()])],
