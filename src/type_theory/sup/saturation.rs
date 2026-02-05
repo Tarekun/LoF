@@ -165,6 +165,86 @@ mod unit_tests {
         },
     };
 
+    fn s(n: SupTerm) -> SupTerm {
+        Application("s".to_string(), vec![n])
+    }
+    fn var(name: &str) -> SupTerm {
+        Variable(name.to_string())
+    }
+    fn add(n: SupTerm, m: SupTerm) -> SupTerm {
+        Application("+".to_string(), vec![n, m])
+    }
+
+    #[test]
+    fn test_predicate_logic_solving() {
+        let zero = Application("0".to_string(), vec![]);
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+
+        // forall x. add(0, x, x)
+        // add(0,X,X).
+        let ax1 =
+            Atom("add".to_string(), vec![zero.clone(), var("x"), var("x")]);
+        // forall n m p. add(n,m,p) => add(s(n),m,s(p))
+        // add(s(N),M,s(P)) :- add(N,M,P).
+        let ax2 = Clause(vec![
+            Atom("add".to_string(), vec![s(var("n")), var("m"), s(var("p"))]),
+            Not(Box::new(Atom(
+                "add".to_string(),
+                vec![var("n"), var("m"), var("p")],
+            ))),
+        ]);
+        // ?- add(1,2,R)
+        let neg_target = Not(Box::new(Atom(
+            "add".to_string(),
+            vec![
+                s(zero.clone()),
+                s(s(zero.clone())),
+                Variable("R".to_string()),
+            ],
+        )));
+
+        let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
+        assert_eq!(
+            mgu.clone().unwrap().resolvent("R"),
+            Some(&s(s(s(zero.clone())))),
+            "Variable solution of the addition problem is not the expected"
+        );
+    }
+
+    // #[test]
+    // fn test_equality_logic_solving() {
+    //     let zero = Application("0".to_string(), vec![]);
+    //     let selection_fn = get_selection_fn(SelectionFunction::All());
+
+    //     // forall x. 0+x = x
+    //     let ax1 = Equality(add(zero.clone(), var("x")), var("x"));
+    //     // forall n m p. n+m = p  =>  s(n)+m = s(p)
+    //     let ax2 = Clause(vec![
+    //         Not(Box::new(Equality(add(var("n"), var("m")), var("p")))),
+    //         Equality(add(s(var("n")), var("m")), s(var("p"))),
+    //     ]);
+    //     let neg_target = Not(Box::new(Equality(
+    //         add(s(zero.clone()), var("R")),
+    //         s(s(s(zero.clone()))),
+    //     )));
+
+    //     // assert_eq!(
+    //     //     superposition(&neg_target, &ax2, &selection_fn),
+    //     //     Err("".to_string()),
+    //     //     "problema"
+    //     // );
+
+    //     let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
+    //     println!("{:?}", mgu.clone().unwrap());
+    //     assert_eq!(
+    //         mgu.unwrap().resolvent("R"),
+    //         // either this or an equivalent expression has to pass
+    //         Some(&s(s(zero.clone()))),
+    //         "Variable solution of the addition problem is not the expected"
+    //     );
+    //     panic!();
+    // }
+
     #[test]
     fn test_simple_saturation() {
         let selection_fn = get_selection_fn(SelectionFunction::All());

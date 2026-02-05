@@ -6,8 +6,8 @@ use crate::type_theory::sup::sup::{
     SupFormula::{self, Atom, Clause, Equality, Not},
 };
 use crate::type_theory::sup::sup_utils::{
-    find_unifiable_formula, substitute_formula, subsumes, unpack_literals,
-    SelectionFunctionSignature,
+    find_unifiable_formula, substitute_formula, subsumes,
+    type_refresh_variables, unpack_literals, SelectionFunctionSignature,
 };
 use crate::type_theory::sup::unification::{
     formula_apply_substitution, formulas_unify, term_apply_substitution,
@@ -86,44 +86,51 @@ pub fn subsumption_resolution_first(
 //########################### SIMPLIFICATION INFERENCES
 
 //########################### SUP INFERENCES
-macro_rules! resolution_inference {
-    ($c_idx:expr, $d_idx:expr, $c_selected:expr, $d_selected:expr, $c_others:expr, $d_others:expr) => {{
-        match $c_selected[$c_idx] {
-            Atom(_, _) => {
-                if let Not(inner) = &$d_selected[$d_idx] {
-                    if let Ok(mgu) = formulas_unify(&$c_selected[$c_idx], inner)
-                    {
-                        let mut new_clause = vec![];
-                        $c_selected.remove($c_idx);
-                        new_clause.extend($c_selected);
-                        new_clause.extend($c_others);
-                        $d_selected.remove($d_idx);
-                        new_clause.extend($d_selected);
-                        new_clause.extend($d_others);
-                        return Ok((
-                            formula_apply_substitution(
-                                &Clause(new_clause),
-                                &mgu,
-                            ),
-                            mgu,
-                        ));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }};
-}
 #[allow(non_snake_case)]
 pub fn resolution(
-    C: &SupFormula,
-    D: &SupFormula,
+    C: &mut SupFormula,
+    D: &mut SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
+) -> Result<(Vec<SupFormula>, Substitution<SupTerm>), String> {
     let mut c_literals = unpack_literals(C)?;
     let mut d_literals = unpack_literals(D)?;
-    let mut c_selected = selection_fn(&mut c_literals)?;
-    let mut d_selected = selection_fn(&mut d_literals)?;
+    let c_selected = selection_fn(&mut c_literals)?;
+    let d_selected = selection_fn(&mut d_literals)?;
+
+    let mut newly_derived = vec![];
+    let mut full_mgu = Substitution::empty();
+
+    macro_rules! resolution_inference {
+        ($c_idx:expr, $d_idx:expr, $c_selected:expr, $d_selected:expr, $c_others:expr, $d_others:expr) => {{
+            match $c_selected[$c_idx] {
+                Atom(_, _) => {
+                    if let Not(inner) = &$d_selected[$d_idx] {
+                        if let Ok(mgu) =
+                            formulas_unify(&$c_selected[$c_idx], inner)
+                        {
+                            let mut new_clause = $c_selected.clone();
+                            new_clause.remove($c_idx);
+                            new_clause.extend($c_others.clone());
+                            *C = type_refresh_variables(C);
+
+                            let mut d_selected = $d_selected.clone();
+                            d_selected.remove($d_idx);
+                            new_clause.extend(d_selected);
+                            new_clause.extend($d_others.clone());
+                            *D = type_refresh_variables(D);
+
+                            newly_derived.push(formula_apply_substitution(
+                                &Clause(new_clause),
+                                &mgu,
+                            ));
+                            full_mgu.merge(mgu);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }};
+    }
 
     for i in 0..c_selected.len() {
         for j in 0..d_selected.len() {
@@ -136,10 +143,7 @@ pub fn resolution(
         }
     }
 
-    Err(format!(
-        "Resolution cannot be applied to clauses {:?}, {:?} with selected literals {:?}, {:?}",
-        C, D, c_selected, d_selected
-    ))
+    Ok((newly_derived, full_mgu))
 }
 
 #[allow(non_snake_case)]
@@ -334,6 +338,7 @@ pub fn superposition(
 #[cfg(test)]
 mod unit_tests {
     use crate::config::SelectionFunction;
+    use crate::type_theory::commons::unification::Substitution;
     use crate::type_theory::sup::inferences::{
         demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
         subsumption_resolution_first, superposition,
@@ -396,39 +401,50 @@ mod unit_tests {
         );
         let not_p = Not(Box::new(p.clone()));
 
-        assert!(
-            matches!(
-                resolution(&Clause(vec![p.clone()]), &Clause(vec![not_p.clone()]), &selection_fn),
-                Ok((Clause(ref c), _)) if c.is_empty()
-            ),
+        let (derived, _) = resolution(
+            &mut Clause(vec![p.clone()]),
+            &mut Clause(vec![not_p.clone()]),
+            &selection_fn,
+        )
+        .unwrap();
+        assert_eq!(
+            derived, vec![Clause(vec![])],
             "Resolution doesnt derive empty clause from contraddictory literals"
         );
-        assert!(
-            matches!(
-                resolution(
-                    &Clause(vec![p.clone(), ligther.clone()]),
-                    &Clause(vec![not_p.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref lits), _)) if lits == &[ligther.clone()]
-            ),
+
+        let (derived, _) = resolution(
+            &mut Clause(vec![p.clone(), ligther.clone()]),
+            &mut Clause(vec![not_p.clone()]),
+            &selection_fn,
+        )
+        .unwrap();
+        assert_eq!(
+            derived,
+            vec![Clause(vec![ligther.clone()])],
             "Resolution doesnt preserve unrelated literals from left clause"
         );
-        assert!(
-            matches!(
-                resolution(
-                    &Clause(vec![p.clone()]),
-                    &Clause(vec![not_p.clone(), ligther.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref lits), _)) if lits == &[ligther.clone()]
-            ),
+
+        let (derived, _) = resolution(
+            &mut Clause(vec![p.clone()]),
+            &mut Clause(vec![not_p.clone(), ligther.clone()]),
+            &selection_fn,
+        )
+        .unwrap();
+        assert_eq!(
+            derived,
+            vec![Clause(vec![ligther.clone()])],
             "Resolution doesnt preserve unrelated literals from right clause"
         );
 
         let maximal_selection = get_selection_fn(SelectionFunction::Maximal());
-        assert!(
-            resolution(&Clause(vec![p.clone(), heavier.clone()]), &Clause(vec![not_p.clone()]), &maximal_selection).is_err(),
+        let (derived, _) = resolution(
+            &mut Clause(vec![p.clone(), heavier.clone()]),
+            &mut Clause(vec![not_p.clone()]),
+            &maximal_selection,
+        )
+        .unwrap_or((vec![], Substitution::empty()));
+        assert_eq!(
+            derived,vec![],
             "Maximal literal according to KBO doesnt have a negation but resolution was applied regardless"
         );
     }
@@ -447,26 +463,27 @@ mod unit_tests {
         let qfx = Atom("Q".to_string(), vec![fx.clone(), z.clone()]);
         let rfx = Atom("R".to_string(), vec![fx.clone(), z.clone()]);
 
-        assert!(
-            matches!(
-                resolution(
-                    &Clause(vec![py.clone(), qy.clone()]),
-                    &Clause(vec![Not(Box::new(pfx.clone())), ry.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[qfx.clone(), rfx.clone()],
-            ),
+        let (derived, _) = resolution(
+            &mut Clause(vec![py.clone(), qy.clone()]),
+            &mut Clause(vec![Not(Box::new(pfx.clone())), ry.clone()]),
+            &selection_fn,
+        )
+        .unwrap();
+        assert_eq!(
+            derived,
+            vec![Clause(vec![qfx.clone(), rfx.clone()])],
             "Resolution couldnt apply unification properly with negation over expanded body"
         );
-        assert!(
-            matches!(
-                resolution(
-                    &Clause(vec![Not(Box::new(py.clone())), qy.clone()]),
-                    &Clause(vec![pfx.clone(), ry.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[rfx.clone(), qfx.clone()],
-            ),
+
+        let (derived, _) = resolution(
+            &mut Clause(vec![Not(Box::new(py.clone())), qy.clone()]),
+            &mut Clause(vec![pfx.clone(), ry.clone()]),
+            &selection_fn,
+        )
+        .unwrap();
+        assert_eq!(
+            derived,
+            vec![Clause(vec![rfx.clone(), qfx.clone()])],
             "Resolution couldnt apply unification properly with negation over variable literal"
         );
     }
