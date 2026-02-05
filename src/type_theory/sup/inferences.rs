@@ -215,47 +215,53 @@ pub fn eq_resolution(
     (newly_derived, full_mgu)
 }
 
-/// macro that checks for equality factoring appliability. it assumes that the macro is called
-/// from a clause in the form s=t ∨ s_prime=t_prime ∨ rest, where rest is a vector of atoms.
-/// it works symmetrically on the first equality by computing max=max(s,t) and min=min(s,t);
-/// then checks that min < max, max = s_prime, min < t_prime
-macro_rules! eq_factoring_checks {
-    ($s:expr, $t:expr, $s_prime:expr, $t_prime:expr, $selected:expr, $unselected:expr, $i:expr, $j:expr) => {{
-        // TODO check s/t arent isomorphic
-        let max = max_by($s, $t, |a, b| Sup::compare_terms(a, b));
-        let min = min_by($s, $t, |a, b| Sup::compare_terms(a, b));
-
-        // this bs of matching true is needed to not indent twice to check equality
-        // and ordering. cuz to check ordering you need to match the variant and if let
-        // definitions are "unstable" with multipled conditions
-        // match works better then if. only in rust
-        match (
-            terms_unify(max, $s_prime),
-            Sup::compare_terms($t_prime, min),
-        ) {
-            (Ok(mgu), Less) => {
-                $unselected.push(Equality($s.to_owned(), $t.to_owned()));
-                $unselected.push(Not(Box::new(Equality(
-                    min.to_owned(),
-                    $t_prime.to_owned(),
-                ))));
-                $selected.remove($j);
-                $selected.remove($i);
-
-                $unselected.extend($selected);
-                return Ok((formula_apply_substitution(&Clause($unselected), &mgu), mgu));
-            }
-            _ => {}
-        }
-    }};
-}
 #[allow(non_snake_case)]
 pub fn eq_factoring(
-    C: &SupFormula,
+    C: &mut SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut literals: Vec<SupFormula> = unpack_literals(C);
-    let mut selected = selection_fn(&mut literals);
+    let selected = selection_fn(&mut literals);
+
+    let mut newly_derived = vec![];
+    let mut full_mgu = Substitution::empty();
+
+    /// macro that checks for equality factoring appliability. it assumes that the macro is called
+    /// from a clause in the form s=t ∨ s_prime=t_prime ∨ rest, where rest is a vector of atoms.
+    /// it works symmetrically on the first equality by computing max=max(s,t) and min=min(s,t);
+    /// then checks that min < max, max = s_prime, min < t_prime
+    macro_rules! eq_factoring_checks {
+        ($s:expr, $t:expr, $s_prime:expr, $t_prime:expr, $selected:expr, $unselected:expr, $i:expr, $j:expr) => {{
+            // TODO check s/t arent isomorphic
+            let max = max_by($s, $t, |a, b| Sup::compare_terms(a, b));
+            let min = min_by($s, $t, |a, b| Sup::compare_terms(a, b));
+
+            match (
+                terms_unify(max, $s_prime),
+                Sup::compare_terms($t_prime, min),
+            ) {
+                (Ok(mgu), Less) => {
+                    let mut new_clause = selected.clone();
+                    new_clause.remove($j);
+                    new_clause.remove($i);
+
+                    new_clause.push(Equality($s.to_owned(), $t.to_owned()));
+                    new_clause.push(Not(Box::new(Equality(
+                        min.to_owned(),
+                        $t_prime.to_owned(),
+                    ))));
+
+                    newly_derived.push(formula_apply_substitution(
+                        &Clause(new_clause),
+                        &mgu,
+                    ));
+                    full_mgu.merge(mgu);
+                    *C = type_refresh_variables(C);
+                }
+                _ => {}
+            }
+        }};
+    }
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
@@ -280,10 +286,7 @@ pub fn eq_factoring(
         }
     }
 
-    Err(format!(
-        "Equality factoring cannot be applied to clause {:?} with picked literal {:?}",
-        C, selected
-    ))
+    (newly_derived, full_mgu)
 }
 
 #[allow(non_snake_case)]
@@ -634,111 +637,117 @@ mod unit_tests {
         let t_prime = Variable("t_prime".to_string());
         let rest = Atom("P".to_string(), vec![]);
 
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), t.clone()),
-                        Equality(unifiable.clone(), t_prime.clone()),
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
-                    Equality(unifiable.clone(), t.clone()),
-                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                ],
-            ),
+        // s(x,y)=t(x) ; s(x,y)=t' ⊦ s(x,y)=t(x) ; t(x)≠t'
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Equality(unifiable.clone(), t_prime.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+            ])],
             "Equality factoring isnt working as expected"
         );
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(t.clone(), unifiable.clone()),
-                        Equality(unifiable.clone(), t_prime.clone()),
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
+
+        // t(x)=s(x,y) ; s(x,y)=t' ⊦ t(x)=s(x,y) ; t'≠t(x)
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(t.clone(), unifiable.clone()),
+                Equality(unifiable.clone(), t_prime.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
                     Equality(t.clone(), unifiable.clone()), // keep this swap consistent with the arguments
                     Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                ],
-            ),
+                ])],
             "Equality factoring result depends on ordering of first equality (not even order-equivariant)"
         );
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), t.clone()),
-                        Equality(t_prime.clone(), unifiable.clone()),
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
-                    Equality(unifiable.clone(), t.clone()),
-                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                ],
-            ),
+
+        // s(x,y)=t(x) ; t'=s(x,y) ⊦ s(x,y)=t(x) ; t(x)≠t'
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Equality(t_prime.clone(), unifiable.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+            ])],
             "Equality factoring result depends on ordering of second equality"
         );
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), t_prime.clone()),
-                        Equality(unifiable.clone(), t.clone()),
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
+
+        // s(x,y)=t' ; s(x,y)=t(x) ⊦ s(x,y)=t' ; t'≠t(x)
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t_prime.clone()),
+                Equality(unifiable.clone(), t.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
                     Equality(unifiable.clone(), t.clone()),
                     Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                ],
-            ),
+                ])],
             "Equality factoring result depends on relative ordering of equality literals"
         );
 
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), t.clone()),
-                        Equality(unifiable.clone(), t_prime.clone()),
-                        rest.clone()
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
-                    Equality(unifiable.clone(), t.clone()),
-                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                    rest.clone()
-                ],
-            ),
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Equality(unifiable.clone(), t_prime.clone()),
+                rest.clone(),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
+                rest.clone(),
+                Equality(unifiable.clone(), t.clone()),
+                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+            ])],
             "Equality factoring isnt preserving other literals"
         );
-        assert!(
-            eq_factoring(
-                &Clause(vec![
-                    Equality(unifiable.clone(), t.clone()),
-                    Equality(unifiable.clone(), t.clone()),
-                    rest.clone()
-                ]),
-                &selection_fn
-            )
-            .is_err(),
+
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Equality(unifiable.clone(), t.clone()),
+                rest.clone(),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![],
             "Equality factoring is passing with t' < t constraint violated"
         );
-        assert!(
-            eq_factoring(
-                &Clause(vec![
-                    Equality(unifiable.clone(), bigger.clone()),
-                    Equality(unifiable.clone(), t_prime.clone()),
-                    rest.clone()
-                ]),
-                &selection_fn
-            )
-            .is_err(),
+
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), bigger.clone()),
+                Equality(unifiable.clone(), t_prime.clone()),
+                rest.clone(),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![],
             "Equality factoring is passing with t < s constraint violated"
         );
     }
@@ -759,20 +768,19 @@ mod unit_tests {
         let tk = Application("t".to_string(), vec![k.clone()]);
         let t_prime = Variable("t_prime".to_string());
 
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(s.clone(), tx.clone()),
-                        Equality(s_prime.clone(), t_prime.clone())
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(s.clone(), tx.clone()),
+                Equality(s_prime.clone(), t_prime.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
                     Equality(s_prime.clone(), tk.clone()),
                     Not(Box::new(Equality(tk.clone(), t_prime.clone())))
-                ],
-            ),
+                ])],
             "Equality resolution not applied properly with unification available"
         );
     }
