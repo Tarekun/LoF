@@ -144,29 +144,33 @@ pub fn resolution(
 
 #[allow(non_snake_case)]
 pub fn factoring(
-    C: &SupFormula,
+    C: &mut SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut literals = unpack_literals(C);
-    let mut selected = selection_fn(&mut literals);
+    let selected = selection_fn(&mut literals);
+
+    let mut newly_derived = vec![];
+    let mut full_mgu = Substitution::empty();
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
             if let Ok(mgu) = formulas_unify(&selected[i], &selected[j]) {
-                selected.remove(j);
-                literals.extend(selected);
-                return Ok((
-                    formula_apply_substitution(&Clause(literals), &mgu),
-                    mgu,
+                let mut new_clause = selected.clone();
+                new_clause.remove(j);
+                new_clause.extend(literals.clone());
+                *C = type_refresh_variables(C);
+
+                newly_derived.push(formula_apply_substitution(
+                    &Clause(new_clause),
+                    &mgu,
                 ));
+                full_mgu.merge(mgu);
             }
         }
     }
 
-    Err(format!(
-        "Factoring cannot be applied to clause {:?} with picked literal {:?}",
-        C, selected
-    ))
+    (newly_derived, full_mgu)
 }
 
 #[allow(non_snake_case)]
@@ -487,26 +491,29 @@ mod unit_tests {
         let p = Atom("P".to_string(), vec![]);
         let q = Atom("Q".to_string(), vec![Variable("x".to_string())]);
 
-        assert!(
-            matches!(
-                factoring(&Clause(vec![q.clone(), q.clone()]), &selection_fn),
-                Ok((Clause(ref c), _)) if c == &[q.clone()],
-            ),
+        let (derived, _) =
+            factoring(&mut Clause(vec![q.clone(), q.clone()]), &selection_fn);
+        assert_eq!(
+            derived,
+            vec![Clause(vec![q.clone()])],
             "Factoring rule didnt remove the duplicate predicate"
         );
-        assert!(
-            matches!(
-                factoring(
-                    &Clause(vec![q.clone(), p.clone(), q.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[q.clone(), p.clone()],
-            ),
+
+        let (derived, _) = factoring(
+            &mut Clause(vec![q.clone(), p.clone(), q.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![q.clone(), p.clone()])],
             "Factoring rule didnt keep the non selected predicate"
         );
-        assert!(
-            factoring(&Clause(vec![p.clone(), q.clone()]), &selection_fn)
-                .is_err(),
+
+        let (derived, _) =
+            factoring(&mut Clause(vec![p.clone(), q.clone()]), &selection_fn);
+        assert_eq!(
+            derived,
+            vec![],
             "Factoring rule applied with no unification available"
         );
     }
@@ -524,13 +531,12 @@ mod unit_tests {
         let qfx = Atom("Q".to_string(), vec![fx.clone(), z.clone()]);
 
         let (derived, _) = factoring(
-            &Clause(vec![py.clone(), pfx.clone(), qy.clone()]),
+            &mut Clause(vec![py.clone(), pfx.clone(), qy.clone()]),
             &selection_fn,
-        )
-        .unwrap();
+        );
         assert_eq!(
             derived,
-            Clause(vec![pfx.clone(), qfx.clone()]),
+            vec![Clause(vec![pfx.clone(), qfx.clone()])],
             "Factoring couldnt apply unification properly"
         )
     }
