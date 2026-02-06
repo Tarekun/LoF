@@ -118,6 +118,7 @@ fn generating_inferences(
             {
                 newly_derived.push(derived);
             }
+            solving_mgu.merge(mgu);
         }
     }
 

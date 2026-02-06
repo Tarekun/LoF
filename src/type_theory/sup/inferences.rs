@@ -291,27 +291,25 @@ pub fn eq_factoring(
 
 #[allow(non_snake_case)]
 pub fn superposition(
-    C: &SupFormula,
-    D: &SupFormula,
+    C: &mut SupFormula,
+    D: &mut SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(Vec<SupFormula>, Substitution<SupTerm>), String> {
-    // ) -> Result<(SupFormula, Substitution<SupTerm>), String> {
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut c_literals = unpack_literals(C);
     let mut d_literals = unpack_literals(D);
-    let mut c_selected = selection_fn(&mut c_literals);
-    let mut d_selected = selection_fn(&mut d_literals);
+    let c_selected = selection_fn(&mut c_literals);
+    let d_selected = selection_fn(&mut d_literals);
     let mut derived = vec![];
     let mut total_mgu = Substitution::empty();
 
     macro_rules! sup_inference {
         ($l:expr, $r:expr, $other:expr, $i:expr, $j:expr) => {{
             // TODO: check `other` isnt an equality. in that case find_unifiable should only look in 1 term
-            let unification_pair = find_unifiable_formula(&$other, $l);
-            let (unification_pair, target, arg) = if unification_pair.is_some() {
-                (unification_pair, $l, $r)
-            } else {
-                (find_unifiable_formula(&$other, $r), $r, $l)
-            };
+            let min = min_by($l, $r, |l, r| Sup::compare_terms(l, r));
+            let max = max_by($l, $r, |l, r| Sup::compare_terms(l, r));
+            let unification_pair = find_unifiable_formula(&$other, max);
+            let target = max;
+            let arg = min;
 
             if let Some((_, mgu)) = unification_pair {
                 let other = formula_apply_substitution(&$other, &mgu);
@@ -320,13 +318,17 @@ pub fn superposition(
                     substitute_formula(&other, &target, &arg);
                 let mut new_clause = vec![];
                 new_clause.push(other);
-                new_clause.extend(c_literals);
-                new_clause.extend(d_literals);
-                c_selected.remove($i);
-                new_clause.extend(c_selected);
-                d_selected.remove($j);
-                new_clause.extend(d_selected);
-                return Ok((formula_apply_substitution(&Clause(new_clause), &mgu), mgu));
+                new_clause.extend(c_literals.clone());
+                new_clause.extend(d_literals.clone());
+                let mut c_selected_clones = c_selected.clone();
+                c_selected_clones.remove($i);
+                new_clause.extend(c_selected_clones);
+                let mut d_selected_clones = d_selected.clone();
+                d_selected_clones.remove($j);
+                new_clause.extend(d_selected_clones);
+
+                derived.push(formula_apply_substitution(&Clause(new_clause), &mgu));
+                total_mgu.merge(mgu);
             }
         }};
     }
@@ -344,17 +346,13 @@ pub fn superposition(
         }
     }
 
-    Err(format!(
-        "Superposition cannot be applied to clauses {:?}, {:?} with respective picked literals {:?}, {:?}",
-        C, D, c_selected, d_selected
-    ))
+    (derived, total_mgu)
 }
 //########################### SUP INFERENCES
 
 #[cfg(test)]
 mod unit_tests {
     use crate::config::SelectionFunction;
-    use crate::type_theory::commons::unification::Substitution;
     use crate::type_theory::sup::inferences::{
         demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
         subsumption_resolution_first, superposition,
@@ -792,90 +790,95 @@ mod unit_tests {
         let unifiable =
             Application("l".to_string(), vec![Variable("x".to_string())]);
         // terms are constructed to enforce r < l and t' < t[s]
-        let r = Variable("r".to_string());
-        let t_prime = Variable("t_prime".to_string());
+        let r = Application("r".to_string(), vec![]);
+        // let r = Variable("r".to_string());
+        let t_prime = Variable("t'".to_string());
         let t = Application("t".to_string(), vec![unifiable.clone()]);
         let t_subst = Application("t".to_string(), vec![r.clone()]);
         let p = Atom("L".to_string(), vec![unifiable.clone()]);
         let p_subst = Atom("L".to_string(), vec![r.clone()]);
         let q = Atom("Q".to_string(), vec![]);
 
-        assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                    &Clause(vec![p.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[p_subst.clone()],
-            ),
+        // l(x)=r , L(l(x)) ⊦ L(r)
+        let (derived, _) = superposition(
+            &mut Clause(vec![Equality(unifiable.clone(), r.clone())]),
+            &mut Clause(vec![p.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![p_subst.clone()])],
             "Superposition isnt working with predicates"
         );
-        assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                    &Clause(vec![Equality(t.clone(), t_prime.clone())]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[Equality(t_subst.clone(), t_prime.clone())],
-            ),
+
+        // l(x)=r , t(l(x))=t' ⊦ t(r)=t'
+        let (derived, _) = superposition(
+            &mut Clause(vec![Equality(unifiable.clone(), r.clone())]),
+            &mut Clause(vec![Equality(t.clone(), t_prime.clone())]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![Equality(t_subst.clone(), t_prime.clone())])],
             "Superposition isnt working with equalities"
         );
-        assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                    &Clause(vec![Not(Box::new(Equality(
-                        t.clone(),
-                        t_prime.clone()
-                    )))]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[Not(Box::new(Equality(
-                    t_subst.clone(),
-                    t_prime.clone()
-                )))],
-            ),
+
+        // l(x)=r , t(l(x))≠t' ⊦ t(r)≠t'
+        let (derived, _) = superposition(
+            &mut Clause(vec![Equality(unifiable.clone(), r.clone())]),
+            &mut Clause(vec![Not(Box::new(Equality(
+                t.clone(),
+                t_prime.clone(),
+            )))]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![Not(Box::new(Equality(
+                t_subst.clone(),
+                t_prime.clone()
+            )))])],
             "Superposition isnt working with negated equalities"
         );
-        assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), r.clone()),
-                        Not(Box::new(q.clone()))
-                    ]),
-                    &Clause(vec![p.clone(), q.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
-                    p_subst.clone(),
-                    Not(Box::new(q.clone())),
-                    q.clone(),
-                ],
-            ),
+
+        // l(x)=r\/~Q , L(l(x))\/Q ⊦ L(r)\/~Q\/Q
+        let (derived, _) = superposition(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), r.clone()),
+                Not(Box::new(q.clone())),
+            ]),
+            &mut Clause(vec![p.clone(), q.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
+                p_subst.clone(),
+                Not(Box::new(q.clone())),
+                q.clone(),
+            ])],
             "Superposition isnt preserving unralted literals"
         );
 
-        assert!(
-            superposition(
-                &Clause(vec![Equality(r.clone(), unifiable.clone())]),
-                &Clause(vec![p.clone()]),
-                &selection_fn
-            )
-            .is_ok(),
-            "Superposition is dependent on equality terms ordering"
+        //
+        let (derived, _) = superposition(
+            &mut Clause(vec![Equality(r.clone(), unifiable.clone())]),
+            &mut Clause(vec![p.clone()]),
+            &selection_fn,
         );
         assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![p.clone()]),
-                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[p_subst.clone()],
-            ),
+            derived.len() > 0,
+            "Superposition is dependent on equality terms ordering"
+        );
+
+        let (derived, _) = superposition(
+            &mut Clause(vec![p.clone()]),
+            &mut Clause(vec![Equality(unifiable.clone(), r.clone())]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![p_subst.clone()])],
             "Superposition is dependent on clause ordering"
         );
     }
@@ -900,15 +903,15 @@ mod unit_tests {
         let otherx = Atom("Q".to_string(), vec![x.clone()]);
         let otherk = Atom("Q".to_string(), vec![k.clone()]);
 
-        assert!(
-            matches!(
-                superposition(
-                    &Equality(l.clone(), r.clone()),
-                    &Clause(vec![ps.clone(), otherx.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c ==&[pr.clone(), otherk.clone()],
-            ),
+        // f(x)=<r> , P(<c>, f(<k>))\/Q(x) ⊦ P(<c>, <r>)\/Q(<k>)
+        let (derived, _) = superposition(
+            &mut Equality(l.clone(), r.clone()),
+            &mut Clause(vec![ps.clone(), otherx.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![pr.clone(), otherk.clone()])],
             "Superposition not applied properly with unification available"
         );
     }
