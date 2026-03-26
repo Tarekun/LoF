@@ -42,12 +42,8 @@ pub fn subsumption_resolution_first(
     D: &SupFormula,
 ) -> SupFormula {
     // TODO also support/return mgu
-    let Ok(c_lits) = unpack_literals(C) else {
-        return C.to_owned();
-    };
-    let Ok(d_lits) = unpack_literals(D) else {
-        return C.to_owned();
-    };
+    let c_lits = unpack_literals(C);
+    let d_lits = unpack_literals(D);
     let [c_first, c_rest @ ..] = c_lits.as_slice() else {
         return C.to_owned();
     };
@@ -86,44 +82,49 @@ pub fn subsumption_resolution_first(
 //########################### SIMPLIFICATION INFERENCES
 
 //########################### SUP INFERENCES
-macro_rules! resolution_inference {
-    ($c_idx:expr, $d_idx:expr, $c_selected:expr, $d_selected:expr, $c_others:expr, $d_others:expr) => {{
-        match $c_selected[$c_idx] {
-            Atom(_, _) => {
-                if let Not(inner) = &$d_selected[$d_idx] {
-                    if let Ok(mgu) = formulas_unify(&$c_selected[$c_idx], inner)
-                    {
-                        let mut new_clause = vec![];
-                        $c_selected.remove($c_idx);
-                        new_clause.extend($c_selected);
-                        new_clause.extend($c_others);
-                        $d_selected.remove($d_idx);
-                        new_clause.extend($d_selected);
-                        new_clause.extend($d_others);
-                        return Ok((
-                            formula_apply_substitution(
-                                &Clause(new_clause),
-                                &mgu,
-                            ),
-                            mgu,
-                        ));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }};
-}
 #[allow(non_snake_case)]
 pub fn resolution(
     C: &SupFormula,
     D: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
-    let mut c_literals = unpack_literals(C)?;
-    let mut d_literals = unpack_literals(D)?;
-    let mut c_selected = selection_fn(&mut c_literals)?;
-    let mut d_selected = selection_fn(&mut d_literals)?;
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
+    let mut c_literals = unpack_literals(C);
+    let mut d_literals = unpack_literals(D);
+    let c_selected = selection_fn(&mut c_literals);
+    let d_selected = selection_fn(&mut d_literals);
+
+    let mut newly_derived = vec![];
+    let mut full_mgu = Substitution::empty();
+
+    macro_rules! resolution_inference {
+        ($c_idx:expr, $d_idx:expr, $c_selected:expr, $d_selected:expr, $c_others:expr, $d_others:expr) => {{
+            match $c_selected[$c_idx] {
+                Atom(_, _) => {
+                    if let Not(inner) = &$d_selected[$d_idx] {
+                        if let Ok(mgu) =
+                            formulas_unify(&$c_selected[$c_idx], inner)
+                        {
+                            let mut new_clause = $c_selected.clone();
+                            new_clause.remove($c_idx);
+                            new_clause.extend($c_others.clone());
+
+                            let mut d_selected = $d_selected.clone();
+                            d_selected.remove($d_idx);
+                            new_clause.extend(d_selected);
+                            new_clause.extend($d_others.clone());
+
+                            newly_derived.push(formula_apply_substitution(
+                                &Clause(new_clause),
+                                &mgu,
+                            ));
+                            full_mgu.merge(mgu);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }};
+    }
 
     for i in 0..c_selected.len() {
         for j in 0..d_selected.len() {
@@ -136,58 +137,64 @@ pub fn resolution(
         }
     }
 
-    Err(format!(
-        "Resolution cannot be applied to clauses {:?}, {:?} with selected literals {:?}, {:?}",
-        C, D, c_selected, d_selected
-    ))
+    (newly_derived, full_mgu)
 }
 
 #[allow(non_snake_case)]
 pub fn factoring(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
-    let mut literals = unpack_literals(C)?;
-    let mut selected = selection_fn(&mut literals)?;
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
+    let mut literals = unpack_literals(C);
+    let selected = selection_fn(&mut literals);
+
+    let mut newly_derived = vec![];
+    let mut full_mgu = Substitution::empty();
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
             if let Ok(mgu) = formulas_unify(&selected[i], &selected[j]) {
-                selected.remove(j);
-                literals.extend(selected);
-                return Ok((
-                    formula_apply_substitution(&Clause(literals), &mgu),
-                    mgu,
+                let mut new_clause = selected.clone();
+                new_clause.remove(j);
+                new_clause.extend(literals.clone());
+
+                newly_derived.push(formula_apply_substitution(
+                    &Clause(new_clause),
+                    &mgu,
                 ));
+                full_mgu.merge(mgu);
             }
         }
     }
 
-    Err(format!(
-        "Factoring cannot be applied to clause {:?} with picked literal {:?}",
-        C, selected
-    ))
+    (newly_derived, full_mgu)
 }
 
 #[allow(non_snake_case)]
 pub fn eq_resolution(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
-    let mut lits = unpack_literals(C)?;
-    let mut selected = selection_fn(&mut lits)?;
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
+    let mut lits = unpack_literals(C);
+    let selected = selection_fn(&mut lits);
+
+    let mut newly_derived = vec![];
+    let mut full_mgu = Substitution::empty();
 
     for i in 0..selected.len() {
         match &selected[i] {
             Not(boxed) => {
                 if let Equality(l, r) = &**boxed {
                     if let Ok(mgu) = terms_unify(l, r) {
-                        selected.remove(i);
-                        lits.extend(selected);
-                        return Ok((
-                            formula_apply_substitution(&Clause(lits), &mgu),
-                            mgu,
+                        let mut new_clause = selected.clone();
+                        new_clause.remove(i);
+                        new_clause.extend(lits.clone());
+
+                        newly_derived.push(formula_apply_substitution(
+                            &Clause(new_clause),
+                            &mgu,
                         ));
+                        full_mgu.merge(mgu);
                     }
                 }
             }
@@ -195,53 +202,55 @@ pub fn eq_resolution(
         }
     }
 
-    Err(format!(
-        "Equality resolution cannot be applied to clause {:?} with picked literal {:?}",
-        C, selected
-    ))
+    (newly_derived, full_mgu)
 }
 
-/// macro that checks for equality factoring appliability. it assumes that the macro is called
-/// from a clause in the form s=t ∨ s_prime=t_prime ∨ rest, where rest is a vector of atoms.
-/// it works symmetrically on the first equality by computing max=max(s,t) and min=min(s,t);
-/// then checks that min < max, max = s_prime, min < t_prime
-macro_rules! eq_factoring_checks {
-    ($s:expr, $t:expr, $s_prime:expr, $t_prime:expr, $selected:expr, $unselected:expr, $i:expr, $j:expr) => {{
-        // TODO check s/t arent isomorphic
-        let max = max_by($s, $t, |a, b| Sup::compare_terms(a, b));
-        let min = min_by($s, $t, |a, b| Sup::compare_terms(a, b));
-
-        // this bs of matching true is needed to not indent twice to check equality
-        // and ordering. cuz to check ordering you need to match the variant and if let
-        // definitions are "unstable" with multipled conditions
-        // match works better then if. only in rust
-        match (
-            terms_unify(max, $s_prime),
-            Sup::compare_terms($t_prime, min),
-        ) {
-            (Ok(mgu), Less) => {
-                $unselected.push(Equality($s.to_owned(), $t.to_owned()));
-                $unselected.push(Not(Box::new(Equality(
-                    min.to_owned(),
-                    $t_prime.to_owned(),
-                ))));
-                $selected.remove($j);
-                $selected.remove($i);
-
-                $unselected.extend($selected);
-                return Ok((formula_apply_substitution(&Clause($unselected), &mgu), mgu));
-            }
-            _ => {}
-        }
-    }};
-}
 #[allow(non_snake_case)]
 pub fn eq_factoring(
     C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
-    let mut literals: Vec<SupFormula> = unpack_literals(C)?;
-    let mut selected = selection_fn(&mut literals)?;
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
+    let mut literals: Vec<SupFormula> = unpack_literals(C);
+    let selected = selection_fn(&mut literals);
+
+    let mut newly_derived = vec![];
+    let mut full_mgu = Substitution::empty();
+
+    /// macro that checks for equality factoring appliability. it assumes that the macro is called
+    /// from a clause in the form s=t ∨ s_prime=t_prime ∨ rest, where rest is a vector of atoms.
+    /// it works symmetrically on the first equality by computing max=max(s,t) and min=min(s,t);
+    /// then checks that min < max, max = s_prime, min < t_prime
+    macro_rules! eq_factoring_checks {
+        ($s:expr, $t:expr, $s_prime:expr, $t_prime:expr, $selected:expr, $unselected:expr, $i:expr, $j:expr) => {{
+            // TODO check s/t arent isomorphic
+            let max = max_by($s, $t, |a, b| Sup::compare_terms(a, b));
+            let min = min_by($s, $t, |a, b| Sup::compare_terms(a, b));
+
+            match (
+                terms_unify(max, $s_prime),
+                Sup::compare_terms($t_prime, min),
+            ) {
+                (Ok(mgu), Less) => {
+                    let mut new_clause = selected.clone();
+                    new_clause.remove($j);
+                    new_clause.remove($i);
+
+                    new_clause.push(Equality($s.to_owned(), $t.to_owned()));
+                    new_clause.push(Not(Box::new(Equality(
+                        min.to_owned(),
+                        $t_prime.to_owned(),
+                    ))));
+
+                    newly_derived.push(formula_apply_substitution(
+                        &Clause(new_clause),
+                        &mgu,
+                    ));
+                    full_mgu.merge(mgu);
+                }
+                _ => {}
+            }
+        }};
+    }
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
@@ -266,10 +275,7 @@ pub fn eq_factoring(
         }
     }
 
-    Err(format!(
-        "Equality factoring cannot be applied to clause {:?} with picked literal {:?}",
-        C, selected
-    ))
+    (newly_derived, full_mgu)
 }
 
 #[allow(non_snake_case)]
@@ -277,21 +283,22 @@ pub fn superposition(
     C: &SupFormula,
     D: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(SupFormula, Substitution<SupTerm>), String> {
-    let mut c_literals = unpack_literals(C)?;
-    let mut d_literals = unpack_literals(D)?;
-    let mut c_selected = selection_fn(&mut c_literals)?;
-    let mut d_selected = selection_fn(&mut d_literals)?;
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
+    let mut c_literals = unpack_literals(C);
+    let mut d_literals = unpack_literals(D);
+    let c_selected = selection_fn(&mut c_literals);
+    let d_selected = selection_fn(&mut d_literals);
+    let mut derived = vec![];
+    let mut total_mgu = Substitution::empty();
 
     macro_rules! sup_inference {
         ($l:expr, $r:expr, $other:expr, $i:expr, $j:expr) => {{
             // TODO: check `other` isnt an equality. in that case find_unifiable should only look in 1 term
-            let unification_pair = find_unifiable_formula(&$other, $l);
-            let (unification_pair, target, arg) = if unification_pair.is_some() {
-                (unification_pair, $l, $r)
-            } else {
-                (find_unifiable_formula(&$other, $r), $r, $l)
-            };
+            let min = min_by($l, $r, |l, r| Sup::compare_terms(l, r));
+            let max = max_by($l, $r, |l, r| Sup::compare_terms(l, r));
+            let unification_pair = find_unifiable_formula(&$other, max);
+            let target = max;
+            let arg = min;
 
             if let Some((_, mgu)) = unification_pair {
                 let other = formula_apply_substitution(&$other, &mgu);
@@ -300,13 +307,17 @@ pub fn superposition(
                     substitute_formula(&other, &target, &arg);
                 let mut new_clause = vec![];
                 new_clause.push(other);
-                new_clause.extend(c_literals);
-                new_clause.extend(d_literals);
-                c_selected.remove($i);
-                new_clause.extend(c_selected);
-                d_selected.remove($j);
-                new_clause.extend(d_selected);
-                return Ok((formula_apply_substitution(&Clause(new_clause), &mgu), mgu));
+                new_clause.extend(c_literals.clone());
+                new_clause.extend(d_literals.clone());
+                let mut c_selected_clones = c_selected.clone();
+                c_selected_clones.remove($i);
+                new_clause.extend(c_selected_clones);
+                let mut d_selected_clones = d_selected.clone();
+                d_selected_clones.remove($j);
+                new_clause.extend(d_selected_clones);
+
+                derived.push(formula_apply_substitution(&Clause(new_clause), &mgu));
+                total_mgu.merge(mgu);
             }
         }};
     }
@@ -324,10 +335,7 @@ pub fn superposition(
         }
     }
 
-    Err(format!(
-        "Superposition cannot be applied to clauses {:?}, {:?} with respective picked literals {:?}, {:?}",
-        C, D, c_selected, d_selected
-    ))
+    (derived, total_mgu)
 }
 //########################### SUP INFERENCES
 
@@ -396,39 +404,46 @@ mod unit_tests {
         );
         let not_p = Not(Box::new(p.clone()));
 
-        assert!(
-            matches!(
-                resolution(&Clause(vec![p.clone()]), &Clause(vec![not_p.clone()]), &selection_fn),
-                Ok((Clause(ref c), _)) if c.is_empty()
-            ),
+        let (derived, _) = resolution(
+            &mut Clause(vec![p.clone()]),
+            &mut Clause(vec![not_p.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived, vec![Clause(vec![])],
             "Resolution doesnt derive empty clause from contraddictory literals"
         );
-        assert!(
-            matches!(
-                resolution(
-                    &Clause(vec![p.clone(), ligther.clone()]),
-                    &Clause(vec![not_p.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref lits), _)) if lits == &[ligther.clone()]
-            ),
+
+        let (derived, _) = resolution(
+            &mut Clause(vec![p.clone(), ligther.clone()]),
+            &mut Clause(vec![not_p.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![ligther.clone()])],
             "Resolution doesnt preserve unrelated literals from left clause"
         );
-        assert!(
-            matches!(
-                resolution(
-                    &Clause(vec![p.clone()]),
-                    &Clause(vec![not_p.clone(), ligther.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref lits), _)) if lits == &[ligther.clone()]
-            ),
+
+        let (derived, _) = resolution(
+            &mut Clause(vec![p.clone()]),
+            &mut Clause(vec![not_p.clone(), ligther.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![ligther.clone()])],
             "Resolution doesnt preserve unrelated literals from right clause"
         );
 
         let maximal_selection = get_selection_fn(SelectionFunction::Maximal());
-        assert!(
-            resolution(&Clause(vec![p.clone(), heavier.clone()]), &Clause(vec![not_p.clone()]), &maximal_selection).is_err(),
+        let (derived, _) = resolution(
+            &mut Clause(vec![p.clone(), heavier.clone()]),
+            &mut Clause(vec![not_p.clone()]),
+            &maximal_selection,
+        );
+        assert_eq!(
+            derived,vec![],
             "Maximal literal according to KBO doesnt have a negation but resolution was applied regardless"
         );
     }
@@ -447,26 +462,25 @@ mod unit_tests {
         let qfx = Atom("Q".to_string(), vec![fx.clone(), z.clone()]);
         let rfx = Atom("R".to_string(), vec![fx.clone(), z.clone()]);
 
-        assert!(
-            matches!(
-                resolution(
-                    &Clause(vec![py.clone(), qy.clone()]),
-                    &Clause(vec![Not(Box::new(pfx.clone())), ry.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[qfx.clone(), rfx.clone()],
-            ),
+        let (derived, _) = resolution(
+            &mut Clause(vec![py.clone(), qy.clone()]),
+            &mut Clause(vec![Not(Box::new(pfx.clone())), ry.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![qfx.clone(), rfx.clone()])],
             "Resolution couldnt apply unification properly with negation over expanded body"
         );
-        assert!(
-            matches!(
-                resolution(
-                    &Clause(vec![Not(Box::new(py.clone())), qy.clone()]),
-                    &Clause(vec![pfx.clone(), ry.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[rfx.clone(), qfx.clone()],
-            ),
+
+        let (derived, _) = resolution(
+            &mut Clause(vec![Not(Box::new(py.clone())), qy.clone()]),
+            &mut Clause(vec![pfx.clone(), ry.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![rfx.clone(), qfx.clone()])],
             "Resolution couldnt apply unification properly with negation over variable literal"
         );
     }
@@ -477,26 +491,29 @@ mod unit_tests {
         let p = Atom("P".to_string(), vec![]);
         let q = Atom("Q".to_string(), vec![Variable("x".to_string())]);
 
-        assert!(
-            matches!(
-                factoring(&Clause(vec![q.clone(), q.clone()]), &selection_fn),
-                Ok((Clause(ref c), _)) if c == &[q.clone()],
-            ),
+        let (derived, _) =
+            factoring(&mut Clause(vec![q.clone(), q.clone()]), &selection_fn);
+        assert_eq!(
+            derived,
+            vec![Clause(vec![q.clone()])],
             "Factoring rule didnt remove the duplicate predicate"
         );
-        assert!(
-            matches!(
-                factoring(
-                    &Clause(vec![q.clone(), p.clone(), q.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[q.clone(), p.clone()],
-            ),
+
+        let (derived, _) = factoring(
+            &mut Clause(vec![q.clone(), p.clone(), q.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![q.clone(), p.clone()])],
             "Factoring rule didnt keep the non selected predicate"
         );
-        assert!(
-            factoring(&Clause(vec![p.clone(), q.clone()]), &selection_fn)
-                .is_err(),
+
+        let (derived, _) =
+            factoring(&mut Clause(vec![p.clone(), q.clone()]), &selection_fn);
+        assert_eq!(
+            derived,
+            vec![],
             "Factoring rule applied with no unification available"
         );
     }
@@ -514,13 +531,12 @@ mod unit_tests {
         let qfx = Atom("Q".to_string(), vec![fx.clone(), z.clone()]);
 
         let (derived, _) = factoring(
-            &Clause(vec![py.clone(), pfx.clone(), qy.clone()]),
+            &mut Clause(vec![py.clone(), pfx.clone(), qy.clone()]),
             &selection_fn,
-        )
-        .unwrap();
+        );
         assert_eq!(
             derived,
-            Clause(vec![pfx.clone(), qfx.clone()]),
+            vec![Clause(vec![pfx.clone(), qfx.clone()])],
             "Factoring couldnt apply unification properly"
         )
     }
@@ -537,25 +553,30 @@ mod unit_tests {
         let neq_st = Not(Box::new(Equality(s.clone(), t.clone())));
         let p = Atom("P".to_string(), vec![]);
 
-        assert!(
-            matches!(
-                eq_resolution(&Clause(vec![neq_ss.clone()]), &selection_fn),
-                Ok((Clause(ref c), _)) if c == &[],
-            ),
+        let (derived, _) =
+            eq_resolution(&mut Clause(vec![neq_ss.clone()]), &selection_fn);
+        assert_eq!(
+            derived,
+            vec![Clause(vec![])],
             "Equality resolution didnt simplify clause with difference of identical terms"
         );
-        assert!(
-            matches!(
-                eq_resolution(
-                    &Clause(vec![neq_ss.clone(), p.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[p.clone()],
-            ),
+
+        let (derived, _) = eq_resolution(
+            &mut Clause(vec![neq_ss.clone(), p.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![p.clone()])],
             "Equality resolution doesnt preserve unprocessed terms"
         );
-        assert!(
-            eq_resolution(&Clause(vec![neq_st.clone(), p.clone()]), &selection_fn).is_err(),
+
+        let (derived, _) = eq_resolution(
+            &mut Clause(vec![neq_st.clone(), p.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,vec![],
             "Equality resolution applied with no inconsistent unification available"
         );
     }
@@ -571,14 +592,13 @@ mod unit_tests {
         let pfx = Atom("P".to_string(), vec![fx.clone(), z.clone()]);
         let neq = Not(Box::new(Equality(y.clone(), fx.clone())));
 
-        assert!(
-            matches!(
-                eq_resolution(
-                    &Clause(vec![neq.clone(), py.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[pfx.clone()],
-            ),
+        let (derived, _) = eq_resolution(
+            &mut Clause(vec![neq.clone(), py.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![pfx.clone()])],
             "Factoring not applied properly with unification available"
         );
     }
@@ -604,111 +624,117 @@ mod unit_tests {
         let t_prime = Variable("t_prime".to_string());
         let rest = Atom("P".to_string(), vec![]);
 
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), t.clone()),
-                        Equality(unifiable.clone(), t_prime.clone()),
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
-                    Equality(unifiable.clone(), t.clone()),
-                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                ],
-            ),
+        // s(x,y)=t(x) ; s(x,y)=t' ⊦ s(x,y)=t(x) ; t(x)≠t'
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Equality(unifiable.clone(), t_prime.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+            ])],
             "Equality factoring isnt working as expected"
         );
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(t.clone(), unifiable.clone()),
-                        Equality(unifiable.clone(), t_prime.clone()),
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
+
+        // t(x)=s(x,y) ; s(x,y)=t' ⊦ t(x)=s(x,y) ; t'≠t(x)
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(t.clone(), unifiable.clone()),
+                Equality(unifiable.clone(), t_prime.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
                     Equality(t.clone(), unifiable.clone()), // keep this swap consistent with the arguments
                     Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                ],
-            ),
+                ])],
             "Equality factoring result depends on ordering of first equality (not even order-equivariant)"
         );
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), t.clone()),
-                        Equality(t_prime.clone(), unifiable.clone()),
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
-                    Equality(unifiable.clone(), t.clone()),
-                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                ],
-            ),
+
+        // s(x,y)=t(x) ; t'=s(x,y) ⊦ s(x,y)=t(x) ; t(x)≠t'
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Equality(t_prime.clone(), unifiable.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+            ])],
             "Equality factoring result depends on ordering of second equality"
         );
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), t_prime.clone()),
-                        Equality(unifiable.clone(), t.clone()),
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
+
+        // s(x,y)=t' ; s(x,y)=t(x) ⊦ s(x,y)=t' ; t'≠t(x)
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t_prime.clone()),
+                Equality(unifiable.clone(), t.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
                     Equality(unifiable.clone(), t.clone()),
                     Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                ],
-            ),
+                ])],
             "Equality factoring result depends on relative ordering of equality literals"
         );
 
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), t.clone()),
-                        Equality(unifiable.clone(), t_prime.clone()),
-                        rest.clone()
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
-                    Equality(unifiable.clone(), t.clone()),
-                    Not(Box::new(Equality(t.clone(), t_prime.clone()))),
-                    rest.clone()
-                ],
-            ),
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Equality(unifiable.clone(), t_prime.clone()),
+                rest.clone(),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
+                rest.clone(),
+                Equality(unifiable.clone(), t.clone()),
+                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+            ])],
             "Equality factoring isnt preserving other literals"
         );
-        assert!(
-            eq_factoring(
-                &Clause(vec![
-                    Equality(unifiable.clone(), t.clone()),
-                    Equality(unifiable.clone(), t.clone()),
-                    rest.clone()
-                ]),
-                &selection_fn
-            )
-            .is_err(),
+
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), t.clone()),
+                Equality(unifiable.clone(), t.clone()),
+                rest.clone(),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![],
             "Equality factoring is passing with t' < t constraint violated"
         );
-        assert!(
-            eq_factoring(
-                &Clause(vec![
-                    Equality(unifiable.clone(), bigger.clone()),
-                    Equality(unifiable.clone(), t_prime.clone()),
-                    rest.clone()
-                ]),
-                &selection_fn
-            )
-            .is_err(),
+
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), bigger.clone()),
+                Equality(unifiable.clone(), t_prime.clone()),
+                rest.clone(),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![],
             "Equality factoring is passing with t < s constraint violated"
         );
     }
@@ -729,20 +755,19 @@ mod unit_tests {
         let tk = Application("t".to_string(), vec![k.clone()]);
         let t_prime = Variable("t_prime".to_string());
 
-        assert!(
-            matches!(
-                eq_factoring(
-                    &Clause(vec![
-                        Equality(s.clone(), tx.clone()),
-                        Equality(s_prime.clone(), t_prime.clone())
-                    ]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
+        let (derived, _) = eq_factoring(
+            &mut Clause(vec![
+                Equality(s.clone(), tx.clone()),
+                Equality(s_prime.clone(), t_prime.clone()),
+            ]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
                     Equality(s_prime.clone(), tk.clone()),
                     Not(Box::new(Equality(tk.clone(), t_prime.clone())))
-                ],
-            ),
+                ])],
             "Equality resolution not applied properly with unification available"
         );
     }
@@ -754,90 +779,94 @@ mod unit_tests {
         let unifiable =
             Application("l".to_string(), vec![Variable("x".to_string())]);
         // terms are constructed to enforce r < l and t' < t[s]
-        let r = Variable("r".to_string());
-        let t_prime = Variable("t_prime".to_string());
+        let r = Application("r".to_string(), vec![]);
+        let t_prime = Variable("t'".to_string());
         let t = Application("t".to_string(), vec![unifiable.clone()]);
         let t_subst = Application("t".to_string(), vec![r.clone()]);
         let p = Atom("L".to_string(), vec![unifiable.clone()]);
         let p_subst = Atom("L".to_string(), vec![r.clone()]);
         let q = Atom("Q".to_string(), vec![]);
 
-        assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                    &Clause(vec![p.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[p_subst.clone()],
-            ),
+        // l(x)=r , L(l(x)) ⊦ L(r)
+        let (derived, _) = superposition(
+            &mut Clause(vec![Equality(unifiable.clone(), r.clone())]),
+            &mut Clause(vec![p.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![p_subst.clone()])],
             "Superposition isnt working with predicates"
         );
-        assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                    &Clause(vec![Equality(t.clone(), t_prime.clone())]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[Equality(t_subst.clone(), t_prime.clone())],
-            ),
+
+        // l(x)=r , t(l(x))=t' ⊦ t(r)=t'
+        let (derived, _) = superposition(
+            &mut Clause(vec![Equality(unifiable.clone(), r.clone())]),
+            &mut Clause(vec![Equality(t.clone(), t_prime.clone())]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![Equality(t_subst.clone(), t_prime.clone())])],
             "Superposition isnt working with equalities"
         );
-        assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                    &Clause(vec![Not(Box::new(Equality(
-                        t.clone(),
-                        t_prime.clone()
-                    )))]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[Not(Box::new(Equality(
-                    t_subst.clone(),
-                    t_prime.clone()
-                )))],
-            ),
+
+        // l(x)=r , t(l(x))≠t' ⊦ t(r)≠t'
+        let (derived, _) = superposition(
+            &mut Clause(vec![Equality(unifiable.clone(), r.clone())]),
+            &mut Clause(vec![Not(Box::new(Equality(
+                t.clone(),
+                t_prime.clone(),
+            )))]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![Not(Box::new(Equality(
+                t_subst.clone(),
+                t_prime.clone()
+            )))])],
             "Superposition isnt working with negated equalities"
         );
-        assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![
-                        Equality(unifiable.clone(), r.clone()),
-                        Not(Box::new(q.clone()))
-                    ]),
-                    &Clause(vec![p.clone(), q.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[
-                    p_subst.clone(),
-                    Not(Box::new(q.clone())),
-                    q.clone(),
-                ],
-            ),
+
+        // l(x)=r\/~Q , L(l(x))\/Q ⊦ L(r)\/~Q\/Q
+        let (derived, _) = superposition(
+            &mut Clause(vec![
+                Equality(unifiable.clone(), r.clone()),
+                Not(Box::new(q.clone())),
+            ]),
+            &mut Clause(vec![p.clone(), q.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
+                p_subst.clone(),
+                Not(Box::new(q.clone())),
+                q.clone(),
+            ])],
             "Superposition isnt preserving unralted literals"
         );
 
-        assert!(
-            superposition(
-                &Clause(vec![Equality(r.clone(), unifiable.clone())]),
-                &Clause(vec![p.clone()]),
-                &selection_fn
-            )
-            .is_ok(),
-            "Superposition is dependent on equality terms ordering"
+        //
+        let (derived, _) = superposition(
+            &mut Clause(vec![Equality(r.clone(), unifiable.clone())]),
+            &mut Clause(vec![p.clone()]),
+            &selection_fn,
         );
         assert!(
-            matches!(
-                superposition(
-                    &Clause(vec![p.clone()]),
-                    &Clause(vec![Equality(unifiable.clone(), r.clone())]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c == &[p_subst.clone()],
-            ),
+            derived.len() > 0,
+            "Superposition is dependent on equality terms ordering"
+        );
+
+        let (derived, _) = superposition(
+            &mut Clause(vec![p.clone()]),
+            &mut Clause(vec![Equality(unifiable.clone(), r.clone())]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![p_subst.clone()])],
             "Superposition is dependent on clause ordering"
         );
     }
@@ -862,15 +891,15 @@ mod unit_tests {
         let otherx = Atom("Q".to_string(), vec![x.clone()]);
         let otherk = Atom("Q".to_string(), vec![k.clone()]);
 
-        assert!(
-            matches!(
-                superposition(
-                    &Equality(l.clone(), r.clone()),
-                    &Clause(vec![ps.clone(), otherx.clone()]),
-                    &selection_fn
-                ),
-                Ok((Clause(ref c), _)) if c ==&[pr.clone(), otherk.clone()],
-            ),
+        // f(x)=<r> , P(<c>, f(<k>))\/Q(x) ⊦ P(<c>, <r>)\/Q(<k>)
+        let (derived, _) = superposition(
+            &mut Equality(l.clone(), r.clone()),
+            &mut Clause(vec![ps.clone(), otherx.clone()]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![Clause(vec![pr.clone(), otherk.clone()])],
             "Superposition not applied properly with unification available"
         );
     }

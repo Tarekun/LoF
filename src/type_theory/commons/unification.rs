@@ -103,8 +103,12 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
         }
     }
 
+    pub fn merge(&mut self, other: Substitution<T>) {
+        self.mappings.extend(other.mappings);
+    }
+
     pub fn names(&self) -> Vec<&String> {
-        self.mappings.keys().into_iter().collect()
+        self.mappings.keys().collect()
     }
 }
 

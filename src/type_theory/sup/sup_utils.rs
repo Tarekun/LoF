@@ -208,10 +208,10 @@ pub fn subsumes(C: &SupFormula, D: &SupFormula) -> bool {
 #[allow(non_snake_case)]
 /// Given a clause formula, returns the vector of its literals.
 /// Treats literal variants as singleton clauses
-pub fn unpack_literals(C: &SupFormula) -> Result<Vec<SupFormula>, String> {
+pub fn unpack_literals(C: &SupFormula) -> Vec<SupFormula> {
     match C {
-        Clause(literals) => Ok(literals.to_owned()),
-        _ => Ok(vec![C.clone()]),
+        Clause(literals) => literals.to_owned(),
+        _ => vec![C.clone()],
     }
 }
 
@@ -370,21 +370,18 @@ pub fn find_unifiable_formula(
 
 /// Selection function to select a non-empty set of *literals* from a `clause`.
 /// This function removes one literal from the input vector and returns it
-pub type SelectionFunctionSignature = Box<
-    dyn Fn(&mut Vec<SupFormula>) -> Result<Vec<SupFormula>, String>
-        + Send
-        + Sync,
->;
+pub type SelectionFunctionSignature =
+    Box<dyn Fn(&mut Vec<SupFormula>) -> Vec<SupFormula> + Send + Sync>;
 
 pub fn get_selection_fn(
     selection_fn: SelectionFunction,
 ) -> SelectionFunctionSignature {
     Box::new(move |clause: &mut Vec<SupFormula>| match selection_fn {
-        Maximal() => Ok(drop_maximal_literals(clause)),
+        Maximal() => drop_maximal_literals(clause),
         All() => {
             let selected = clause.clone();
             *clause = vec![];
-            Ok(selected)
+            selected
         }
     })
 }
