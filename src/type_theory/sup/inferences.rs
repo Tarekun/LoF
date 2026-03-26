@@ -1,5 +1,6 @@
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::interface::Automatic;
+use crate::type_theory::sup::freedom::SelectionFunctionSignature;
 use crate::type_theory::sup::sup::SupTerm;
 use crate::type_theory::sup::sup::{
     Sup,
@@ -7,7 +8,6 @@ use crate::type_theory::sup::sup::{
 };
 use crate::type_theory::sup::sup_utils::{
     find_unifiable_formula, substitute_formula, subsumes, unpack_literals,
-    SelectionFunctionSignature,
 };
 use crate::type_theory::sup::unification::{
     formula_apply_substitution, formulas_unify, term_apply_substitution,
@@ -342,6 +342,7 @@ pub fn superposition(
 #[cfg(test)]
 mod unit_tests {
     use crate::config::SelectionFunction;
+    use crate::type_theory::sup::freedom::get_selection_fn;
     use crate::type_theory::sup::inferences::{
         demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
         subsumption_resolution_first, superposition,
@@ -350,7 +351,6 @@ mod unit_tests {
         Atom, Clause, Equality, Not,
     };
     use crate::type_theory::sup::sup::SupTerm::{Application, Variable};
-    use crate::type_theory::sup::sup_utils::get_selection_fn;
 
     #[test]
     fn test_demodulation() {

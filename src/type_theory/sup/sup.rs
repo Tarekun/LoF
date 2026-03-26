@@ -18,7 +18,8 @@ use crate::{
                 SupFormula::{Atom, Clause, Equality, ForAll, Not},
                 SupTerm::{Application, Variable},
             },
-            sup_utils::{get_selection_fn, kbo_terms, kbo_types},
+            freedom::get_selection_fn,
+            sup_utils::{kbo_terms, kbo_types},
         },
     },
 };
