@@ -1,12 +1,11 @@
 use super::sup::SupFormula::{self, Clause};
 use super::sup_utils::subsumes;
+use crate::type_theory::sup::freedom::SelectionFunctionSignature;
 use crate::type_theory::sup::inferences::{
     demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
     subsumption_resolution_first, superposition,
 };
-use crate::type_theory::sup::sup_utils::{
-    is_tautology, SelectionFunctionSignature,
-};
+use crate::type_theory::sup::sup_utils::is_tautology;
 
 /// Checks if a formula φ is the empty clause
 fn is_bottom(φ: &SupFormula) -> bool {
@@ -149,10 +148,10 @@ mod unit_tests {
     use crate::{
         config::SelectionFunction,
         type_theory::sup::{
+            freedom::get_selection_fn,
             saturation::saturate,
             sup::SupFormula::{Atom, Clause, Not},
             sup::SupTerm::{self, Application, Variable},
-            sup_utils::get_selection_fn,
         },
     };
 

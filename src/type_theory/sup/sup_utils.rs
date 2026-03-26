@@ -3,13 +3,9 @@ use super::sup::{
     SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
     SupTerm::{self, Application, Variable},
 };
-use crate::{
-    config::SelectionFunction::{self, All, Maximal},
-    type_theory::{
-        commons::unification::Substitution,
-        interface::{Automatic, TypeTheory},
-        sup::unification::terms_unify,
-    },
+use crate::type_theory::{
+    commons::unification::Substitution, interface::TypeTheory,
+    sup::unification::terms_unify,
 };
 use std::cmp::Ordering::{self, Equal, Greater, Less};
 
@@ -215,35 +211,6 @@ pub fn unpack_literals(C: &SupFormula) -> Vec<SupFormula> {
     }
 }
 
-/// Given a list of literals of some clause, finds and removes all maximal literals
-/// by the use of SUP simplification ordering
-pub fn drop_maximal_literals(clause: &mut Vec<SupFormula>) -> Vec<SupFormula> {
-    if clause.len() == 0 {
-        return vec![];
-    }
-
-    let mut maximal = None;
-    for literal in clause.iter() {
-        match maximal.as_ref() {
-            None => maximal = Some(literal.clone()),
-            Some(current_max)
-                if Sup::compare_types(literal, current_max) == Greater =>
-            {
-                maximal = Some(literal.clone());
-            }
-            _ => {}
-        }
-    }
-
-    let maximal_formula = maximal.unwrap();
-    let (maxes, rest): (Vec<_>, Vec<_>) = clause
-        .drain(..)
-        .partition(|f| Sup::compare_types(f, &maximal_formula) == Equal);
-    *clause = rest;
-
-    maxes
-}
-
 /// Returns a new term identical to `term` where every occurance of `target` is
 /// substituted by `arg`
 pub fn substitute_term(
@@ -368,24 +335,6 @@ pub fn find_unifiable_formula(
     }
 }
 
-/// Selection function to select a non-empty set of *literals* from a `clause`.
-/// This function removes one literal from the input vector and returns it
-pub type SelectionFunctionSignature =
-    Box<dyn Fn(&mut Vec<SupFormula>) -> Vec<SupFormula> + Send + Sync>;
-
-pub fn get_selection_fn(
-    selection_fn: SelectionFunction,
-) -> SelectionFunctionSignature {
-    Box::new(move |clause: &mut Vec<SupFormula>| match selection_fn {
-        Maximal() => drop_maximal_literals(clause),
-        All() => {
-            let selected = clause.clone();
-            *clause = vec![];
-            selected
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use crate::type_theory::sup::{
@@ -393,9 +342,7 @@ mod tests {
             SupFormula::{Atom, Clause, Equality, Not},
             SupTerm::{Application, Variable},
         },
-        sup_utils::{
-            drop_maximal_literals, is_tautology, kbo_terms, kbo_types, subsumes,
-        },
+        sup_utils::{is_tautology, kbo_terms, kbo_types, subsumes},
     };
     use std::cmp::Ordering::{Equal, Greater, Less};
 
@@ -497,41 +444,6 @@ mod tests {
             kbo_types(&p, &q),
             Equal,
             "Clause with less literals isnt strictly less than one with more"
-        );
-    }
-
-    #[test]
-    fn test_maximal_literal_selection() {
-        let constant_atom = Atom("P".to_string(), vec![]);
-        let negated = Not(Box::new(constant_atom.clone()));
-        let negated_renamed = Not(Box::new(Atom("Q".to_string(), vec![])));
-
-        let mut test = vec![constant_atom.clone(), negated.clone()];
-        assert_eq!(
-            drop_maximal_literals(&mut test),
-            vec![negated.clone()],
-            "Maximal literal selection didnt pick the negated between 2 atoms"
-        );
-        assert_eq!(
-            test,
-            vec![constant_atom.clone()],
-            "Maximal literal selection didnt remove the selected literal from input"
-        );
-
-        assert_eq!(
-            drop_maximal_literals(&mut vec![
-                constant_atom.clone(),
-                negated.clone(),
-                negated_renamed.clone()
-            ]),
-            vec![negated.clone(), negated_renamed.clone()],
-            "Maximal literal selection didnt remove all maximal literals"
-        );
-
-        assert_eq!(
-            drop_maximal_literals(&mut vec![]),
-            vec![],
-            "Maximal literal selection isnt working with empty clause"
         );
     }
 }
