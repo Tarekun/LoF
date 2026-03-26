@@ -6,8 +6,8 @@ use crate::type_theory::sup::sup::{
     SupFormula::{self, Atom, Clause, Equality, Not},
 };
 use crate::type_theory::sup::sup_utils::{
-    find_unifiable_formula, substitute_formula, subsumes,
-    type_refresh_variables, unpack_literals, SelectionFunctionSignature,
+    find_unifiable_formula, substitute_formula, subsumes, unpack_literals,
+    SelectionFunctionSignature,
 };
 use crate::type_theory::sup::unification::{
     formula_apply_substitution, formulas_unify, term_apply_substitution,
@@ -84,8 +84,8 @@ pub fn subsumption_resolution_first(
 //########################### SUP INFERENCES
 #[allow(non_snake_case)]
 pub fn resolution(
-    C: &mut SupFormula,
-    D: &mut SupFormula,
+    C: &SupFormula,
+    D: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut c_literals = unpack_literals(C);
@@ -107,13 +107,11 @@ pub fn resolution(
                             let mut new_clause = $c_selected.clone();
                             new_clause.remove($c_idx);
                             new_clause.extend($c_others.clone());
-                            *C = type_refresh_variables(C);
 
                             let mut d_selected = $d_selected.clone();
                             d_selected.remove($d_idx);
                             new_clause.extend(d_selected);
                             new_clause.extend($d_others.clone());
-                            *D = type_refresh_variables(D);
 
                             newly_derived.push(formula_apply_substitution(
                                 &Clause(new_clause),
@@ -144,7 +142,7 @@ pub fn resolution(
 
 #[allow(non_snake_case)]
 pub fn factoring(
-    C: &mut SupFormula,
+    C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut literals = unpack_literals(C);
@@ -159,7 +157,6 @@ pub fn factoring(
                 let mut new_clause = selected.clone();
                 new_clause.remove(j);
                 new_clause.extend(literals.clone());
-                *C = type_refresh_variables(C);
 
                 newly_derived.push(formula_apply_substitution(
                     &Clause(new_clause),
@@ -175,7 +172,7 @@ pub fn factoring(
 
 #[allow(non_snake_case)]
 pub fn eq_resolution(
-    C: &mut SupFormula,
+    C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut lits = unpack_literals(C);
@@ -189,9 +186,6 @@ pub fn eq_resolution(
             Not(boxed) => {
                 if let Equality(l, r) = &**boxed {
                     if let Ok(mgu) = terms_unify(l, r) {
-                        // selected.remove(i);
-                        // lits.extend(selected);
-
                         let mut new_clause = selected.clone();
                         new_clause.remove(i);
                         new_clause.extend(lits.clone());
@@ -201,10 +195,6 @@ pub fn eq_resolution(
                             &mgu,
                         ));
                         full_mgu.merge(mgu);
-                        // return Ok((
-                        //     formula_apply_substitution(&Clause(lits), &mgu),
-                        //     mgu,
-                        // ));
                     }
                 }
             }
@@ -217,7 +207,7 @@ pub fn eq_resolution(
 
 #[allow(non_snake_case)]
 pub fn eq_factoring(
-    C: &mut SupFormula,
+    C: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut literals: Vec<SupFormula> = unpack_literals(C);
@@ -256,7 +246,6 @@ pub fn eq_factoring(
                         &mgu,
                     ));
                     full_mgu.merge(mgu);
-                    *C = type_refresh_variables(C);
                 }
                 _ => {}
             }
@@ -291,8 +280,8 @@ pub fn eq_factoring(
 
 #[allow(non_snake_case)]
 pub fn superposition(
-    C: &mut SupFormula,
-    D: &mut SupFormula,
+    C: &SupFormula,
+    D: &SupFormula,
     selection_fn: &SelectionFunctionSignature,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut c_literals = unpack_literals(C);
@@ -791,7 +780,6 @@ mod unit_tests {
             Application("l".to_string(), vec![Variable("x".to_string())]);
         // terms are constructed to enforce r < l and t' < t[s]
         let r = Application("r".to_string(), vec![]);
-        // let r = Variable("r".to_string());
         let t_prime = Variable("t'".to_string());
         let t = Application("t".to_string(), vec![unifiable.clone()]);
         let t_subst = Application("t".to_string(), vec![r.clone()]);
