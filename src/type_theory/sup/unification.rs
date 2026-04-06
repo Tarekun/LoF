@@ -65,6 +65,7 @@ pub fn formulas_unify(
     phi: &SupFormula,
     psi: &SupFormula,
 ) -> Result<Substitution<SupTerm>, String> {
+    //TODO im pretty sure this can be implemented with commons unification over the SupFormula grammar
     fn solver(
         phi: &SupFormula,
         psi: &SupFormula,
@@ -118,7 +119,10 @@ pub fn formulas_unify(
         Ok(mgu.to_owned())
     }
 
-    solver(phi, psi, &mut Substitution::empty())
+    let mgu = solver(phi, psi, &mut Substitution::empty())?;
+    Ok(mgu.reduce(|term, var_name, arg| {
+        substitute_term(term, &Variable(var_name.to_string()), arg)
+    }))
 }
 
 pub fn term_apply_substitution(
