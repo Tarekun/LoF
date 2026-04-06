@@ -90,6 +90,9 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
         return Ok(());
     }
 
+    /// Returns a clone `Substitution` where each substitution body was fully reduced
+    /// to guarantee it doesn't contain other variables in the substitution.
+    /// Groundness is not guaranteed if some unbound variables are not solved by this `Substitution`
     pub fn reduce<S>(self, reduce_var: S) -> Substitution<T>
     where
         S: Fn(&T, &str, &T) -> T,
@@ -97,12 +100,20 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
         let mut reduced_mappings = HashMap::new();
         for (var, term) in &self.mappings {
             let mut reduced_term = term.clone();
-            // apply every other substitution to term and append it in the new one
-            for (other_var, other_term) in &self.mappings {
-                if var == other_var {
-                    continue;
+            // repeat reductions until the value stabilises
+            // bound iterations to guard against inconsistent accumulated mgus.
+            for _ in 0..self.mappings.len() + 1 {
+                let prev = reduced_term.clone();
+                for (other_var, other_term) in &self.mappings {
+                    if var == other_var {
+                        continue;
+                    }
+                    reduced_term =
+                        reduce_var(&reduced_term, other_var, other_term);
                 }
-                reduced_term = reduce_var(&reduced_term, other_var, other_term);
+                if reduced_term == prev {
+                    break;
+                }
             }
 
             reduced_mappings.insert(var.clone(), reduced_term);

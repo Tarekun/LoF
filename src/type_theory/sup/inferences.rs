@@ -1,10 +1,10 @@
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::interface::Automatic;
 use crate::type_theory::sup::freedom::SelectionFunctionSignature;
-use crate::type_theory::sup::sup::SupTerm;
 use crate::type_theory::sup::sup::{
     Sup,
     SupFormula::{self, Atom, Clause, Equality, Not},
+    SupTerm::{self, Variable},
 };
 use crate::type_theory::sup::sup_utils::{
     find_unifiable_formula, substitute_formula, subsumes,
@@ -305,24 +305,26 @@ pub fn superposition(
             let target = max;
             let arg = min;
 
-            if let Some((_, mgu)) = unification_pair {
-                let other = formula_apply_substitution(&$other, &mgu);
-                let target = term_apply_substitution(&target, &mgu);
-                let other =
-                    substitute_formula(&other, &target, &arg);
-                let mut new_clause = vec![];
-                new_clause.push(other);
-                new_clause.extend(c_literals.clone());
-                new_clause.extend(d_literals.clone());
-                let mut c_selected_clones = c_selected.clone();
-                c_selected_clones.remove($i);
-                new_clause.extend(c_selected_clones);
-                let mut d_selected_clones = d_selected.clone();
-                d_selected_clones.remove($j);
-                new_clause.extend(d_selected_clones);
+            if let Some((matched, mgu)) = unification_pair {
+                // matched term must not be a variable
+                if !matches!(matched, Variable(_)) {
+                    let other = formula_apply_substitution(&$other, &mgu);
+                    let target = term_apply_substitution(&target, &mgu);
+                    let other = substitute_formula(&other, &target, &arg);
+                    let mut new_clause = vec![];
+                    new_clause.push(other);
+                    new_clause.extend(c_literals.clone());
+                    new_clause.extend(d_literals.clone());
+                    let mut c_selected_clones = c_selected.clone();
+                    c_selected_clones.remove($i);
+                    new_clause.extend(c_selected_clones);
+                    let mut d_selected_clones = d_selected.clone();
+                    d_selected_clones.remove($j);
+                    new_clause.extend(d_selected_clones);
 
-                derived.push(formula_apply_substitution(&Clause(new_clause), &mgu));
-                total_mgu.merge(mgu);
+                    derived.push(formula_apply_substitution(&Clause(new_clause), &mgu));
+                    total_mgu.merge(mgu);
+                }
             }
         }};
     }
@@ -873,6 +875,38 @@ mod unit_tests {
             derived,
             vec![Clause(vec![p_subst.clone()])],
             "Superposition is dependent on clause ordering"
+        );
+    }
+
+    #[test]
+    fn test_superposition_no_variable_rewriting() {
+        // superposition must NOT fire when the only matching position
+        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let x = Variable("x".to_string());
+        let l = Application("l".to_string(), vec![]);
+        let r = Application("r".to_string(), vec![]);
+
+        // l=r , P(x) where x is a variable that can unify with l
+        let (derived, _) = superposition(
+            &mut Clause(vec![Equality(l.clone(), r.clone())]),
+            &mut Clause(vec![Atom("P".to_string(), vec![x.clone()])]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![],
+            "Superposition must not rewrite at a variable position"
+        );
+
+        let (derived, _) = superposition(
+            &mut Clause(vec![Atom("P".to_string(), vec![x.clone()])]),
+            &mut Clause(vec![Equality(l.clone(), r.clone())]),
+            &selection_fn,
+        );
+        assert_eq!(
+            derived,
+            vec![],
+            "Superposition must not rewrite at a variable position"
         );
     }
 
