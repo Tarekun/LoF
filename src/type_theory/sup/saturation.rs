@@ -2,15 +2,15 @@ use super::sup::SupFormula::{self, Clause};
 use super::sup::SupTerm::Variable;
 use super::sup_utils::subsumes;
 use crate::type_theory::commons::unification::Substitution;
-use crate::type_theory::sup::freedom::SelectionFunctionSignature;
+use crate::type_theory::sup::freedom::{
+    GivingClauseSignature, SelectionFunctionSignature,
+};
 use crate::type_theory::sup::inferences::{
     demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
     subsumption_resolution_first, superposition,
 };
 use crate::type_theory::sup::sup::SupTerm;
-use crate::type_theory::sup::sup_utils::{
-    is_tautology, substitute_term, type_refresh_variables,
-};
+use crate::type_theory::sup::sup_utils::{is_tautology, substitute_term};
 
 /// Checks if a formula φ is the empty clause
 fn is_bottom(φ: &SupFormula) -> bool {
@@ -18,12 +18,6 @@ fn is_bottom(φ: &SupFormula) -> bool {
         Clause(literals) => literals.is_empty(),
         _ => false,
     }
-}
-
-/// Selects the next clause to be processed and removes it from the set
-fn pick_clause(clauses: &mut Vec<SupFormula>) -> Result<SupFormula, String> {
-    // TODO here we should generalize this so i can also support stuff like weight/age ratio
-    Ok(clauses.remove(0))
 }
 
 #[allow(non_snake_case)]
@@ -91,54 +85,57 @@ fn backward_simplification(
     simplified_kept
 }
 
-/// Applies superposition inferences to all currently kept formulas.
-/// Cost is quadratic in the size of working set of formulas, as for binary
-/// inference rules it compares every formula with every other formula once
+/// Applies generating inferences with `given` as one of the two participants.
+/// Performs unary inferences on `given` alone, then binary inferences between
+/// `given` and every clause currently in `kept`.
 fn generating_inferences(
-    kept: &mut Vec<SupFormula>,
+    given: &SupFormula,
+    kept: &Vec<SupFormula>,
     selection_fn: &SelectionFunctionSignature,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut newly_derived = vec![];
     let mut solving_mgu = Substitution::empty();
 
-    for i in 0..kept.len() {
-        let (left, right) = kept.split_at_mut(i + 1);
-        let mut first_clause: &mut SupFormula = &mut left[i];
-
-        // unary inferences
-        let (derived, mgu) = factoring(first_clause, &selection_fn);
-        newly_derived.extend(derived);
-        solving_mgu.merge(mgu);
-
-        let (derived, mgu) = eq_resolution(first_clause, &selection_fn);
-        newly_derived.extend(derived);
-        *first_clause = type_refresh_variables(first_clause);
-        solving_mgu.merge(mgu);
-
-        let (derived, mgu) = eq_factoring(first_clause, &selection_fn);
-        newly_derived.extend(derived);
-        solving_mgu.merge(mgu);
-
-        // binary inferences
-        for mut second_clause in right.iter_mut() {
-            let (derived, mgu) = resolution(
-                &mut first_clause,
-                &mut second_clause,
-                &selection_fn,
-            );
-            newly_derived.extend(derived);
-            solving_mgu.merge(mgu);
-
-            let (derived, mgu) = superposition(
-                &mut first_clause,
-                &mut second_clause,
-                &selection_fn,
-            );
-            for c in derived {
-                newly_derived.push(type_refresh_variables(&c));
+    macro_rules! trace {
+        ($derived:expr, $mgu:expr, $premises:expr, $inference:expr) => {
+            if $derived.len() > 0 {
+                println!(
+                    "{} application:\npremises: {:?}\nMGU: {:?}\nderived: {:?}\n",
+                    $inference, $premises, $mgu, $derived
+                )
             }
-            solving_mgu.merge(mgu);
         }
+    }
+
+    let (derived, mgu) = factoring(&given, selection_fn);
+    trace!(derived, mgu, vec![given], "factoring");
+    newly_derived.extend(derived);
+    solving_mgu.merge(mgu);
+
+    let (derived, mgu) = eq_resolution(&given, selection_fn);
+    trace!(derived, mgu, vec![given], "eq_resolution");
+    newly_derived.extend(derived);
+    solving_mgu.merge(mgu);
+
+    let (derived, mgu) = eq_factoring(&given, selection_fn);
+    trace!(derived, mgu, vec![given], "eq_factoring");
+    newly_derived.extend(derived);
+    solving_mgu.merge(mgu);
+
+    // binary inferences between given and each clause in kept
+    for kept_clause in kept.iter() {
+        let lhs = given;
+        let rhs = kept_clause;
+
+        let (derived, mgu) = resolution(&lhs, &rhs, selection_fn);
+        trace!(derived, mgu, vec![given, kept_clause], "resolution");
+        newly_derived.extend(derived);
+        solving_mgu.merge(mgu);
+
+        let (derived, mgu) = superposition(&lhs, &rhs, selection_fn);
+        trace!(derived, mgu, vec![given, kept_clause], "superposition");
+        newly_derived.extend(derived);
+        solving_mgu.merge(mgu);
     }
 
     (newly_derived, solving_mgu)
@@ -147,34 +144,36 @@ fn generating_inferences(
 pub fn saturate(
     clauses: &Vec<SupFormula>,
     selection_fn: &SelectionFunctionSignature,
+    giving_clause_fn: GivingClauseSignature,
 ) -> Result<Substitution<SupTerm>, String> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
     let mut solving_mgu = Substitution::empty();
 
     loop {
-        while !unprocessed.is_empty() {
-            let clause = pick_clause(&mut unprocessed)?;
-
-            termination!(clause, kept, solving_mgu);
-            let clause = forward_simplification(&kept, clause);
-            termination!(clause, kept, solving_mgu);
-            let simplified = backward_simplification(&mut kept, &clause);
-
-            unprocessed.extend(simplified);
-            kept.push(clause);
-        }
-
-        let (new_unprocessed, mgu) =
-            generating_inferences(&mut kept, &selection_fn);
-        unprocessed = new_unprocessed;
-        solving_mgu.merge(mgu);
-        if unprocessed.len() == 0 {
+        // for i in 0..20 {
+        if unprocessed.is_empty() {
             return Err(
                 "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
             );
         }
+
+        let clause = giving_clause_fn(&mut unprocessed)?;
+
+        termination!(clause, kept, solving_mgu);
+        let clause = forward_simplification(&kept, clause);
+        termination!(clause, kept, solving_mgu);
+        let simplified = backward_simplification(&mut kept, &clause);
+        unprocessed.extend(simplified);
+
+        let (new_clauses, mgu) =
+            generating_inferences(&clause, &kept, selection_fn);
+        kept.push(clause);
+
+        unprocessed.extend(new_clauses);
+        solving_mgu.merge(mgu);
     }
+    Err("resources exhausted".to_string())
 }
 
 #[cfg(test)]
@@ -182,10 +181,12 @@ mod unit_tests {
     use crate::{
         config::SelectionFunction,
         type_theory::sup::{
-            freedom::get_selection_fn,
+            freedom::{get_selection_fn, pick_clause, pick_clause_weighted},
             saturation::saturate,
-            sup::SupFormula::{Atom, Clause, Equality, Not},
-            sup::SupTerm::{self, Application, Variable},
+            sup::{
+                SupFormula::{Atom, Clause, Equality, Not},
+                SupTerm::{self, Application, Variable},
+            },
         },
     };
 
@@ -227,7 +228,8 @@ mod unit_tests {
             ],
         )));
 
-        let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
+        let mgu =
+            saturate(&vec![ax1, ax2, neg_target], &selection_fn, pick_clause);
         assert_eq!(
             mgu.clone().unwrap().resolvent("R"),
             Some(&s(s(s(zero.clone())))),
@@ -235,39 +237,35 @@ mod unit_tests {
         );
     }
 
-    // #[test]
-    // fn test_equality_logic_solving() {
-    //     let zero = Application("0".to_string(), vec![]);
-    //     let selection_fn = get_selection_fn(SelectionFunction::All());
+    #[test]
+    fn test_equality_logic_solving() {
+        let zero = Application("0".to_string(), vec![]);
+        let selection_fn = get_selection_fn(SelectionFunction::All());
 
-    //     // forall x. 0+x = x
-    //     let ax1 = Equality(add(zero.clone(), var("x")), var("x"));
-    //     // forall n m p. n+m = p  =>  s(n)+m = s(p)
-    //     let ax2 = Clause(vec![
-    //         Not(Box::new(Equality(add(var("n"), var("m")), var("p")))),
-    //         Equality(add(s(var("n")), var("m")), s(var("p"))),
-    //     ]);
-    //     let neg_target = Not(Box::new(Equality(
-    //         add(s(zero.clone()), var("R")),
-    //         s(s(s(zero.clone()))),
-    //     )));
+        // forall x. 0+x = x
+        let ax1 = Equality(add(zero.clone(), var("x")), var("x"));
+        // forall n m p. n+m = p  =>  s(n)+m = s(p)
+        let ax2 = Clause(vec![
+            Not(Box::new(Equality(add(var("n"), var("m")), var("p")))),
+            Equality(add(s(var("n")), var("m")), s(var("p"))),
+        ]);
+        // ?- 1+R = 3
+        let neg_target = Not(Box::new(Equality(
+            add(s(zero.clone()), var("R")),
+            s(s(s(zero.clone()))),
+        )));
 
-    //     // assert_eq!(
-    //     //     superposition(&neg_target, &ax2, &selection_fn),
-    //     //     Err("".to_string()),
-    //     //     "problema"
-    //     // );
-
-    //     let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
-    //     println!("{:?}", mgu.clone().unwrap());
-    //     assert_eq!(
-    //         mgu.unwrap().resolvent("R"),
-    //         // either this or an equivalent expression has to pass
-    //         Some(&s(s(zero.clone()))),
-    //         "Variable solution of the addition problem is not the expected"
-    //     );
-    //     panic!();
-    // }
+        let mgu =
+            // saturate(&vec![ax1, ax2, neg_target], &selection_fn, pick_clause);
+        saturate(&vec![ax1, ax2, neg_target], &selection_fn, pick_clause_weighted);
+        println!("{:?}", mgu.clone().unwrap());
+        assert_eq!(
+            mgu.unwrap().resolvent("R"),
+            // either this or an equivalent expression has to pass
+            Some(&s(s(zero.clone()))),
+            "Variable solution of the addition problem is not the expected"
+        );
+    }
 
     #[test]
     fn test_simple_saturation() {
@@ -281,7 +279,7 @@ mod unit_tests {
             Not(Box::new(a.clone())),
         ];
         assert!(
-            saturate(&non_contradiction, &selection_fn).is_ok(),
+            saturate(&non_contradiction, &selection_fn, pick_clause).is_ok(),
             "Saturation couldnt prove A ⊢ A"
         );
 
@@ -292,7 +290,7 @@ mod unit_tests {
             Not(Box::new(b.clone())),
         ];
         assert!(
-            saturate(&modus_ponens, &selection_fn).is_ok(),
+            saturate(&modus_ponens, &selection_fn, pick_clause).is_ok(),
             "Saturation couldnt prove A=>B, A ⊢ B"
         );
 
@@ -303,7 +301,7 @@ mod unit_tests {
             a.clone(),
         ];
         assert!(
-            saturate(&modus_tollens, &selection_fn).is_ok(),
+            saturate(&modus_tollens, &selection_fn, pick_clause).is_ok(),
             "Saturation couldnt prove A=>B, ¬B ⊢ ¬A"
         );
     }
@@ -350,7 +348,8 @@ mod unit_tests {
                     // ¬ ∃z. Add(1,2,z)  ≡  1+2=z
                     Not(Box::new(target))
                 ],
-                &selection_fn
+                &selection_fn,
+                pick_clause
             )
             .is_ok(),
             "unable to solve addition problem"

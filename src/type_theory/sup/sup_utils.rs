@@ -389,65 +389,6 @@ pub fn find_unifiable_formula(
     }
 }
 
-/// Replaces every occurance of variables of `names`  in `term` with new fresh names
-/// to avoid names clashes
-pub fn term_refresh_variables(term: &SupTerm) -> SupTerm {
-    fn fresh_number_suffix(input: &str) -> String {
-        // split into prefix and numeric suffix
-        let mut split_index = input.len();
-        for (i, c) in input.char_indices().rev() {
-            if c.is_ascii_digit() {
-                split_index = i;
-            } else {
-                break;
-            }
-        }
-        let (prefix, suffix) = input.split_at(split_index);
-
-        let number = if suffix.is_empty() {
-            0
-        } else {
-            suffix.parse::<i32>().unwrap_or(0)
-        };
-        format!("{}{}", prefix, number + 1)
-    }
-
-    match term {
-        Variable(var_name) => Variable(fresh_number_suffix(var_name)),
-        Application(fun, args) => Application(
-            fun.to_string(),
-            args.into_iter()
-                .map(|arg| term_refresh_variables(arg))
-                .collect(),
-        ),
-    }
-}
-pub fn type_refresh_variables(formula: &SupFormula) -> SupFormula {
-    match formula {
-        Atom(name, args) => Atom(
-            name.to_string(),
-            args.into_iter()
-                .map(|arg| term_refresh_variables(arg))
-                .collect(),
-        ),
-        Clause(literals) => Clause(
-            literals
-                .into_iter()
-                .map(|lit| type_refresh_variables(lit))
-                .collect(),
-        ),
-        Not(psi) => Not(Box::new(type_refresh_variables(psi))),
-        Equality(l, r) => {
-            Equality(term_refresh_variables(l), term_refresh_variables(r))
-        }
-        ForAll(var_name, var_type, psi) => ForAll(
-            var_name.to_string(),
-            Box::new(type_refresh_variables(var_type)),
-            Box::new(type_refresh_variables(psi)),
-        ),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::type_theory::sup::{

@@ -18,7 +18,7 @@ use crate::{
                 SupFormula::{Atom, Clause, Equality, ForAll, Not},
                 SupTerm::{Application, Variable},
             },
-            freedom::get_selection_fn,
+            freedom::{get_selection_fn, pick_clause},
             sup_utils::{kbo_terms, kbo_types},
         },
     },
@@ -164,7 +164,7 @@ impl Automatic for Sup {
     fn saturate(saturation_set: &Vec<SupFormula>) -> Result<(), String> {
         // TODO properly configure this
         let selection_fn = get_selection_fn(SelectionFunction::Maximal());
-        let _ = saturate(saturation_set, &selection_fn);
+        let _ = saturate(saturation_set, &selection_fn, pick_clause);
         Ok(())
     }
 }
