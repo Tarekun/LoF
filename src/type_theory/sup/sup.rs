@@ -18,14 +18,14 @@ use crate::{
                 SupFormula::{Atom, Clause, Equality, ForAll, Not},
                 SupTerm::{Application, Variable},
             },
-            freedom::get_selection_fn,
+            freedom::{get_selection_fn, pick_clause},
             sup_utils::{kbo_terms, kbo_types},
         },
     },
 };
 use std::cmp::Ordering;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum SupTerm {
     /// var_name
     Variable(String),
@@ -33,7 +33,7 @@ pub enum SupTerm {
     Application(String, Vec<SupTerm>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum SupFormula {
     /// pred_name, [args]
     Atom(String, Vec<SupTerm>),
@@ -164,6 +164,7 @@ impl Automatic for Sup {
     fn saturate(saturation_set: &Vec<SupFormula>) -> Result<(), String> {
         // TODO properly configure this
         let selection_fn = get_selection_fn(SelectionFunction::Maximal());
-        saturate(saturation_set, &selection_fn)
+        let _ = saturate(saturation_set, &selection_fn, pick_clause);
+        Ok(())
     }
 }

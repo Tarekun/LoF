@@ -54,9 +54,10 @@ fn terms_unify_with_base(
         explode,
         occurs,
     )?;
-    return Ok(mgu.reduce(|term, var_name, arg| {
+
+    Ok(mgu.reduce(|term, var_name, arg| {
         substitute_term(term, &Variable(var_name.to_string()), arg)
-    }));
+    }))
 }
 
 // TODO: see if i can integrate this in the general unification algorithm
@@ -64,6 +65,7 @@ pub fn formulas_unify(
     phi: &SupFormula,
     psi: &SupFormula,
 ) -> Result<Substitution<SupTerm>, String> {
+    //TODO im pretty sure this can be implemented with commons unification over the SupFormula grammar
     fn solver(
         phi: &SupFormula,
         psi: &SupFormula,
@@ -117,7 +119,10 @@ pub fn formulas_unify(
         Ok(mgu.to_owned())
     }
 
-    solver(phi, psi, &mut Substitution::empty())
+    let mgu = solver(phi, psi, &mut Substitution::empty())?;
+    Ok(mgu.reduce(|term, var_name, arg| {
+        substitute_term(term, &Variable(var_name.to_string()), arg)
+    }))
 }
 
 pub fn term_apply_substitution(
@@ -239,6 +244,7 @@ mod unit_tests {
                     Application("f".to_string(), vec![k.clone()])
                 )
             ])),
+            // TODO: im not really sure this should be enforced at the terms_unify but whatever for now
             "Returned MGU didnt solve variable `y` to constant `k` in assignment for variable `x`"
         )
     }

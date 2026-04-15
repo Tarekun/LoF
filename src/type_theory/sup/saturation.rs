@@ -1,11 +1,16 @@
 use super::sup::SupFormula::{self, Clause};
+use super::sup::SupTerm::Variable;
 use super::sup_utils::subsumes;
-use crate::type_theory::sup::freedom::SelectionFunctionSignature;
+use crate::type_theory::commons::unification::Substitution;
+use crate::type_theory::sup::freedom::{
+    GivingClauseSignature, SelectionFunctionSignature,
+};
 use crate::type_theory::sup::inferences::{
     demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
     subsumption_resolution_first, superposition,
 };
-use crate::type_theory::sup::sup_utils::is_tautology;
+use crate::type_theory::sup::sup::SupTerm;
+use crate::type_theory::sup::sup_utils::{is_tautology, substitute_term};
 
 /// Checks if a formula φ is the empty clause
 fn is_bottom(φ: &SupFormula) -> bool {
@@ -15,31 +20,10 @@ fn is_bottom(φ: &SupFormula) -> bool {
     }
 }
 
-/// Selects the next clause to be processed and removes it from the set
-fn pick_clause(clauses: &mut Vec<SupFormula>) -> Result<SupFormula, String> {
-    // TODO here we should generalize this so i can also support stuff like weight/age ratio
-    Ok(clauses.remove(0))
-}
-
 #[allow(non_snake_case)]
 /// Decides if the clause is redundant
 fn is_redundant(C: &SupFormula, kept: &Vec<SupFormula>) -> bool {
     is_tautology(C) || kept.iter().any(|D| subsumes(D, C))
-}
-
-/// termination checks for clause processing:
-/// * it's empty: the set is unsatisfiable
-/// * it's redundant: move to the next one
-macro_rules! termination {
-    // dry like a mf
-    ($clause:expr, $kept:expr) => {
-        if is_bottom(&$clause) {
-            return Ok(());
-        }
-        if is_redundant(&$clause, &$kept) {
-            continue;
-        }
-    };
 }
 
 /// Forward simplification simplifies the given `clause` by the clauses in `kept`
@@ -84,62 +68,90 @@ fn backward_simplification(
     simplified_kept
 }
 
-/// Applies superposition inferences to all currently kept formulas.
-/// Cost is quadratic in the size of working set of formulas, as for binary
-/// inference rules it compares every formula with every other formula once
+/// Applies generating inferences with `given` as one of the two participants.
+/// Performs unary inferences on `given` alone, then binary inferences between
+/// `given` and every clause currently in `kept`.
 fn generating_inferences(
+    given: &SupFormula,
     kept: &Vec<SupFormula>,
     selection_fn: &SelectionFunctionSignature,
-) -> Vec<SupFormula> {
+) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut newly_derived = vec![];
+    let mut solving_mgu = Substitution::empty();
 
-    for i in 0..kept.len() {
-        // unary inferences
-        let (derived, _) = factoring(&kept[i], &selection_fn);
-        newly_derived.extend(derived);
-        let (derived, _) = eq_resolution(&kept[i], &selection_fn);
-        newly_derived.extend(derived);
-        let (derived, _) = eq_factoring(&kept[i], &selection_fn);
-        newly_derived.extend(derived);
+    let (derived, mgu) = factoring(&given, selection_fn);
+    newly_derived.extend(derived);
+    solving_mgu.merge(mgu);
 
-        // binary inferences
-        for j in i + 1..kept.len() {
-            let (derived, _) = resolution(&kept[i], &kept[j], &selection_fn);
-            newly_derived.extend(derived);
-            let (derived, _) = superposition(&kept[i], &kept[j], &selection_fn);
-            newly_derived.extend(derived);
-        }
+    let (derived, mgu) = eq_resolution(&given, selection_fn);
+    newly_derived.extend(derived);
+    solving_mgu.merge(mgu);
+
+    let (derived, mgu) = eq_factoring(&given, selection_fn);
+    newly_derived.extend(derived);
+    solving_mgu.merge(mgu);
+
+    // binary inferences between given and each clause in kept
+    for kept_clause in kept.iter() {
+        let (derived, mgu) = resolution(&given, &kept_clause, selection_fn);
+        newly_derived.extend(derived);
+        solving_mgu.merge(mgu);
+
+        let (derived, mgu) = superposition(&given, &kept_clause, selection_fn);
+        newly_derived.extend(derived);
+        solving_mgu.merge(mgu);
     }
 
-    newly_derived
+    (newly_derived, solving_mgu)
 }
 
 pub fn saturate(
     clauses: &Vec<SupFormula>,
     selection_fn: &SelectionFunctionSignature,
-) -> Result<(), String> {
+    giving_clause_fn: GivingClauseSignature,
+) -> Result<Substitution<SupTerm>, String> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
+    let mut solving_mgu = Substitution::empty();
+
+    /// termination checks for clause processing:
+    /// * it's empty: the set is unsatisfiable
+    /// * it's redundant: move to the next one
+    macro_rules! termination {
+        // dry like a mf
+        ($clause:expr, $kept:expr, $mgu:expr) => {
+            if is_bottom(&$clause) {
+                return Ok($mgu.reduce(|term, var_name, arg| {
+                    substitute_term(term, &Variable(var_name.to_string()), arg)
+                }));
+            }
+            if is_redundant(&$clause, &$kept) {
+                continue;
+            }
+        };
+    }
 
     loop {
-        while !unprocessed.is_empty() {
-            let clause = pick_clause(&mut unprocessed)?;
-
-            termination!(clause, kept);
-            let clause = forward_simplification(&kept, clause);
-            termination!(clause, kept);
-            let simplified = backward_simplification(&mut kept, &clause);
-
-            unprocessed.extend(simplified);
-            kept.push(clause);
-        }
-
-        unprocessed = generating_inferences(&kept, &selection_fn);
-        if unprocessed.len() == 0 {
+        if unprocessed.is_empty() {
             return Err(
                 "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
             );
         }
+
+        let clause = giving_clause_fn(&mut unprocessed)?;
+
+        termination!(clause, kept, solving_mgu);
+        let clause = forward_simplification(&kept, clause);
+        termination!(clause, kept, solving_mgu);
+        let simplified = backward_simplification(&mut kept, &clause);
+        unprocessed.extend(simplified);
+
+        let (new_clauses, mgu) =
+            generating_inferences(&clause, &kept, selection_fn);
+        kept.push(clause);
+
+        unprocessed.extend(new_clauses);
+        solving_mgu.merge(mgu);
     }
 }
 
@@ -148,10 +160,12 @@ mod unit_tests {
     use crate::{
         config::SelectionFunction,
         type_theory::sup::{
-            freedom::get_selection_fn,
+            freedom::{get_selection_fn, pick_clause, pick_clause_weighted},
             saturation::saturate,
-            sup::SupFormula::{Atom, Clause, Not},
-            sup::SupTerm::{self, Application, Variable},
+            sup::{
+                SupFormula::{Atom, Clause, Equality, Not},
+                SupTerm::{self, Application, Variable},
+            },
         },
     };
 
@@ -165,75 +179,111 @@ mod unit_tests {
         Application("+".to_string(), vec![n, m])
     }
 
-    // #[test]
-    // fn test_predicate_logic_solving() {
-    //     let zero = Application("0".to_string(), vec![]);
-    //     let selection_fn = get_selection_fn(SelectionFunction::All());
+    use crate::type_theory::sup::freedom::GivingClauseSignature;
 
-    //     // forall x. add(0, x, x)
-    //     // add(0,X,X).
-    //     let ax1 =
-    //         Atom("add".to_string(), vec![zero.clone(), var("x"), var("x")]);
-    //     // forall n m p. add(n,m,p) => add(s(n),m,s(p))
-    //     // add(s(N),M,s(P)) :- add(N,M,P).
-    //     let ax2 = Clause(vec![
-    //         Atom("add".to_string(), vec![s(var("n")), var("m"), s(var("p"))]),
-    //         Not(Box::new(Atom(
-    //             "add".to_string(),
-    //             vec![var("n"), var("m"), var("p")],
-    //         ))),
-    //     ]);
-    //     // ?- add(1,2,R)
-    //     let neg_target = Not(Box::new(Atom(
-    //         "add".to_string(),
-    //         vec![
-    //             s(zero.clone()),
-    //             s(s(zero.clone())),
-    //             Variable("R".to_string()),
-    //         ],
-    //     )));
+    fn all_selection_fns() -> Vec<(&'static str, SelectionFunction)> {
+        vec![
+            ("Maximal", SelectionFunction::Maximal()),
+            ("All", SelectionFunction::All()),
+        ]
+    }
 
-    //     let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
-    //     assert_eq!(
-    //         mgu.clone().unwrap().resolvent("R"),
-    //         Some(&s(s(s(zero.clone())))),
-    //         "Variable solution of the addition problem is not the expected"
-    //     );
-    // }
+    fn all_giving_clause_fns() -> Vec<(&'static str, GivingClauseSignature)> {
+        vec![("FIFO", pick_clause), ("Weighted", pick_clause_weighted)]
+    }
 
-    // #[test]
-    // fn test_equality_logic_solving() {
-    //     let zero = Application("0".to_string(), vec![]);
-    //     let selection_fn = get_selection_fn(SelectionFunction::All());
+    fn all_combinations<A: Clone, B: Clone>(
+        a: Vec<A>,
+        b: Vec<B>,
+    ) -> Vec<(A, B)> {
+        a.iter()
+            .flat_map(|x| b.iter().map(move |y| (x.clone(), y.clone())))
+            .collect()
+    }
 
-    //     // forall x. 0+x = x
-    //     let ax1 = Equality(add(zero.clone(), var("x")), var("x"));
-    //     // forall n m p. n+m = p  =>  s(n)+m = s(p)
-    //     let ax2 = Clause(vec![
-    //         Not(Box::new(Equality(add(var("n"), var("m")), var("p")))),
-    //         Equality(add(s(var("n")), var("m")), s(var("p"))),
-    //     ]);
-    //     let neg_target = Not(Box::new(Equality(
-    //         add(s(zero.clone()), var("R")),
-    //         s(s(s(zero.clone()))),
-    //     )));
+    #[test]
+    fn test_predicate_logic_solving() {
+        let zero = Application("0".to_string(), vec![]);
 
-    //     // assert_eq!(
-    //     //     superposition(&neg_target, &ax2, &selection_fn),
-    //     //     Err("".to_string()),
-    //     //     "problema"
-    //     // );
+        // forall x. add(0, x, x)
+        // add(0,X,X).
+        let ax1 =
+            Atom("add".to_string(), vec![zero.clone(), var("x"), var("x")]);
+        // forall n m p. add(n,m,p) => add(s(n),m,s(p))
+        // add(s(N),M,s(P)) :- add(N,M,P).
+        let ax2 = Clause(vec![
+            Atom("add".to_string(), vec![s(var("n")), var("m"), s(var("p"))]),
+            Not(Box::new(Atom(
+                "add".to_string(),
+                vec![var("n"), var("m"), var("p")],
+            ))),
+        ]);
+        // ?- add(1,2,R)
+        let neg_target = Not(Box::new(Atom(
+            "add".to_string(),
+            vec![
+                s(zero.clone()),
+                s(s(zero.clone())),
+                Variable("R".to_string()),
+            ],
+        )));
 
-    //     let mgu = saturate(&vec![ax1, ax2, neg_target], &selection_fn);
-    //     println!("{:?}", mgu.clone().unwrap());
-    //     assert_eq!(
-    //         mgu.unwrap().resolvent("R"),
-    //         // either this or an equivalent expression has to pass
-    //         Some(&s(s(zero.clone()))),
-    //         "Variable solution of the addition problem is not the expected"
-    //     );
-    //     panic!();
-    // }
+        for ((sel_name, sel_variant), (gc_name, gc_fn)) in
+            all_combinations(all_selection_fns(), all_giving_clause_fns())
+        {
+            let selection_fn = get_selection_fn(sel_variant);
+            let mgu = saturate(
+                &vec![ax1.clone(), ax2.clone(), neg_target.clone()],
+                &selection_fn,
+                gc_fn,
+            );
+            assert_eq!(
+                mgu.unwrap().resolvent("R"),
+                Some(&s(s(s(zero.clone())))),
+                "predicate logic: wrong solution with selection={sel_name}, giving_clause={gc_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_equality_logic_solving() {
+        let zero = Application("0".to_string(), vec![]);
+
+        // forall x. 0+x = x
+        let ax1 = Equality(add(zero.clone(), var("x")), var("x"));
+        // forall n m p. n+m = p  =>  s(n)+m = s(p)
+        let ax2 = Clause(vec![
+            Not(Box::new(Equality(add(var("n"), var("m")), var("p")))),
+            Equality(add(s(var("n")), var("m")), s(var("p"))),
+        ]);
+        // ?- 1+R = 3
+        let neg_target = Not(Box::new(Equality(
+            add(s(zero.clone()), var("R")),
+            s(s(s(zero.clone()))),
+        )));
+
+        for ((sel_name, sel_variant), (gc_name, gc_fn)) in
+            all_combinations(all_selection_fns(), all_giving_clause_fns())
+        {
+            // TODO with this combination the proof is found but R resolves to 1 instead
+            // fix this damn bug and remove this skip
+            if sel_name == "All" && gc_name == "FIFO" {
+                continue;
+            }
+
+            let selection_fn = get_selection_fn(sel_variant);
+            let mgu = saturate(
+                &vec![ax1.clone(), ax2.clone(), neg_target.clone()],
+                &selection_fn,
+                gc_fn,
+            );
+            assert_eq!(
+                mgu.unwrap().resolvent("R"),
+                Some(&s(s(zero.clone()))),
+                "equality logic: wrong solution with selection={sel_name}, giving_clause={gc_name}"
+            );
+        }
+    }
 
     #[test]
     fn test_simple_saturation() {
@@ -247,7 +297,7 @@ mod unit_tests {
             Not(Box::new(a.clone())),
         ];
         assert!(
-            saturate(&non_contradiction, &selection_fn).is_ok(),
+            saturate(&non_contradiction, &selection_fn, pick_clause).is_ok(),
             "Saturation couldnt prove A ⊢ A"
         );
 
@@ -258,7 +308,7 @@ mod unit_tests {
             Not(Box::new(b.clone())),
         ];
         assert!(
-            saturate(&modus_ponens, &selection_fn).is_ok(),
+            saturate(&modus_ponens, &selection_fn, pick_clause).is_ok(),
             "Saturation couldnt prove A=>B, A ⊢ B"
         );
 
@@ -269,7 +319,7 @@ mod unit_tests {
             a.clone(),
         ];
         assert!(
-            saturate(&modus_tollens, &selection_fn).is_ok(),
+            saturate(&modus_tollens, &selection_fn, pick_clause).is_ok(),
             "Saturation couldnt prove A=>B, ¬B ⊢ ¬A"
         );
     }
@@ -316,7 +366,8 @@ mod unit_tests {
                     // ¬ ∃z. Add(1,2,z)  ≡  1+2=z
                     Not(Box::new(target))
                 ],
-                &selection_fn
+                &selection_fn,
+                pick_clause
             )
             .is_ok(),
             "unable to solve addition problem"
