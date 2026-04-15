@@ -26,23 +26,6 @@ fn is_redundant(C: &SupFormula, kept: &Vec<SupFormula>) -> bool {
     is_tautology(C) || kept.iter().any(|D| subsumes(D, C))
 }
 
-/// termination checks for clause processing:
-/// * it's empty: the set is unsatisfiable
-/// * it's redundant: move to the next one
-macro_rules! termination {
-    // dry like a mf
-    ($clause:expr, $kept:expr, $mgu:expr) => {
-        if is_bottom(&$clause) {
-            return Ok($mgu.reduce(|term, var_name, arg| {
-                substitute_term(term, &Variable(var_name.to_string()), arg)
-            }));
-        }
-        if is_redundant(&$clause, &$kept) {
-            continue;
-        }
-    };
-}
-
 /// Forward simplification simplifies the given `clause` by the clauses in `kept`
 fn forward_simplification(
     kept: &Vec<SupFormula>,
@@ -96,44 +79,25 @@ fn generating_inferences(
     let mut newly_derived = vec![];
     let mut solving_mgu = Substitution::empty();
 
-    macro_rules! trace {
-        ($derived:expr, $mgu:expr, $premises:expr, $inference:expr) => {
-            if $derived.len() > 0 {
-                println!(
-                    "{} application:\npremises: {:?}\nMGU: {:?}\nderived: {:?}\n",
-                    $inference, $premises, $mgu, $derived
-                )
-            }
-        }
-    }
-
     let (derived, mgu) = factoring(&given, selection_fn);
-    trace!(derived, mgu, vec![given], "factoring");
     newly_derived.extend(derived);
     solving_mgu.merge(mgu);
 
     let (derived, mgu) = eq_resolution(&given, selection_fn);
-    trace!(derived, mgu, vec![given], "eq_resolution");
     newly_derived.extend(derived);
     solving_mgu.merge(mgu);
 
     let (derived, mgu) = eq_factoring(&given, selection_fn);
-    trace!(derived, mgu, vec![given], "eq_factoring");
     newly_derived.extend(derived);
     solving_mgu.merge(mgu);
 
     // binary inferences between given and each clause in kept
     for kept_clause in kept.iter() {
-        let lhs = given;
-        let rhs = kept_clause;
-
-        let (derived, mgu) = resolution(&lhs, &rhs, selection_fn);
-        trace!(derived, mgu, vec![given, kept_clause], "resolution");
+        let (derived, mgu) = resolution(&given, &kept_clause, selection_fn);
         newly_derived.extend(derived);
         solving_mgu.merge(mgu);
 
-        let (derived, mgu) = superposition(&lhs, &rhs, selection_fn);
-        trace!(derived, mgu, vec![given, kept_clause], "superposition");
+        let (derived, mgu) = superposition(&given, &kept_clause, selection_fn);
         newly_derived.extend(derived);
         solving_mgu.merge(mgu);
     }
@@ -150,8 +114,24 @@ pub fn saturate(
     let mut kept = vec![];
     let mut solving_mgu = Substitution::empty();
 
+    /// termination checks for clause processing:
+    /// * it's empty: the set is unsatisfiable
+    /// * it's redundant: move to the next one
+    macro_rules! termination {
+        // dry like a mf
+        ($clause:expr, $kept:expr, $mgu:expr) => {
+            if is_bottom(&$clause) {
+                return Ok($mgu.reduce(|term, var_name, arg| {
+                    substitute_term(term, &Variable(var_name.to_string()), arg)
+                }));
+            }
+            if is_redundant(&$clause, &$kept) {
+                continue;
+            }
+        };
+    }
+
     loop {
-        // for i in 0..20 {
         if unprocessed.is_empty() {
             return Err(
                 "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
@@ -173,7 +153,6 @@ pub fn saturate(
         unprocessed.extend(new_clauses);
         solving_mgu.merge(mgu);
     }
-    Err("resources exhausted".to_string())
 }
 
 #[cfg(test)]
