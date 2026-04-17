@@ -390,21 +390,18 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
             );
         }
         R(interactive_proof) => {
-            let (target, proof) = type_check_interactive_proof::<T>(
+            let proof = type_check_interactive_proof::<T>(
                 environment,
                 interactive_proof,
                 formula,
-                &T::proof_hole(),
             )?;
             // check that the proof proves the statement
-            if target == T::empty_target() {
-                let proof_type = T::type_check_term(&proof, environment)?;
-                if T::base_type_equality(&proof_type, formula).is_err() {
-                    return Err(format!(
+            let proof_type = T::type_check_term(&proof, environment)?;
+            if T::base_type_equality(&proof_type, formula).is_err() {
+                return Err(format!(
                         "Theorem checking failed. Proof has type {:?} while stated type is {:?}",
                         proof_type, formula
                     ));
-                }
             }
         }
     }
@@ -424,27 +421,44 @@ fn type_check_interactive_proof<T: TypeTheory + Interactive>(
     environment: &mut Environment<T>,
     interactive_proof: &[Tactic<T::Exp>],
     target: &T::Type,
-    partial_proof: &T::Term,
-) -> Result<(T::Type, T::Term), String> {
-    match interactive_proof {
-        [] => Ok((target.to_owned(), partial_proof.to_owned())),
-        [proof_step, rest @ ..] => {
-            // type_check_tactic(proof_step)
-            let (new_target, new_proof) = T::type_check_tactic(
-                environment,
-                proof_step,
-                &target,
-                &partial_proof,
-            )?;
-            // TODO update target and context
-            // run recursively on rest
-            type_check_interactive_proof::<T>(
-                environment,
-                rest,
-                &new_target,
-                &new_proof,
-            )
+) -> Result<T::Term, String> {
+    fn solver<T: TypeTheory + Interactive>(
+        environment: &mut Environment<T>,
+        interactive_proof: &[Tactic<T::Exp>],
+        mut subgoals: Vec<T::Type>,
+        partial_proof: T::Term,
+    ) -> Result<T::Term, String> {
+        // TODO: make sure the proof closes with a qed.
+        if subgoals.is_empty() {
+            return Ok(partial_proof.to_owned());
+        }
+
+        match interactive_proof {
+            [] => Ok(partial_proof.to_owned()),
+            [proof_step, rest @ ..] => {
+                let (new_target, new_proof) = T::type_check_tactic(
+                    environment,
+                    proof_step,
+                    &subgoals[0],
+                    &partial_proof,
+                )?;
+
+                subgoals[0] = new_target;
+                if subgoals[0] == T::empty_target() {
+                    subgoals.remove(0);
+                }
+
+                // TODO update context
+                solver::<T>(environment, rest, subgoals, new_proof)
+            }
         }
     }
+
+    solver(
+        environment,
+        interactive_proof,
+        vec![target.to_owned()],
+        T::proof_hole(),
+    )
 }
 //########################### STATEMENTS TYPE CHECKING
