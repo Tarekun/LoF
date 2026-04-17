@@ -1,17 +1,20 @@
 use super::cic::CicTerm;
-use super::cic::CicTerm::{Abstraction, Product};
+use super::cic::CicTerm::{Abstraction, Application, Product};
 use super::cic_utils::swap_body;
-use crate::parser::api::Tactic::{self, Exact, Intro};
+use crate::parser::api::Tactic::{self, Apply, Exact, Intro};
 use crate::type_theory::cic::cic::Cic;
+use crate::type_theory::cic::cic_utils::{get_arg_types, get_prod_innermost};
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::{Interactive, Kernel, Refiner, TypeTheory};
+use crate::type_theory::interface::{
+    Interactive, Kernel, Refiner, TypeInference, TypeTheory,
+};
 
 pub fn type_check_tactic(
     environment: &mut Environment<Cic>,
     tactic: &Tactic<CicTerm>,
     target: &CicTerm,
     partial_proof: &CicTerm,
-) -> Result<(CicTerm, CicTerm), String> {
+) -> Result<(CicTerm, Vec<CicTerm>), String> {
     match tactic {
         Intro(ass_name, ass_type) => type_check_intro(
             environment,
@@ -22,6 +25,9 @@ pub fn type_check_tactic(
         ),
         Exact(proof_term) => {
             type_check_exact(environment, target, partial_proof, proof_term)
+        }
+        Apply(lemma) => {
+            type_check_apply(environment, target, partial_proof, lemma)
         }
         _ => Err("TODO".to_string()),
     }
@@ -34,7 +40,7 @@ fn type_check_intro(
     partial_proof: &CicTerm,
     ass_name: &str,
     ass_type: &CicTerm,
-) -> Result<(CicTerm, CicTerm), String> {
+) -> Result<(CicTerm, Vec<CicTerm>), String> {
     match target {
         Product(_, domain, codomain) => {
             if Cic::base_type_equality(ass_type, domain).is_ok() {
@@ -44,7 +50,7 @@ fn type_check_intro(
                     Box::new(Cic::proof_hole())
                 ));
 
-                Ok((partial_proof, (**codomain).clone()))
+                Ok((partial_proof, vec![(**codomain).clone()]))
             } else {
                 Err(format!(
                     "{} has inconsistent type: expected {:?}, found {:?}", 
@@ -67,11 +73,11 @@ fn type_check_exact(
     target: &CicTerm,
     partial_proof: &CicTerm,
     proof_term: &CicTerm,
-) -> Result<(CicTerm, CicTerm), String> {
+) -> Result<(CicTerm, Vec<CicTerm>), String> {
     let proof_type = Cic::type_check_term(proof_term, environment)?;
 
     if Cic::types_unify(environment, &proof_type, target) {
-        Ok((swap_body(partial_proof, proof_term), Cic::empty_target()))
+        Ok((swap_body(partial_proof, proof_term), vec![]))
     } else {
         Err(format!(
             "Term type and target don't unify: target is {:?} while expression has type {:?}",
@@ -79,16 +85,46 @@ fn type_check_exact(
         ))
     }
 }
+//
+//
+fn type_check_apply(
+    _: &mut Environment<Cic>,
+    target: &CicTerm,
+    partial_proof: &CicTerm,
+    lemma: &CicTerm,
+) -> Result<(CicTerm, Vec<CicTerm>), String> {
+    let conclusion = get_prod_innermost(lemma);
+    if Cic::type_unify(target, conclusion).is_ok() {
+        let premises = get_arg_types(lemma);
+        let new_proof = swap_body(
+            partial_proof,
+            &Application(
+                Box::new(lemma.to_owned()),
+                Box::new(Cic::proof_hole()),
+            ),
+        );
+
+        Ok((new_proof, premises))
+    } else {
+        Err(format!(
+            "Cannot unify target {:?} with conclusion of {:?}",
+            target, lemma
+        ))
+    }
+}
+
 //########################### UNIT TESTS
 #[cfg(test)]
 mod unit_tests {
     use crate::{
-        parser::api::Tactic::Intro,
+        parser::api::Tactic::{Apply, Intro},
         type_theory::{
             cic::{
                 cic::{
                     Cic,
-                    CicTerm::{Abstraction, Meta, Product, Sort, Variable},
+                    CicTerm::{
+                        Abstraction, Application, Meta, Product, Sort, Variable,
+                    },
                     GLOBAL_INDEX,
                 },
                 tactics::{
@@ -122,7 +158,7 @@ mod unit_tests {
                     Box::new(nat.clone()),
                     Box::new(Cic::proof_hole()),
                 ),
-                nat.clone()
+                vec![nat.clone()]
             )),
             "Intro tactic checking isnt working as expected"
         );
@@ -201,7 +237,7 @@ mod unit_tests {
                 &Cic::proof_hole(),
                 &proof_term
             ),
-            Ok((proof_term.clone(), Cic::empty_target())),
+            Ok((proof_term.clone(), vec![])),
             "Exact tactic checking doesnt accept simple type inhabiting"
         );
         assert!(
@@ -213,6 +249,56 @@ mod unit_tests {
             )
             .is_err(),
             "Exact tactic checking accepts term with wrong type"
+        );
+    }
+
+    #[test]
+    fn test_apply() {
+        let mut test_env = Cic::default_environment();
+        let premise1 = Variable("Premise1".to_string(), GLOBAL_INDEX);
+        let premise2 = Variable("Premise2".to_string(), GLOBAL_INDEX);
+        let conclusion = Variable("Conclusion".to_string(), GLOBAL_INDEX);
+        let simple_implication = Product(
+            "_".to_string(),
+            Box::new(premise1.clone()),
+            Box::new(conclusion.clone()),
+        );
+        let hole = Cic::proof_hole();
+
+        let (proof, subgoals) = Cic::type_check_tactic(
+            &mut test_env,
+            &Apply(simple_implication.clone()),
+            &conclusion,
+            &hole,
+        )
+        .unwrap();
+        assert_eq!(
+            proof,
+            Application(Box::new(simple_implication), Box::new(hole.clone())),
+            "The constructed partial proof is not the expected one"
+        );
+        assert_eq!(subgoals, vec![premise1.clone()], "The returned subgoals dont match the premises of the applied implication");
+
+        let double_implication = Product(
+            "_".to_string(),
+            Box::new(premise1.clone()),
+            Box::new(Product(
+                "_".to_string(),
+                Box::new(premise2.clone()),
+                Box::new(conclusion.clone()),
+            )),
+        );
+        let (_, subgoals) = Cic::type_check_tactic(
+            &mut test_env,
+            &Apply(double_implication.clone()),
+            &conclusion,
+            &hole,
+        )
+        .unwrap();
+        assert_eq!(
+            subgoals,
+            vec![premise1, premise2],
+            "Apply tactic doesnt track all premises of the applied lemma"
         );
     }
 }

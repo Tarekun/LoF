@@ -436,19 +436,15 @@ fn type_check_interactive_proof<T: TypeTheory + Interactive>(
         match interactive_proof {
             [] => Ok(partial_proof.to_owned()),
             [proof_step, rest @ ..] => {
-                let (new_target, new_proof) = T::type_check_tactic(
+                let target = subgoals.pop().unwrap();
+                let (new_proof, new_subgoals) = T::type_check_tactic(
                     environment,
                     proof_step,
-                    &subgoals[0],
+                    &target,
                     &partial_proof,
                 )?;
+                subgoals.extend(new_subgoals);
 
-                subgoals[0] = new_target;
-                if subgoals[0] == T::empty_target() {
-                    subgoals.remove(0);
-                }
-
-                // TODO update context
                 solver::<T>(environment, rest, subgoals, new_proof)
             }
         }

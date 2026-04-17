@@ -1,7 +1,7 @@
 use crate::{
     parser::api::{
         Expression, LofAst, Statement,
-        Tactic::{self, Begin, Exact, Intro, Qed},
+        Tactic::{self, Apply, Begin, Exact, Intro, Qed},
     },
     runtime::program::Schedule,
     type_theory::interface::TypeTheory,
@@ -88,9 +88,7 @@ pub fn elaborate_tactic<E, F: Fn(Expression) -> E>(
             elaborate_expression,
         ),
         Exact(proof_term) => elaborate_exact(proof_term, elaborate_expression),
-        // _ => {
-        //     Err("WIP: tactic {:?} is not yet supported. too bad :(".to_string())
-        // }
+        Apply(lemma) => elaborate_apply(lemma, elaborate_expression),
     }
 }
 //
@@ -109,6 +107,14 @@ fn elaborate_exact<E, F: Fn(Expression) -> E>(
     elaborate_expression: F,
 ) -> Result<Tactic<E>, String> {
     Ok(Exact(elaborate_expression(proof_term)))
+}
+//
+//
+fn elaborate_apply<E, F: Fn(Expression) -> E>(
+    lemma: Expression,
+    elaborate_expression: F,
+) -> Result<Tactic<E>, String> {
+    Ok(Apply(elaborate_expression(lemma)))
 }
 //########################### TACTICS ELABORATION
 
