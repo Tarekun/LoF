@@ -4,7 +4,7 @@ mod unit_tests {
         config::Config,
         parser::api::Expression::VarUse,
         parser::api::LofParser,
-        parser::api::Tactic::{Begin, Exact, Intro, Qed},
+        parser::api::Tactic::{Apply, Begin, Exact, Intro, Qed},
     };
 
     #[test]
@@ -56,7 +56,7 @@ mod unit_tests {
         let parser = LofParser::new(Config::default());
 
         assert_eq!(
-            parser.parse_tactic("exact"),
+            parser.parse_tactic("exact p"),
             Ok(("", Exact(VarUse("p".to_string())))),
             "Exact parser doesnt construct the proper node"
         );
@@ -66,8 +66,31 @@ mod unit_tests {
             "Exact parser cant cope with whitespaces"
         );
         assert!(
-            parser.parse_tactic("exact").is_ok(),
+            parser.parse_tactic("exact λn:Nat.n").is_ok(),
             "Exact parser cant cope with composite terms"
+        );
+    }
+
+    #[test]
+    fn test_apply() {
+        let parser = LofParser::new(Config::default());
+
+        assert_eq!(
+            parser.parse_tactic("apply h"),
+            Ok(("", Apply(VarUse("h".to_string())))),
+            "Apply parser doesnt construct the proper node"
+        );
+        assert!(
+            parser.parse_tactic("\n\r\t apply   \t h\t").is_ok(),
+            "Apply parser cant cope with whitespaces"
+        );
+        assert!(
+            parser.parse_tactic("apply f x y").is_ok(),
+            "Apply parser cant cope with function application expressions"
+        );
+        assert!(
+            parser.parse_tactic("apply:h").is_err(),
+            "Apply parser doesnt split keyword and argument"
         );
     }
 }

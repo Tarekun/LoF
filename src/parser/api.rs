@@ -75,6 +75,7 @@ pub enum Tactic<E> {
     Qed(),
     Intro(String, E),
     Exact(E),
+    Apply(E),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum LofAst {

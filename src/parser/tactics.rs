@@ -7,7 +7,7 @@ use nom::{
     IResult,
 };
 
-use super::api::Tactic::{Begin, Exact, Intro, Qed};
+use super::api::Tactic::{Apply, Begin, Exact, Intro, Qed};
 use super::api::{Expression, LofParser, Tactic};
 
 //########################### TACTICS PARSER
@@ -54,6 +54,17 @@ impl LofParser {
         Ok((input, Exact(proof_term)))
     }
 
+    fn apply<'a>(
+        &self,
+        input: &'a str,
+    ) -> IResult<&'a str, Tactic<Expression>> {
+        let (input, _) = preceded(multispace0, tag("apply"))(input)?;
+        let (input, proof_term) =
+            preceded(multispace1, |input| self.parse_expression(input))(input)?;
+
+        Ok((input, Apply(proof_term)))
+    }
+
     pub fn parse_tactic<'a>(
         &self,
         input: &'a str,
@@ -62,6 +73,7 @@ impl LofParser {
             |input| self.begin(input),
             |input| self.qed(input),
             |input| self.intro(input),
+            |input| self.apply(input),
             |input| self.exact(input),
         ))(input)
     }
