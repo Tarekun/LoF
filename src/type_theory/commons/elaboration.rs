@@ -1,7 +1,7 @@
 use crate::{
     parser::api::{
         Expression, LofAst, Statement,
-        Tactic::{self, Begin, By, Intro, Qed},
+        Tactic::{self, Begin, Exact, Intro, Qed},
     },
     runtime::program::Schedule,
     type_theory::interface::TypeTheory,
@@ -87,7 +87,7 @@ pub fn elaborate_tactic<E, F: Fn(Expression) -> E>(
             formula,
             elaborate_expression,
         ),
-        By(proof_term) => elaborate_by(proof_term, elaborate_expression),
+        Exact(proof_term) => elaborate_exact(proof_term, elaborate_expression),
         // _ => {
         //     Err("WIP: tactic {:?} is not yet supported. too bad :(".to_string())
         // }
@@ -104,11 +104,11 @@ fn elaborate_intro<E, F: Fn(Expression) -> E>(
 }
 //
 //
-fn elaborate_by<E, F: Fn(Expression) -> E>(
+fn elaborate_exact<E, F: Fn(Expression) -> E>(
     proof_term: Expression,
     elaborate_expression: F,
 ) -> Result<Tactic<E>, String> {
-    Ok(By(elaborate_expression(proof_term)))
+    Ok(Exact(elaborate_expression(proof_term)))
 }
 //########################### TACTICS ELABORATION
 
@@ -118,14 +118,14 @@ mod unit_tests {
     use crate::{
         parser::api::{
             Expression,
-            Tactic::{By, Intro},
+            Tactic::{Exact, Intro},
         },
         type_theory::{
             cic::{
                 cic::{CicTerm::Variable, GLOBAL_INDEX},
                 elaboration::elaborate_expression,
             },
-            commons::elaboration::{elaborate_by, elaborate_intro},
+            commons::elaboration::{elaborate_exact, elaborate_intro},
         },
     };
 
@@ -147,13 +147,13 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_by_elaboration() {
+    fn test_exact_elaboration() {
         assert_eq!(
-            elaborate_by(Expression::VarUse("p".to_string()), |exp| {
+            elaborate_exact(Expression::VarUse("p".to_string()), |exp| {
                 elaborate_expression(&exp)
             }),
-            Ok(By(Variable("p".to_string(), GLOBAL_INDEX))),
-            "By elaboration doesnt produce expected tactic"
+            Ok(Exact(Variable("p".to_string(), GLOBAL_INDEX))),
+            "Exact elaboration doesnt produce expected tactic"
         );
     }
 }

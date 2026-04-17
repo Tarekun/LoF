@@ -4,7 +4,7 @@ mod unit_tests {
         config::Config,
         parser::api::Expression::VarUse,
         parser::api::LofParser,
-        parser::api::Tactic::{Begin, By, Intro, Qed},
+        parser::api::Tactic::{Begin, Exact, Intro, Qed},
     };
 
     #[test]
@@ -52,22 +52,22 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_by() {
+    fn test_exact() {
         let parser = LofParser::new(Config::default());
 
         assert_eq!(
-            parser.parse_tactic("by p"),
-            Ok(("", By(VarUse("p".to_string())))),
-            "By parser doesnt construct the proper node"
+            parser.parse_tactic("exact"),
+            Ok(("", Exact(VarUse("p".to_string())))),
+            "Exact parser doesnt construct the proper node"
         );
 
         assert!(
-            parser.parse_tactic("\n\t      \r\n \t by  \t p").is_ok(),
-            "By parser cant cope with whitespaces"
+            parser.parse_tactic("\n\t      \r\n \t exact  \t p").is_ok(),
+            "Exact parser cant cope with whitespaces"
         );
         assert!(
-            parser.parse_tactic("by λn:Nat.n").is_ok(),
-            "By parser cant cope with composite terms"
+            parser.parse_tactic("exact").is_ok(),
+            "Exact parser cant cope with composite terms"
         );
     }
 }

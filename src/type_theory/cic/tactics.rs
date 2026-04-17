@@ -1,7 +1,7 @@
 use super::cic::CicTerm;
 use super::cic::CicTerm::{Abstraction, Product};
 use super::cic_utils::swap_body;
-use crate::parser::api::Tactic::{self, By, Intro};
+use crate::parser::api::Tactic::{self, Exact, Intro};
 use crate::type_theory::cic::cic::Cic;
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{Interactive, Kernel, Refiner, TypeTheory};
@@ -20,8 +20,8 @@ pub fn type_check_tactic(
             ass_name,
             ass_type,
         ),
-        By(proof_term) => {
-            type_check_by(environment, target, partial_proof, proof_term)
+        Exact(proof_term) => {
+            type_check_exact(environment, target, partial_proof, proof_term)
         }
         _ => Err("TODO".to_string()),
     }
@@ -62,7 +62,7 @@ fn type_check_intro(
 }
 //
 //
-fn type_check_by(
+fn type_check_exact(
     environment: &mut Environment<Cic>,
     target: &CicTerm,
     partial_proof: &CicTerm,
@@ -91,7 +91,9 @@ mod unit_tests {
                     CicTerm::{Abstraction, Meta, Product, Sort, Variable},
                     GLOBAL_INDEX,
                 },
-                tactics::{type_check_by, type_check_intro, type_check_tactic},
+                tactics::{
+                    type_check_exact, type_check_intro, type_check_tactic,
+                },
             },
             interface::{Interactive, TypeTheory},
         },
@@ -183,7 +185,7 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_by() {
+    fn test_exact() {
         let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
         let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
         let mut test_env = Cic::default_environment();
@@ -193,19 +195,24 @@ mod unit_tests {
 
         let proof_term = Variable("n".to_string(), GLOBAL_INDEX);
         assert_eq!(
-            type_check_by(&mut test_env, &nat, &Cic::proof_hole(), &proof_term),
+            type_check_exact(
+                &mut test_env,
+                &nat,
+                &Cic::proof_hole(),
+                &proof_term
+            ),
             Ok((proof_term.clone(), Cic::empty_target())),
-            "By tactic checking doesnt accept simple type inhabiting"
+            "Exact tactic checking doesnt accept simple type inhabiting"
         );
         assert!(
-            type_check_by(
+            type_check_exact(
                 &mut test_env,
                 &boolean,
                 &Cic::proof_hole(),
                 &proof_term
             )
             .is_err(),
-            "By tactic checking accepts term with wrong type"
+            "Exact tactic checking accepts term with wrong type"
         );
     }
 }

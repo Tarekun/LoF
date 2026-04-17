@@ -74,7 +74,7 @@ pub enum Tactic<E> {
     Begin(),
     Qed(),
     Intro(String, E),
-    By(E),
+    Exact(E),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum LofAst {
