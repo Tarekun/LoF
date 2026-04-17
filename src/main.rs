@@ -55,8 +55,18 @@ pub mod type_theory {
     }
 }
 mod tests {
-    mod fol {
-        mod utils;
+    mod parser {
+        mod commons;
+        mod expressions;
+        mod statements;
+        mod tactics;
+    }
+    mod type_theory {
+        mod fol {
+            mod elaboration;
+            mod type_check;
+            mod utils;
+        }
     }
 }
 

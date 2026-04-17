@@ -1,0 +1,74 @@
+#[cfg(test)]
+mod unit_tests {
+    use crate::{
+        config::Config,
+        parser::api::Expression::VarUse,
+        parser::api::LofParser,
+        parser::api::Tactic::{Begin, By, Qed, Suppose},
+    };
+
+    #[test]
+    fn test_interactive_proof() {
+        let parser = LofParser::new(Config::default());
+
+        assert_eq!(
+            parser.parse_interactive_proof("begin qed."),
+            Ok(("", vec![Begin(), Qed()])),
+            "Interactive proof parser doesnt construct proper AST"
+        );
+        assert!(
+            parser.parse_interactive_proof("begin").is_ok(),
+            "Interactive proof parser doesnt read partial proof"
+        );
+        assert!(
+            parser.parse_interactive_proof("suppose n:Nat").is_err(), 
+            "Interactive proof parser reads a proof that doesnt start with begin tactic"
+        );
+    }
+
+    #[test]
+    fn test_suppose() {
+        let parser = LofParser::new(Config::default());
+
+        assert_eq!(
+            parser.parse_tactic("suppose n:Nat"),
+            Ok(("", Suppose("n".to_string(), VarUse("Nat".to_string())))),
+            "Suppose parser doesnt construct the proper node"
+        );
+        assert!(
+            parser
+                .parse_tactic("\n\r\t suppose   \t n\t:\t \rNat   ")
+                .is_ok(),
+            "Suppose parser cant cope with whitespaces"
+        );
+        assert!(
+            parser.parse_tactic("suppose Q : ∀n:Nat. P n").is_ok(),
+            "Suppose parser cant cope with more complex type expressions"
+        );
+        assert!(
+            parser.parse_tactic("supposen:Nat").is_err(),
+            "Suppose parser doesnt split keyword and variable names"
+        );
+    }
+
+    #[test]
+    fn test_by() {
+        let parser = LofParser::new(Config::default());
+
+        assert_eq!(
+            parser.parse_tactic("by p"),
+            Ok(("", By(VarUse("p".to_string())))),
+            "By parser doesnt construct the proper node"
+        );
+
+        assert!(
+            parser.parse_tactic("\n\t      \r\n \t by  \t p").is_ok(),
+            "By parser cant cope with whitespaces"
+        );
+        assert!(
+            parser.parse_tactic("by λn:Nat.n").is_ok(),
+            "By parser cant cope with composite terms"
+        );
+    }
+}
+//########################### UNIT TESTS
