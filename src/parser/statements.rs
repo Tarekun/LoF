@@ -47,10 +47,7 @@ impl LofParser {
             preceded(multispace0, |input| self.parse_expression(input))(input)?;
         let (input, _) = preceded(multispace0, char(';'))(input)?;
 
-        Ok((
-            input,
-            Global(var_name.to_string(), opt_type, Box::new(term)),
-        ))
+        Ok((input, Global(var_name.to_string(), opt_type, term)))
     }
     //
     //

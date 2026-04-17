@@ -119,7 +119,7 @@ mod unit_tests {
                 Global(
                     "n".to_string(),
                     Some(VarUse("nat".to_string())),
-                    Box::new(VarUse("x".to_string()))
+                    VarUse("x".to_string())
                 )
             ),
             "Global definition struct isnt properly constructed"

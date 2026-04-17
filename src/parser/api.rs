@@ -47,7 +47,7 @@ pub enum Statement {
         Union<Expression, Vec<Tactic<Expression>>>,
     ),
     /// (var_name, var_type, definition_body)
-    Global(String, Option<Expression>, Box<Expression>),
+    Global(String, Option<Expression>, Expression),
     /// (fun_name, args, out_type, body, is_rec)
     Fun(
         String,

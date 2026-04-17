@@ -61,8 +61,12 @@ mod tests {
         mod statements;
         mod tactics;
     }
-    mod fol {
-        mod utils;
+    mod type_theory {
+        mod fol {
+            mod elaboration;
+            mod type_check;
+            mod utils;
+        }
     }
 }
 
