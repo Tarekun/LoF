@@ -254,7 +254,7 @@ fn elaborate_dir_root(
     let mut schedule = Schedule::new();
     for sub_ast in asts {
         match sub_ast {
-            LofAst::Stm(Statement::FileRoot(file_path, file_contet)) => {
+            LofAst::Stm(Statement::FileRoot(file_path, file_contet), _) => {
                 let content = elaborate_file_root(
                     &format!("{}/{}", dir_path, file_path),
                     file_contet,

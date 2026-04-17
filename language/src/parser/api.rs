@@ -6,6 +6,12 @@ use crate::{
 use nom::{branch::alt, combinator::map, multi::many0, IResult};
 use std::{cell::RefCell, collections::BTreeMap};
 
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct Span {
+    pub line: u32,
+    pub col: u32,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     VarUse(String),
@@ -79,8 +85,8 @@ pub enum Tactic<E> {
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum LofAst {
-    Stm(Statement),
-    Exp(Expression),
+    Stm(Statement, Span),
+    Exp(Expression, Span),
 }
 
 #[derive(Debug)]
@@ -94,23 +100,62 @@ pub struct Notation {
 pub struct LofParser {
     pub config: Config,
     pub custom_notations: RefCell<BTreeMap<i32, Notation>>,
+    current_source: RefCell<Option<String>>,
 }
 impl LofParser {
     pub fn new(config: Config) -> LofParser {
         LofParser {
             config,
             custom_notations: RefCell::new(BTreeMap::new()),
+            current_source: RefCell::new(None),
         }
+    }
+
+    /// Converts a byte offset within `source` to a (line, col) Span (0-indexed).
+    fn offset_to_span(source: &str, byte_offset: usize) -> Span {
+        let bytes = source.as_bytes();
+        let before = &bytes[..byte_offset.min(bytes.len())];
+        let line = before.iter().filter(|&&b| b == b'\n').count() as u32;
+        let col = match before.iter().rposition(|&b| b == b'\n') {
+            Some(last_nl) => byte_offset - last_nl - 1,
+            None => byte_offset,
+        } as u32;
+        Span { line, col }
+    }
+
+    /// Returns the Span of `input` relative to the currently stored source string.
+    /// Falls back to Span::default() if no source is stored or the pointer is out of range.
+    fn input_to_span(&self, input: &str) -> Span {
+        let source = self.current_source.borrow();
+        if let Some(src) = source.as_deref() {
+            let base = src.as_ptr() as usize;
+            let ptr = input.as_ptr() as usize;
+            if ptr >= base && ptr <= base + src.len() {
+                return Self::offset_to_span(src, ptr - base);
+            }
+        }
+        Span::default()
     }
 
     /// Top level parser for single nodes that wraps expressions and statements
     pub fn parse_node<'a>(&self, input: &'a str) -> IResult<&'a str, LofAst> {
-        alt((
-            map(|input| self.parse_expression(input), LofAst::Exp),
-            map(|input| self.parse_statement(input), LofAst::Stm),
+        let span = self.input_to_span(input);
+        let result = alt((
+            map(
+                |input| self.parse_expression(input),
+                |exp| LofAst::Exp(exp, span.clone()),
+            ),
+            map(
+                |input| self.parse_statement(input),
+                |stm| LofAst::Stm(stm, span.clone()),
+            ),
             // TODO why tf was this here? find why + test if it needs to stay here
-            map(|input| self.parse_theory_block(input), LofAst::Stm),
-        ))(input)
+            map(
+                |input| self.parse_theory_block(input),
+                |stm| LofAst::Stm(stm, span.clone()),
+            ),
+        ))(input);
+        result
     }
 
     /// Fully parses the source file at `filepath` and returns its corresponding AST
@@ -121,7 +166,11 @@ impl LofParser {
                 panic!("Error reading file: {:?}", e);
             }
         };
+        // save and restore to handle nested calls like parse_import
+        let prev_source = self.current_source.borrow().clone();
+        *self.current_source.borrow_mut() = Some(source.clone());
         let result = many0(|input| self.parse_node(input))(&source);
+        *self.current_source.borrow_mut() = prev_source;
         let (remaining_input, terms) = match result {
             Ok((remaining, terms)) => (remaining, terms),
             Err(e) => {
@@ -131,7 +180,10 @@ impl LofParser {
 
         (
             remaining_input.to_string(),
-            LofAst::Stm(Statement::FileRoot(filepath.to_string(), terms)),
+            LofAst::Stm(
+                Statement::FileRoot(filepath.to_string(), terms),
+                Span::default(),
+            ),
         )
     }
 
@@ -180,6 +232,9 @@ impl LofParser {
         if !errors.is_empty() {
             return Err(errors.join("\n"));
         }
-        Ok(LofAst::Stm(Statement::DirRoot(workspace.to_string(), asts)))
+        Ok(LofAst::Stm(
+            Statement::DirRoot(workspace.to_string(), asts),
+            Span::default(),
+        ))
     }
 }

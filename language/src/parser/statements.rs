@@ -30,8 +30,8 @@ impl LofParser {
 
         let (_, ast) = self.parse_source_file(&format!("{}.lof", filepath));
         match ast {
-            LofAst::Stm(file_root_stm) => Ok((input, file_root_stm)),
-            LofAst::Exp(_exp) => panic!("fuck this type system fr"),
+            LofAst::Stm(file_root_stm, _) => Ok((input, file_root_stm)),
+            LofAst::Exp(_exp, _) => panic!("fuck this type system fr"),
         }
     }
     //

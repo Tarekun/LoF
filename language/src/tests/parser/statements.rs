@@ -6,7 +6,7 @@ mod unit_tests {
         parser::api::{
             Expression::{Application, Arrow, TypeProduct, VarUse},
             LofAst::Exp,
-            LofParser, Notation,
+            LofParser, Notation, Span,
             Statement::{
                 Auto, Axiom, Comment, EmptyRoot, Fun, Global, HClause,
                 Inductive, Solve, Theorem,
@@ -438,7 +438,7 @@ mod unit_tests {
         let fol_parser = LofParser::new(Config::new(TypeSystem::Fol));
         assert_eq!(
             cic_parser.parse_statement("!theory_block cic TYPE !end_block"),
-            Ok(("", EmptyRoot(vec![Exp(VarUse("TYPE".to_string()))]))),
+            Ok(("", EmptyRoot(vec![Exp(VarUse("TYPE".to_string()), Span::default())]))),
             "Theory block parser didnt read the right theory block"
         );
         assert_eq!(

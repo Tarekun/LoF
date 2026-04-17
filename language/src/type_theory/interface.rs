@@ -60,8 +60,8 @@ pub trait TypeTheory {
         Self: Sized,
     {
         match node {
-            LofAst::Exp(exp) => Ok(L(Self::elaborate_expression(exp)?)),
-            LofAst::Stm(stm) => {
+            LofAst::Exp(exp, _) => Ok(L(Self::elaborate_expression(exp)?)),
+            LofAst::Stm(stm, _) => {
                 //TODO in case of nested staments this has no concept of schedule and picks the first element at random
                 let first_stm = Self::elaborate_statement(stm)?
                     .peek_first()
@@ -83,11 +83,11 @@ pub trait TypeTheory {
         let mut schedule = Schedule::new();
 
         match ast {
-            LofAst::Exp(exp) => {
+            LofAst::Exp(exp, _) => {
                 let exp = Self::elaborate_expression(exp)?;
                 schedule.add_expression(&exp);
             }
-            LofAst::Stm(stm) => {
+            LofAst::Stm(stm, _) => {
                 let subschedule = Self::elaborate_statement(stm)?;
                 schedule.extend(&subschedule);
             }

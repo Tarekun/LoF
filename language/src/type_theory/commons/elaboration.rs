@@ -17,13 +17,13 @@ pub fn elaborate_ast_vector<T: TypeTheory>(
 
     for sub_ast in asts {
         match sub_ast {
-            LofAst::Stm(stm) => match T::elaborate_statement(&stm) {
+            LofAst::Stm(stm, _) => match T::elaborate_statement(&stm) {
                 Err(message) => errors.push(message),
                 Ok(stms) => {
                     schedule.extend(&stms);
                 }
             },
-            LofAst::Exp(exp) => match T::elaborate_expression(&exp) {
+            LofAst::Exp(exp, _) => match T::elaborate_expression(&exp) {
                 Err(message) => errors.push(message),
                 Ok(exp) => schedule.add_expression(&exp),
             },
@@ -56,7 +56,7 @@ pub fn elaborate_dir_root<T: TypeTheory>(
 
     for sub_ast in asts {
         match sub_ast {
-            LofAst::Stm(Statement::FileRoot(file_path, file_contet)) => {
+            LofAst::Stm(Statement::FileRoot(file_path, file_contet), _) => {
                 let file_content = elaborate_file_root(
                     &format!("{}/{}", dir_path, file_path),
                     file_contet,
