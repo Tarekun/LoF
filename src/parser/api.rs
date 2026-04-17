@@ -73,7 +73,7 @@ pub enum Statement {
 pub enum Tactic<E> {
     Begin(),
     Qed(),
-    Suppose(String, E),
+    Intro(String, E),
     By(E),
 }
 #[derive(Debug, PartialEq, Clone)]

@@ -1,7 +1,7 @@
 use super::cic::CicTerm;
 use super::cic::CicTerm::{Abstraction, Product};
 use super::cic_utils::swap_body;
-use crate::parser::api::Tactic::{self, By, Suppose};
+use crate::parser::api::Tactic::{self, By, Intro};
 use crate::type_theory::cic::cic::Cic;
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{Interactive, Kernel, Refiner, TypeTheory};
@@ -13,7 +13,7 @@ pub fn type_check_tactic(
     partial_proof: &CicTerm,
 ) -> Result<(CicTerm, CicTerm), String> {
     match tactic {
-        Suppose(ass_name, ass_type) => type_check_suppose(
+        Intro(ass_name, ass_type) => type_check_intro(
             environment,
             target,
             partial_proof,
@@ -28,7 +28,7 @@ pub fn type_check_tactic(
 }
 //
 //
-fn type_check_suppose(
+fn type_check_intro(
     _: &mut Environment<Cic>,
     target: &CicTerm,
     partial_proof: &CicTerm,
@@ -54,7 +54,7 @@ fn type_check_suppose(
         },
         _ => {
             Err(format!(
-                "Suppose tactic not allowed: current proof target {:?} is not a dependent product",
+                "Intro tactic not allowed: current proof target {:?} is not a dependent product",
                 target
             ))
         }
@@ -83,7 +83,7 @@ fn type_check_by(
 #[cfg(test)]
 mod unit_tests {
     use crate::{
-        parser::api::Tactic::Suppose,
+        parser::api::Tactic::Intro,
         type_theory::{
             cic::{
                 cic::{
@@ -91,21 +91,19 @@ mod unit_tests {
                     CicTerm::{Abstraction, Meta, Product, Sort, Variable},
                     GLOBAL_INDEX,
                 },
-                tactics::{
-                    type_check_by, type_check_suppose, type_check_tactic,
-                },
+                tactics::{type_check_by, type_check_intro, type_check_tactic},
             },
             interface::{Interactive, TypeTheory},
         },
     };
 
     #[test]
-    fn test_suppose() {
+    fn test_intro() {
         let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
         let mut test_env = Cic::default_environment();
 
         assert_eq!(
-            type_check_suppose(
+            type_check_intro(
                 &mut test_env,
                 &Product(
                     "n".to_string(),
@@ -124,10 +122,10 @@ mod unit_tests {
                 ),
                 nat.clone()
             )),
-            "Suppose tactic checking isnt working as expected"
+            "Intro tactic checking isnt working as expected"
         );
         assert!(
-            type_check_suppose(
+            type_check_intro(
                 &mut test_env,
                 &Product(
                     "n".to_string(),
@@ -138,11 +136,11 @@ mod unit_tests {
                 "ass",
                 &nat.clone(),
             ).is_ok(),
-            "Suppose tactic checking isnt working with missmatched variable names"
+            "Intro tactic checking isnt working with missmatched variable names"
         );
 
         assert!(
-            type_check_suppose(
+            type_check_intro(
                 &mut test_env,
                 &Product(
                     "n".to_string(),
@@ -153,13 +151,13 @@ mod unit_tests {
                 "ass",
                 &Meta(0),
             ).is_ok(),
-            "Suppose tactic checking isnt working with unspecified assumption type"
+            "Intro tactic checking isnt working with unspecified assumption type"
         );
 
         assert!(
             type_check_tactic(
                 &mut test_env,
-                &Suppose("ass".to_string(), nat.clone()),
+                &Intro("ass".to_string(), nat.clone()),
                 &Product(
                     "n".to_string(),
                     Box::new(nat.clone()),
@@ -168,11 +166,11 @@ mod unit_tests {
                 &Cic::proof_hole()
             )
             .is_ok(),
-            "Top-level tactic checker doesnt support suppose"
+            "Top-level tactic checker doesnt support intro"
         );
 
         assert!(
-            type_check_suppose(
+            type_check_intro(
                 &mut test_env,
                 &nat,
                 &Cic::proof_hole(),
@@ -180,7 +178,7 @@ mod unit_tests {
                 &nat.clone(),
             )
             .is_err(),
-            "Suppose tactic checking accepts tactic with unassumable target"
+            "Intro tactic checking accepts tactic with unassumable target"
         );
     }
 

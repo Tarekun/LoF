@@ -1,7 +1,7 @@
 use crate::{
     parser::api::{
         Expression, LofAst, Statement,
-        Tactic::{self, Begin, By, Qed, Suppose},
+        Tactic::{self, Begin, By, Intro, Qed},
     },
     runtime::program::Schedule,
     type_theory::interface::TypeTheory,
@@ -82,7 +82,7 @@ pub fn elaborate_tactic<E, F: Fn(Expression) -> E>(
     match tactic {
         Begin() => Ok(Begin()),
         Qed() => Ok(Qed()),
-        Suppose(assumption_name, formula) => elaborate_suppose::<E, F>(
+        Intro(assumption_name, formula) => elaborate_intro::<E, F>(
             assumption_name,
             formula,
             elaborate_expression,
@@ -95,12 +95,12 @@ pub fn elaborate_tactic<E, F: Fn(Expression) -> E>(
 }
 //
 //
-fn elaborate_suppose<E, F: Fn(Expression) -> E>(
+fn elaborate_intro<E, F: Fn(Expression) -> E>(
     assumption_name: String,
     formula: Expression,
     elaborate_expression: F,
 ) -> Result<Tactic<E>, String> {
-    Ok(Suppose(assumption_name, elaborate_expression(formula)))
+    Ok(Intro(assumption_name, elaborate_expression(formula)))
 }
 //
 //
@@ -118,31 +118,31 @@ mod unit_tests {
     use crate::{
         parser::api::{
             Expression,
-            Tactic::{By, Suppose},
+            Tactic::{By, Intro},
         },
         type_theory::{
             cic::{
                 cic::{CicTerm::Variable, GLOBAL_INDEX},
                 elaboration::elaborate_expression,
             },
-            commons::elaboration::{elaborate_by, elaborate_suppose},
+            commons::elaboration::{elaborate_by, elaborate_intro},
         },
     };
 
     //TODO: this only checks CIC. is that enough or should i support others?
     #[test]
-    fn test_suppose_elaboration() {
+    fn test_intro_elaboration() {
         assert_eq!(
-            elaborate_suppose(
+            elaborate_intro(
                 "n".to_string(),
                 Expression::VarUse("Nat".to_string()),
                 |exp| elaborate_expression(&exp)
             ),
-            Ok(Suppose(
+            Ok(Intro(
                 "n".to_string(),
                 Variable("Nat".to_string(), GLOBAL_INDEX)
             )),
-            "Suppose elaboration doesnt produce expected tactic"
+            "Intro elaboration doesnt produce expected tactic"
         );
     }
 
@@ -153,7 +153,7 @@ mod unit_tests {
                 elaborate_expression(&exp)
             }),
             Ok(By(Variable("p".to_string(), GLOBAL_INDEX))),
-            "Suppose elaboration doesnt produce expected tactic"
+            "By elaboration doesnt produce expected tactic"
         );
     }
 }
