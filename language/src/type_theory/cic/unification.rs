@@ -8,6 +8,7 @@ use crate::type_theory::cic::cic_utils::{
 };
 use crate::type_theory::commons::unification::{unify, Substitution};
 use crate::type_theory::environment::{Constraint, Environment};
+use crate::type_theory::interface::Reducer;
 use std::collections::{HashMap, VecDeque};
 
 fn is_substitutable(term: &CicTerm) -> Option<String> {
@@ -201,11 +202,13 @@ pub fn cic_so_unification(
 }
 
 pub fn cic_unification(
-    _: &mut Environment<Cic>,
+    environment: &mut Environment<Cic>,
     term1: &CicTerm,
     term2: &CicTerm,
 ) -> Result<bool, String> {
-    Ok(cic_so_unification(term1, term2).is_ok())
+    let norm1 = Cic::normalize_term(environment, term1);
+    let norm2 = Cic::normalize_term(environment, term2);
+    Ok(cic_so_unification(&norm1, &norm2).is_ok())
 }
 
 // TODO fully get rid of this function. nowhere in the code this should be used
@@ -757,6 +760,113 @@ mod unit_tests {
                 name_key
             ),
             "occurs check passes on a term that doesnt reference the variable"
+        );
+    }
+
+    #[test]
+    fn test_plus_zero_one_unification() {
+        use crate::type_theory::cic::cic::{
+            Cic,
+            CicStm::{Fun, InductiveDef},
+        };
+        use crate::type_theory::cic::unification::cic_unification;
+        use crate::type_theory::interface::{Kernel, TypeTheory};
+
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let mut env = Cic::default_environment();
+
+        Cic::type_check_stm(
+            &InductiveDef(
+                "Nat".to_string(),
+                vec![],
+                Box::new(Sort("TYPE".to_string())),
+                vec![
+                    ("z".to_string(), nat.clone()),
+                    (
+                        "s".to_string(),
+                        Product(
+                            "_".to_string(),
+                            Box::new(nat.clone()),
+                            Box::new(nat.clone()),
+                        ),
+                    ),
+                ],
+            ),
+            &mut env,
+        )
+        .expect("Failed to set up Nat");
+
+        Cic::type_check_stm(
+            &Fun(
+                "plus".to_string(),
+                vec![
+                    ("n".to_string(), nat.clone()),
+                    ("m".to_string(), nat.clone()),
+                ],
+                Box::new(nat.clone()),
+                Box::new(Match(
+                    Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                    vec![
+                        (
+                            Variable("z".to_string(), GLOBAL_INDEX),
+                            Variable("m".to_string(), GLOBAL_INDEX),
+                        ),
+                        (
+                            Application(
+                                Box::new(Variable(
+                                    "s".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                                Box::new(Variable(
+                                    "nn".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                            ),
+                            Application(
+                                Box::new(Variable(
+                                    "s".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                                Box::new(Application(
+                                    Box::new(Application(
+                                        Box::new(Variable(
+                                            "plus".to_string(),
+                                            GLOBAL_INDEX,
+                                        )),
+                                        Box::new(Variable(
+                                            "nn".to_string(),
+                                            GLOBAL_INDEX,
+                                        )),
+                                    )),
+                                    Box::new(Variable(
+                                        "m".to_string(),
+                                        GLOBAL_INDEX,
+                                    )),
+                                )),
+                            ),
+                        ),
+                    ],
+                )),
+                true,
+            ),
+            &mut env,
+        )
+        .expect("Failed to set up plus");
+
+        let z = Variable("z".to_string(), GLOBAL_INDEX);
+        let s = Variable("s".to_string(), GLOBAL_INDEX);
+        let one = Application(Box::new(s.clone()), Box::new(z.clone()));
+        let plus_zero_one = Application(
+            Box::new(Application(
+                Box::new(Variable("plus".to_string(), GLOBAL_INDEX)),
+                Box::new(z.clone()),
+            )),
+            Box::new(one.clone()),
+        );
+
+        assert!(
+            cic_unification(&mut env, &plus_zero_one, &one).unwrap_or(false),
+            "plus(z, s(z)) should unify with s(z) after normalization"
         );
     }
 }
