@@ -6,7 +6,7 @@ use crate::type_theory::cic::cic::Cic;
 use crate::type_theory::cic::cic_utils::{get_arg_types, get_prod_innermost};
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
-    Interactive, Kernel, Refiner, TypeInference, TypeTheory,
+    Interactive, Kernel, Reducer, Refiner, TypeInference, TypeTheory,
 };
 
 pub fn type_check_tactic(
@@ -74,11 +74,15 @@ fn type_check_exact(
     partial_proof: &CicTerm,
     proof_term: &CicTerm,
 ) -> Result<(CicTerm, Vec<CicTerm>), String> {
+    // TODO reevaluate if normalization is needed here: normal forms are already computed by CIC unification
     let proof_type = Cic::type_check_term(proof_term, environment)?;
+    let proof_type_reduced = Cic::normalize_term(environment, &proof_type);
+    let target_reduced = Cic::normalize_term(environment, target);
 
-    if Cic::types_unify(environment, &proof_type, target) {
+    if Cic::types_unify(environment, &proof_type_reduced, &target_reduced) {
         Ok((swap_body(partial_proof, proof_term), vec![]))
     } else {
+        println!("FAILING EXACT DUE TO UNIFICATION CHECK");
         Err(format!(
             "Term type and target don't unify: target is {:?} while expression has type {:?}",
             target, proof_type
@@ -117,13 +121,16 @@ fn type_check_apply(
 #[cfg(test)]
 mod unit_tests {
     use crate::{
-        parser::api::Tactic::{Apply, Intro},
+        misc::Union::R,
+        parser::api::Tactic::{Apply, Exact, Intro},
         type_theory::{
             cic::{
                 cic::{
                     Cic,
+                    CicStm::{Fun, InductiveDef},
                     CicTerm::{
-                        Abstraction, Application, Meta, Product, Sort, Variable,
+                        Abstraction, Application, Match, Meta, Product, Sort,
+                        Variable,
                     },
                     GLOBAL_INDEX,
                 },
@@ -131,7 +138,8 @@ mod unit_tests {
                     type_check_exact, type_check_intro, type_check_tactic,
                 },
             },
-            interface::{Interactive, TypeTheory},
+            commons::type_check::type_check_theorem,
+            interface::{Interactive, Kernel, TypeTheory},
         },
     };
 
@@ -299,6 +307,171 @@ mod unit_tests {
             subgoals,
             vec![premise1, premise2],
             "Apply tactic doesnt track all premises of the applied lemma"
+        );
+    }
+
+    #[test]
+    fn test_refl_equality() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let mut test_env = Cic::default_environment();
+
+        // inductive Nat {z: Nat, s: Nat -> Nat}
+        Cic::type_check_stm(
+            &InductiveDef(
+                "Nat".to_string(),
+                vec![],
+                Box::new(Sort("TYPE".to_string())),
+                vec![
+                    ("z".to_string(), nat.clone()),
+                    (
+                        "s".to_string(),
+                        Product(
+                            "_".to_string(),
+                            Box::new(nat.clone()),
+                            Box::new(nat.clone()),
+                        ),
+                    ),
+                ],
+            ),
+            &mut test_env,
+        )
+        .expect("Failed to set up Nat inductive type");
+
+        // inductive Eq : (T:TYPE) (x:T) : T -> PROP { refl: Eq T x x }
+        Cic::type_check_stm(
+            &InductiveDef(
+                "Eq".to_string(),
+                vec![
+                    ("T".to_string(), Sort("TYPE".to_string())),
+                    ("x".to_string(), Variable("T".to_string(), GLOBAL_INDEX)),
+                ],
+                Box::new(Product(
+                    "_".to_string(),
+                    Box::new(Variable("T".to_string(), GLOBAL_INDEX)),
+                    Box::new(Sort("PROP".to_string())),
+                )),
+                vec![(
+                    "refl".to_string(),
+                    Application(
+                        Box::new(Application(
+                            Box::new(Application(
+                                Box::new(Variable(
+                                    "Eq".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                                Box::new(Variable(
+                                    "T".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                            )),
+                            Box::new(Variable("x".to_string(), GLOBAL_INDEX)),
+                        )),
+                        Box::new(Variable("x".to_string(), GLOBAL_INDEX)),
+                    ),
+                )],
+            ),
+            &mut test_env,
+        )
+        .expect("Failed to set up Eq inductive type");
+
+        // fun rec plus (n:Nat) (m:Nat) : Nat { match n with | z => m, | s nn => s (plus nn m) }
+        Cic::type_check_stm(
+            &Fun(
+                "plus".to_string(),
+                vec![
+                    ("n".to_string(), nat.clone()),
+                    ("m".to_string(), nat.clone()),
+                ],
+                Box::new(nat.clone()),
+                Box::new(Match(
+                    Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                    vec![
+                        (
+                            Variable("z".to_string(), GLOBAL_INDEX),
+                            Variable("m".to_string(), GLOBAL_INDEX),
+                        ),
+                        (
+                            Application(
+                                Box::new(Variable(
+                                    "s".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                                Box::new(Variable(
+                                    "nn".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                            ),
+                            Application(
+                                Box::new(Variable(
+                                    "s".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                                Box::new(Application(
+                                    Box::new(Application(
+                                        Box::new(Variable(
+                                            "plus".to_string(),
+                                            GLOBAL_INDEX,
+                                        )),
+                                        Box::new(Variable(
+                                            "nn".to_string(),
+                                            GLOBAL_INDEX,
+                                        )),
+                                    )),
+                                    Box::new(Variable(
+                                        "m".to_string(),
+                                        GLOBAL_INDEX,
+                                    )),
+                                )),
+                            ),
+                        ),
+                    ],
+                )),
+                true,
+            ),
+            &mut test_env,
+        )
+        .expect("Failed to set up plus function");
+
+        let z = Variable("z".to_string(), GLOBAL_INDEX);
+        let s = Variable("s".to_string(), GLOBAL_INDEX);
+        let one = Application(Box::new(s.clone()), Box::new(z.clone()));
+
+        // theorem: 0 + 1 = 1
+        let theorem = Application(
+            Box::new(Application(
+                Box::new(Application(
+                    Box::new(Variable("Eq".to_string(), GLOBAL_INDEX)),
+                    Box::new(nat.clone()),
+                )),
+                Box::new(Application(
+                    Box::new(Application(
+                        Box::new(Variable("plus".to_string(), GLOBAL_INDEX)),
+                        Box::new(z.clone()),
+                    )),
+                    Box::new(one.clone()),
+                )),
+            )),
+            Box::new(one.clone()),
+        );
+
+        // proof: refl Nat (s z)
+        let proof_term = Application(
+            Box::new(Application(
+                Box::new(Variable("refl".to_string(), GLOBAL_INDEX)),
+                Box::new(nat.clone()),
+            )),
+            Box::new(one.clone()),
+        );
+
+        assert!(
+            type_check_theorem::<Cic>(
+                &mut test_env,
+                "",
+                &theorem,
+                &R(vec![Exact(proof_term)]),
+            )
+            .is_ok(),
+            "Failed to prove Eq Nat (plus z (s z)) (s z) using exact tactic on refl Nat (s z)"
         );
     }
 }

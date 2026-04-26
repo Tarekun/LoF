@@ -326,7 +326,7 @@ impl Refiner for Cic {
         match cic_unification(environment, term1, term2) {
             Ok(res) => res,
             //TODO: better handling
-            Err(message) => panic!("{}", message),
+            Err(message) => false,
         }
     }
 
@@ -338,7 +338,7 @@ impl Refiner for Cic {
         match cic_unification(environment, type1, type2) {
             Ok(res) => res,
             //TODO: better handling
-            Err(message) => panic!("{}", message),
+            Err(message) => false,
         }
     }
 }

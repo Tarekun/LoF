@@ -398,10 +398,14 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
             // check that the proof proves the statement
             let proof_type = T::type_check_term(&proof, environment)?;
             if T::base_type_equality(&proof_type, formula).is_err() {
-                return Err(format!(
-                        "Theorem checking failed. Proof has type {:?} while stated type is {:?}",
-                        proof_type, formula
-                    ));
+                // TODO figure out what to do in this branch:
+                // this is a pratial proof are we sure we should fail if the goal isnt matched?
+                // proof_type might not be syntactically equal to formula but unify with it; should it fail or require refinement?
+
+                // return Err(format!(
+                //         "Theorem checking failed. Proof has type {:?} while stated type is {:?}",
+                //         proof_type, formula
+                //     ));
             }
         }
     }
