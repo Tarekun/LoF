@@ -98,6 +98,9 @@ pub fn evaluate_statement(
                 proof,
             )
         }
+        FolStm::Solve(_) => {
+            // evaluation implemented in a later step
+        }
         FolStm::Auto(target) => {
             if let Err(message) = evaluate_auto::<Fol, _, _>(
                 environment,

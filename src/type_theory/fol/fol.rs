@@ -14,7 +14,7 @@ use crate::type_theory::environment::Environment;
 use crate::type_theory::fol::fol::FolFormula::{
     Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
 };
-use crate::type_theory::fol::fol::FolStm::{Auto, Axiom, Fun, Global, Theorem};
+use crate::type_theory::fol::fol::FolStm::{Auto, Axiom, Fun, Global, Solve, Theorem};
 use crate::type_theory::fol::fol::FolTerm::{
     Abstraction, Application, Let, Tuple, Variable,
 };
@@ -66,6 +66,7 @@ pub enum FolStm {
         bool,
     ),
     Auto(FolFormula),
+    Solve(Vec<FolFormula>),
 }
 
 pub struct Fol;
@@ -218,6 +219,7 @@ impl Kernel for Fol {
                 proof,
             ),
             Auto(formula) => type_check_auto::<Fol>(environment, formula),
+            Solve(_) => Err("Solve type checking not yet implemented".to_string()),
         }
     }
 }

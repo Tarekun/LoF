@@ -1,5 +1,5 @@
 use super::fol::FolFormula::{Arrow, Disjunction, ForAll, Predicate};
-use super::fol::FolStm::{Auto, Axiom, Fun, Global, Theorem};
+use super::fol::FolStm::{Auto, Axiom, Fun, Global, Solve, Theorem};
 use super::fol::FolTerm::{Abstraction, Application, Let, Tuple, Variable};
 use super::fol::{Fol, FolFormula, FolTerm};
 use crate::misc::simple_map;
@@ -171,22 +171,24 @@ pub fn elaborate_application(
     function: &Expression,
     args: &Vec<Expression>,
 ) -> Result<Union<FolTerm, FolFormula>, String> {
-    let fun_term: FolTerm = expect_term(elaborate_expression(function)?)?;
+    let fun_elaborated = elaborate_expression(function)?;
+
+    // PascalCase head: type-level predicate application (e.g. NatEq t1 t2)
+    if let Union::R(Predicate(pred_name, _)) = fun_elaborated {
+        let mut unwrapped = vec![];
+        for arg in args {
+            unwrapped.push(expect_term(elaborate_expression(arg)?)?);
+        }
+        return wrap_type::<Fol>(Ok(Predicate(pred_name, unwrapped)));
+    }
+
+    // lowercase head: term-level curried application (e.g. f x y)
+    let fun_term = expect_term(fun_elaborated)?;
     let arg_terms =
         simple_map(args.to_owned(), |arg| elaborate_expression(&arg));
     let mut unwrapped: Vec<FolTerm> = vec![];
     for term in arg_terms {
         unwrapped.push(expect_term(term?)?);
-    }
-
-    if let Variable(applied_name) = &fun_term {
-        let pascal_case = Regex::new(r"^[A-Z][a-zA-Z]*$").unwrap();
-        if pascal_case.is_match(&applied_name) {
-            return wrap_type::<Fol>(Ok(Predicate(
-                applied_name.to_string(),
-                unwrapped,
-            )));
-        }
     }
 
     wrap_term::<Fol>(Ok(unwrapped.into_iter().fold(fun_term, |acc, arg| {
@@ -294,6 +296,9 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Fol>, String> {
         }
         Statement::Auto(formula) => {
             Ok(Schedule::singleton_stm(elaborate_auto(formula)?))
+        }
+        Statement::Solve(goals) => {
+            Ok(Schedule::singleton_stm(elaborate_solve(goals)?))
         }
         _ => Err(format!("Language construct {:?} not supported in FOL", ast)),
     }
@@ -429,6 +434,15 @@ fn elaborate_auto(formula: &Expression) -> Result<FolStm, String> {
     let formula = elaborate_expression(formula)?;
 
     Ok(Auto(expect_type(formula)?))
+}
+//
+//
+fn elaborate_solve(goals: &Vec<Expression>) -> Result<FolStm, String> {
+    let mut fol_goals = vec![];
+    for goal in goals {
+        fol_goals.push(expect_type(elaborate_expression(goal)?)?);
+    }
+    Ok(Solve(fol_goals))
 }
 //
 //########################### STATEMENTS ELABORATION
