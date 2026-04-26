@@ -81,7 +81,12 @@ impl TypeTheory for Fol {
         Environment::with_defaults(
             vec![],
             vec![],
-            vec![("Unit", &vec![]), ("Top", &vec![])],
+            vec![
+                ("Unit", &vec![]),
+                ("Top", &vec![]),
+                ("TYPE", &vec![]),
+                ("PROP", &vec![]),
+            ],
         )
     }
 
@@ -219,7 +224,12 @@ impl Kernel for Fol {
                 proof,
             ),
             Auto(formula) => type_check_auto::<Fol>(environment, formula),
-            Solve(_) => Err("Solve type checking not yet implemented".to_string()),
+            Solve(goals) => {
+                for goal in goals {
+                    Fol::type_check_type(goal, environment)?;
+                }
+                Ok(Predicate("Solved".to_string(), vec![]))
+            }
         }
     }
 }
