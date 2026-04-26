@@ -1,11 +1,16 @@
 use crate::{
+    config::SelectionFunction,
     misc::Union,
     parser::api::Tactic,
     type_theory::{
-        commons::utils::eta_expand,
+        commons::{unification::Substitution, utils::eta_expand},
         environment::Environment,
         interface::{Automatic, Kernel, Reducer, TypeTheory},
-        sup::sup::{Sup, SupFormula},
+        sup::{
+            freedom::{get_selection_fn, pick_clause},
+            saturation::saturate,
+            sup::{Sup, SupFormula, SupTerm},
+        },
     },
 };
 
@@ -173,5 +178,32 @@ pub fn evaluate_auto<
     saturation_set.extend(clausified_target);
 
     Sup::saturate(&saturation_set)
+}
+
+/// Evaluates the solve statement by clausifying the negated goals and context hypotheses,
+/// running SUP saturation, and returning the answer substitution.
+/// Unlike evaluate_auto, this calls saturate directly to recover the Substitution.
+pub fn evaluate_solve<
+    T: TypeTheory,
+    F: Fn(&T::Type) -> Result<Vec<SupFormula>, String>,
+    G: Fn(&T::Type) -> T::Type,
+>(
+    environment: &mut Environment<T>,
+    goals: &Vec<T::Type>,
+    clausify: F,
+    complement: G,
+) -> Result<Substitution<SupTerm>, String> {
+    let mut saturation_set = vec![];
+    let context = environment.get_context();
+
+    for (_, var_type) in context.iter() {
+        saturation_set.extend(clausify(var_type)?);
+    }
+    for goal in goals {
+        saturation_set.extend(clausify(&complement(goal))?);
+    }
+
+    let selection_fn = get_selection_fn(SelectionFunction::Maximal());
+    saturate(&saturation_set, &selection_fn, pick_clause)
 }
 //########################### STATEMENTS EXECUTION

@@ -9,7 +9,7 @@ use super::fol::{
 };
 use super::fol_utils::make_multiarg_fun_type;
 use crate::type_theory::commons::evaluation::{
-    evaluate_auto, evaluate_fun, reduce_application, reduce_let,
+    evaluate_auto, evaluate_fun, evaluate_solve, reduce_application, reduce_let,
 };
 use crate::type_theory::fol::fol_utils::clausify;
 use crate::{
@@ -98,8 +98,18 @@ pub fn evaluate_statement(
                 proof,
             )
         }
-        FolStm::Solve(_) => {
-            // evaluation implemented in a later step
+        FolStm::Solve(goals) => {
+            match evaluate_solve::<Fol, _, _>(
+                environment,
+                goals,
+                clausify,
+                |phi| Not(Box::new(phi.to_owned())),
+            ) {
+                Ok(substitution) => {
+                    info!("Solve succeeded:\n{:?}", substitution)
+                }
+                Err(message) => error!("Solve failed: {message}"),
+            }
         }
         FolStm::Auto(target) => {
             if let Err(message) = evaluate_auto::<Fol, _, _>(
