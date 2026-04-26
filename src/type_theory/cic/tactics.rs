@@ -82,7 +82,6 @@ fn type_check_exact(
     if Cic::types_unify(environment, &proof_type_reduced, &target_reduced) {
         Ok((swap_body(partial_proof, proof_term), vec![]))
     } else {
-        println!("FAILING EXACT DUE TO UNIFICATION CHECK");
         Err(format!(
             "Term type and target don't unify: target is {:?} while expression has type {:?}",
             target, proof_type
@@ -97,6 +96,7 @@ fn type_check_apply(
     partial_proof: &CicTerm,
     lemma: &CicTerm,
 ) -> Result<(CicTerm, Vec<CicTerm>), String> {
+    // TODO see if i should be able to use a bigger term than the innermost as conclusion to unify
     let conclusion = get_prod_innermost(lemma);
     if Cic::type_unify(target, conclusion).is_ok() {
         let premises = get_arg_types(lemma);
