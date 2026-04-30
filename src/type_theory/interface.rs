@@ -220,7 +220,7 @@ pub trait Reducer: TypeTheory {
     fn evaluate_statement(
         environment: &mut Environment<Self>,
         stm: &Self::Stm,
-    ) -> ()
+    ) -> Result<(), String>
     where
         Self: Sized;
 }

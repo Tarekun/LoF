@@ -92,8 +92,7 @@ where
     }
 
     pub fn execute_statement(&mut self, stm: &T::Stm) -> Result<(), String> {
-        let _ = T::evaluate_statement(&mut self.environment, stm);
-        Ok(())
+        T::evaluate_statement(&mut self.environment, stm)
     }
 
     /// Execute the prorgam schedule

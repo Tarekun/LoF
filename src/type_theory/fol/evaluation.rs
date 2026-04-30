@@ -1,5 +1,3 @@
-use tracing::{error, info};
-
 use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
 use super::fol::{
     Fol,
@@ -68,7 +66,7 @@ fn fol_reduce_application(
 pub fn evaluate_statement(
     environment: &mut Environment<Fol>,
     stm: &FolStm,
-) -> () {
+) -> Result<(), String> {
     match stm {
         Axiom(axiom_name, formula) => {
             evaluate_axiom::<Fol>(environment, axiom_name, formula)
@@ -99,29 +97,14 @@ pub fn evaluate_statement(
             )
         }
         FolStm::Solve(goals) => {
-            match evaluate_solve::<Fol, _, _>(
-                environment,
-                goals,
-                clausify,
-                |phi| Not(Box::new(phi.to_owned())),
-            ) {
-                Ok(substitution) => {
-                    info!("Solve succeeded:\n{:?}", substitution)
-                }
-                Err(message) => error!("Solve failed: {message}"),
-            }
+            evaluate_solve::<Fol, _, _>(environment, goals, clausify, |phi| {
+                Not(Box::new(phi.to_owned()))
+            })
         }
         FolStm::Auto(target) => {
-            if let Err(message) = evaluate_auto::<Fol, _, _>(
-                environment,
-                target,
-                clausify,
-                |phi| Not(Box::new(phi.to_owned())),
-            ) {
-                error!("ATP algorithm failed: {message}");
-            } else {
-                info!("ATP algorithm proved the target successfully!");
-            }
+            evaluate_auto::<Fol, _, _>(environment, target, clausify, |phi| {
+                Not(Box::new(phi.to_owned()))
+            })
         }
     }
 }

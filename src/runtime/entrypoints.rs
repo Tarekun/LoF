@@ -162,7 +162,12 @@ pub fn interactive<T: TypeTheory + Kernel + Reducer>(
                     }
                     Ok(_) => {}
                 }
-                let () = T::evaluate_statement(&mut program.environment, &stm);
+                if let Err(msg) =
+                    T::evaluate_statement(&mut program.environment, &stm)
+                {
+                    println!("Execution error: {}", msg);
+                    panic!();
+                }
             }
         }
     }

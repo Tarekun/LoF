@@ -14,7 +14,9 @@ use crate::type_theory::environment::Environment;
 use crate::type_theory::fol::fol::FolFormula::{
     Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
 };
-use crate::type_theory::fol::fol::FolStm::{Auto, Axiom, Fun, Global, Solve, Theorem};
+use crate::type_theory::fol::fol::FolStm::{
+    Auto, Axiom, Fun, Global, Solve, Theorem,
+};
 use crate::type_theory::fol::fol::FolTerm::{
     Abstraction, Application, Let, Tuple, Variable,
 };
@@ -269,7 +271,7 @@ impl Reducer for Fol {
     fn evaluate_statement(
         environment: &mut Environment<Fol>,
         stm: &FolStm,
-    ) -> () {
+    ) -> Result<(), String> {
         evaluate_statement(environment, stm)
     }
 }

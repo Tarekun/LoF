@@ -3,13 +3,13 @@ use crate::{
     misc::Union,
     parser::api::Tactic,
     type_theory::{
-        commons::{unification::Substitution, utils::eta_expand},
+        commons::utils::eta_expand,
         environment::Environment,
         interface::{Automatic, Kernel, Reducer, TypeTheory},
         sup::{
             freedom::{get_selection_fn, pick_clause},
             saturation::saturate,
-            sup::{Sup, SupFormula, SupTerm},
+            sup::{Sup, SupFormula},
         },
     },
 };
@@ -101,7 +101,7 @@ pub fn evaluate_global<T: TypeTheory + Kernel>(
     var_name: &str,
     var_type: &Option<T::Type>,
     body: &T::Term,
-) -> () {
+) -> Result<(), String> {
     let var_type: &T::Type = match var_type {
         Some(type_term) => type_term,
         None => {
@@ -113,6 +113,7 @@ pub fn evaluate_global<T: TypeTheory + Kernel>(
         }
     };
     environment.add_substitution_with_type(var_name, body, var_type);
+    Ok(())
 }
 
 /// Evaluates the function definition statement constructing the signature and pushing to
@@ -130,10 +131,11 @@ pub fn evaluate_fun<
     _is_rec: &bool,
     fun_type_constructor: C,
     eta_wrap: E,
-) -> () {
+) -> Result<(), String> {
     let fun_type = fun_type_constructor(args, out_type);
     let body = eta_expand::<T, _>(args, body, eta_wrap);
     environment.add_substitution_with_type(fun_name, &body, &fun_type);
+    Ok(())
 }
 
 /// Evaluates the axiom statement adding the type judgement to the `environment`
@@ -141,8 +143,9 @@ pub fn evaluate_axiom<T: TypeTheory>(
     environment: &mut Environment<T>,
     axiom_name: &str,
     formula: &T::Type,
-) -> () {
+) -> Result<(), String> {
     environment.add_to_context(axiom_name, formula);
+    Ok(())
 }
 
 /// Evaluates the theorem statement, assuming it was already type checked for correctness,
@@ -152,8 +155,9 @@ pub fn evaluate_theorem<T: TypeTheory, E>(
     theorem_name: &str,
     formula: &T::Type,
     _proof: &Union<T::Term, Vec<Tactic<E>>>,
-) -> () {
+) -> Result<(), String> {
     environment.add_to_context(&theorem_name, &formula);
+    Ok(())
 }
 
 /// Evaluates the auto statement, clausifying the target formula along with the current context
@@ -177,7 +181,12 @@ pub fn evaluate_auto<
     let clausified_target = clausify(&complement(target))?;
     saturation_set.extend(clausified_target);
 
-    Sup::saturate(&saturation_set)
+    let res = Sup::saturate(&saturation_set);
+    match &res {
+        Ok(()) => println!("ATP algorithm proved the target successfully!"),
+        Err(msg) => println!("ATP algorithm failed: {msg}"),
+    }
+    res
 }
 
 /// Evaluates the solve statement by clausifying the negated goals and context hypotheses,
@@ -192,7 +201,7 @@ pub fn evaluate_solve<
     goals: &Vec<T::Type>,
     clausify: F,
     complement: G,
-) -> Result<Substitution<SupTerm>, String> {
+) -> Result<(), String> {
     let mut saturation_set = vec![];
     let context = environment.get_context();
 
@@ -204,6 +213,17 @@ pub fn evaluate_solve<
     }
 
     let selection_fn = get_selection_fn(SelectionFunction::Maximal());
-    saturate(&saturation_set, &selection_fn, pick_clause)
+
+    let res = saturate(&saturation_set, &selection_fn, pick_clause);
+    match &res {
+        Ok(substitution) => {
+            println!("solve succeeded:\n{:?}", substitution);
+            Ok(())
+        }
+        Err(msg) => {
+            println!("solve failed: {msg}");
+            Err(msg.to_string())
+        }
+    }
 }
 //########################### STATEMENTS EXECUTION
