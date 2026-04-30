@@ -267,7 +267,7 @@ mod unit_tests {
     #[test]
     fn test_fol_solve() {
         let config = Config::new(TypeSystem::Fol());
-        let res = execute::<Fol>(&config, "./library/test.lof");
+        let res = execute::<Fol>(&config, "./library/tests/test.lof");
         assert!(
             res.is_ok(),
             "FOL solve execution failed on library/test.lof:\n{:?}",

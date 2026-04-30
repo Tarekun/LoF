@@ -83,7 +83,6 @@ where
         self.schedule.peek_latest()
     }
 
-    // TODO: this should handle both terms and type expressions
     pub fn execute_expression(
         &mut self,
         exp: &T::Exp,

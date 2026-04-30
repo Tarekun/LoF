@@ -16,3 +16,10 @@ axiom ax2 : \forall n:Nat. \forall m:Nat. \forall p:Nat. NatEq (plus n m) p -> N
 
 # solve the equation 1+r = 3
 solve NatEq (plus (s z) r) (s (s (s z)))
+# should pass
+solve NatEq (plus (s z) (s (s z))) (s (s (s z)))
+# should fail but passes
+solve NatEq (plus (s z) (s z)) (s (s (s z)))
+solve NatEq (plus (s z) (s (s (s z)))) (s (s (s z)))
+# should fail and actually fails
+#solve NatEq (plus (s z) z) (s (s (s z)))
