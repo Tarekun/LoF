@@ -9,7 +9,8 @@ use crate::{
         sup::{
             freedom::{get_selection_fn, pick_clause},
             saturation::saturate,
-            sup::{Sup, SupFormula},
+            sup::{Sup, SupFormula, SupTerm},
+            sup_utils::standardize_apart,
         },
     },
 };
@@ -209,10 +210,15 @@ pub fn evaluate_solve<
     let constants = environment.get_constants();
 
     for (_, var_type) in context.iter() {
-        saturation_set.extend(clausify(var_type, &constants)?);
+        for clause in clausify(var_type, &constants)? {
+            saturation_set.push(standardize_apart(&clause));
+        }
     }
     for goal in goals {
-        saturation_set.extend(clausify(&complement(goal), &constants)?);
+        // TODO collect unbound variables (the ones to be solved for the user)
+        for clause in clausify(&complement(goal), &constants)? {
+            saturation_set.push(standardize_apart(&clause));
+        }
     }
 
     let selection_fn = get_selection_fn(SelectionFunction::Maximal());
@@ -220,6 +226,7 @@ pub fn evaluate_solve<
     let res = saturate(&saturation_set, &selection_fn, pick_clause);
     match &res {
         Ok(substitution) => {
+            // TODO only print tracked unbound variables
             println!("solve succeeded:\n{:?}", substitution);
             Ok(())
         }

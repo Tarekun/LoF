@@ -7,8 +7,11 @@ use crate::type_theory::{
     commons::unification::Substitution, interface::TypeTheory,
     sup::unification::terms_unify,
 };
-use std::cmp::Ordering::{self, Equal, Greater, Less};
 use std::fmt;
+use std::{
+    cmp::Ordering::{self, Equal, Greater, Less},
+    sync::atomic::{AtomicUsize, Ordering::Relaxed},
+};
 
 impl fmt::Debug for SupTerm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -387,6 +390,46 @@ pub fn find_unifiable_formula(
             }
         }
     }
+}
+
+static VAR_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// Returns a new formula identical to `formula` where every variable name is
+/// suffixed with `_<id>` to make it disjoint from any other clause's variables.
+pub fn standardize_apart(formula: &SupFormula) -> SupFormula {
+    fn rename_vars_term(term: &SupTerm, id: usize) -> SupTerm {
+        match term {
+            Variable(name) => Variable(format!("{}_{}", name, id)),
+            Application(fun, args) => Application(
+                fun.clone(),
+                args.iter().map(|a| rename_vars_term(a, id)).collect(),
+            ),
+        }
+    }
+
+    fn rename_vars_formula(formula: &SupFormula, id: usize) -> SupFormula {
+        match formula {
+            Atom(pred, args) => Atom(
+                pred.clone(),
+                args.iter().map(|a| rename_vars_term(a, id)).collect(),
+            ),
+            Equality(l, r) => {
+                Equality(rename_vars_term(l, id), rename_vars_term(r, id))
+            }
+            Not(inner) => Not(Box::new(rename_vars_formula(inner, id))),
+            Clause(lits) => Clause(
+                lits.iter().map(|l| rename_vars_formula(l, id)).collect(),
+            ),
+            ForAll(var, ty, body) => ForAll(
+                format!("{}_{}", var, id),
+                Box::new(rename_vars_formula(ty, id)),
+                Box::new(rename_vars_formula(body, id)),
+            ),
+        }
+    }
+
+    let id = VAR_COUNTER.fetch_add(1, Relaxed);
+    rename_vars_formula(formula, id)
 }
 
 #[cfg(test)]

@@ -270,13 +270,35 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_fol_solve() {
+    fn test_logic_programming_test_scripts() {
         let config = Config::new(TypeSystem::Fol());
-        let res = execute::<Fol>(&config, "./library/tests/test.lof");
-        assert!(
-            res.is_ok(),
-            "FOL solve execution failed on library/test.lof:\n{:?}",
-            res.err()
-        );
+        let base_dir = "./library/tests/loprog";
+
+        let lof_files: Vec<_> = std::fs::read_dir(base_dir)
+            .expect("failed to read loprog test directory")
+            .flat_map(|entry| {
+                let path = entry.expect("invalid dir entry").path();
+                if path.is_dir() {
+                    std::fs::read_dir(&path)
+                        .expect("failed to read subdirectory")
+                        .map(|e| e.expect("invalid entry").path())
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![path]
+                }
+            })
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("lof"))
+            .collect();
+
+        for file in &lof_files {
+            let path_str = file.to_str().expect("non-UTF-8 path");
+            let res = execute::<Fol>(&config, path_str);
+            assert!(
+                res.is_ok(),
+                "FOL solve execution failed on {}:\n{:?}",
+                path_str,
+                res.err()
+            );
+        }
     }
 }
