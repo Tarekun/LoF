@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use crate::type_theory::{
         fol::{
             fol::{
@@ -356,26 +358,30 @@ mod tests {
     #[test]
     fn test_clausification() {
         let nat = Predicate("Nat".to_string(), vec![]);
+        let no_constants = HashSet::new();
 
         assert_eq!(
-            clausify(&ForAll(
-                "x".to_string(),
-                Box::new(nat.clone()),
-                Box::new(Exist(
-                    "y".to_string(),
+            clausify(
+                &ForAll(
+                    "x".to_string(),
                     Box::new(nat.clone()),
-                    Box::new(Disjunction(vec![
-                        Predicate(
-                            "P".to_string(),
-                            vec![Variable("y".to_string())]
-                        ),
-                        Not(Box::new(Conjunction(vec![
-                            Predicate("A".to_string(), vec![]),
-                            Predicate("B".to_string(), vec![])
-                        ])))
-                    ]))
-                ))
-            )),
+                    Box::new(Exist(
+                        "y".to_string(),
+                        Box::new(nat.clone()),
+                        Box::new(Disjunction(vec![
+                            Predicate(
+                                "P".to_string(),
+                                vec![Variable("y".to_string())]
+                            ),
+                            Not(Box::new(Conjunction(vec![
+                                Predicate("A".to_string(), vec![]),
+                                Predicate("B".to_string(), vec![])
+                            ])))
+                        ]))
+                    ))
+                ),
+                &no_constants
+            ),
             Ok(vec![SupFormula::Clause(vec![
                 SupFormula::Atom(
                     "P".to_string(),

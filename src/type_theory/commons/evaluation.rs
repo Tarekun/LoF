@@ -13,6 +13,7 @@ use crate::{
         },
     },
 };
+use std::collections::HashSet;
 
 /// Computes the normal form of `term` by iteratively calling `one_step_reduction`
 /// on its result.
@@ -164,7 +165,7 @@ pub fn evaluate_theorem<T: TypeTheory, E>(
 /// and running SUP saturation algorithm with the clausified set of formulas
 pub fn evaluate_auto<
     T: TypeTheory,
-    F: Fn(&T::Type) -> Result<Vec<SupFormula>, String>,
+    F: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
@@ -174,11 +175,12 @@ pub fn evaluate_auto<
 ) -> Result<(), String> {
     let mut saturation_set = vec![];
     let context = environment.get_context();
+    let constants = environment.get_constants();
 
     for (_, var_type) in context.iter() {
-        saturation_set.extend(clausify(var_type)?);
+        saturation_set.extend(clausify(var_type, &constants)?);
     }
-    let clausified_target = clausify(&complement(target))?;
+    let clausified_target = clausify(&complement(target), &constants)?;
     saturation_set.extend(clausified_target);
 
     let res = Sup::saturate(&saturation_set);
@@ -194,7 +196,7 @@ pub fn evaluate_auto<
 /// Unlike evaluate_auto, this calls saturate directly to recover the Substitution.
 pub fn evaluate_solve<
     T: TypeTheory,
-    F: Fn(&T::Type) -> Result<Vec<SupFormula>, String>,
+    F: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
@@ -204,12 +206,13 @@ pub fn evaluate_solve<
 ) -> Result<(), String> {
     let mut saturation_set = vec![];
     let context = environment.get_context();
+    let constants = environment.get_constants();
 
     for (_, var_type) in context.iter() {
-        saturation_set.extend(clausify(var_type)?);
+        saturation_set.extend(clausify(var_type, &constants)?);
     }
     for goal in goals {
-        saturation_set.extend(clausify(&complement(goal))?);
+        saturation_set.extend(clausify(&complement(goal), &constants)?);
     }
 
     let selection_fn = get_selection_fn(SelectionFunction::Maximal());

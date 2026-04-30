@@ -16,7 +16,10 @@ use crate::{
         },
     },
 };
-use std::fmt::{self};
+use std::{
+    collections::HashSet,
+    fmt::{self},
+};
 
 impl FolFormula {
     pub fn to_string(&self) -> String {
@@ -572,16 +575,20 @@ pub fn conjunction_normal_form(φ: &FolFormula) -> Vec<FolFormula> {
 }
 
 #[allow(non_snake_case)]
-pub fn clausify(φ: &FolFormula) -> Result<Vec<SupFormula>, String> {
+pub fn clausify(
+    φ: &FolFormula,
+    constants: &HashSet<String>,
+) -> Result<Vec<SupFormula>, String> {
     fn clauses_to_sup(
         clauses: Vec<FolFormula>,
+        constants: &HashSet<String>,
     ) -> Result<Vec<SupFormula>, String> {
         // collect errors across all clauses
         let mut errors = vec![];
         let mut sup_clauses = vec![];
 
         for clause in clauses {
-            match clause_to_sup(clause) {
+            match clause_to_sup(clause, constants) {
                 Ok(clause) => sup_clauses.push(clause),
                 Err(message) => errors.push(message),
             }
@@ -594,14 +601,23 @@ pub fn clausify(φ: &FolFormula) -> Result<Vec<SupFormula>, String> {
         }
     }
 
-    fn term_to_sup(term: FolTerm) -> Result<SupTerm, String> {
+    fn term_to_sup(
+        term: FolTerm,
+        constants: &HashSet<String>,
+    ) -> Result<SupTerm, String> {
         match &term {
-            Variable(name) => Ok(SupTerm::Variable(name.to_string())),
+            Variable(name) => {
+                if constants.contains(name) {
+                    Ok(SupTerm::Application(name.to_string(), vec![]))
+                } else {
+                    Ok(SupTerm::Variable(name.to_string()))
+                }
+            }
             Application(_, _) => {
                 let (fun_name, args) = get_application_components(&term)?;
                 let mut sup_args = vec![];
                 for arg in args {
-                    sup_args.push(term_to_sup(arg)?);
+                    sup_args.push(term_to_sup(arg, constants)?);
                 }
                 Ok(SupTerm::Application(fun_name, sup_args))
             }
@@ -612,17 +628,20 @@ pub fn clausify(φ: &FolFormula) -> Result<Vec<SupFormula>, String> {
         }
     }
 
-    fn clause_to_sup(C: FolFormula) -> Result<SupFormula, String> {
+    fn clause_to_sup(
+        C: FolFormula,
+        constants: &HashSet<String>,
+    ) -> Result<SupFormula, String> {
         let C = match C {
             Predicate(name, args) => {
                 let mut sup_args = vec![];
                 for arg in args {
-                    sup_args.push(term_to_sup(arg)?);
+                    sup_args.push(term_to_sup(arg, constants)?);
                 }
                 SupFormula::Atom(name, sup_args)
             }
-            Disjunction(lits) => Clause(clauses_to_sup(lits)?),
-            Not(D) => SupFormula::Not(Box::new(clause_to_sup(*D)?)),
+            Disjunction(lits) => Clause(clauses_to_sup(lits, constants)?),
+            Not(D) => SupFormula::Not(Box::new(clause_to_sup(*D, constants)?)),
             _ => {
                 return Err(format!("Not a Clause: {:?}", C));
             }
@@ -635,5 +654,5 @@ pub fn clausify(φ: &FolFormula) -> Result<Vec<SupFormula>, String> {
     let pnf = prenex_normal_form(&nnf);
     let skolemized = skolemize(&pnf);
     let cnf = conjunction_normal_form(&skolemized);
-    clauses_to_sup(cnf)
+    clauses_to_sup(cnf, constants)
 }
