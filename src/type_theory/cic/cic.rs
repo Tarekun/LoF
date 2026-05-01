@@ -278,11 +278,11 @@ impl TypeInference for Cic {
 impl Refiner for Cic {
     fn solve_unification(
         constraints: Vec<Constraint<Cic>>,
-    ) -> Result<HashMap<i32, Self::Type>, String> {
+    ) -> Result<HashMap<i32, CicTerm>, String> {
         solve_unification(constraints)
     }
 
-    fn meta_index(meta: &Self::Type) -> Option<i32> {
+    fn meta_index(meta: &CicTerm) -> Option<i32> {
         match meta {
             Meta(index) => Some(index.to_owned()),
             _ => None,
@@ -290,9 +290,9 @@ impl Refiner for Cic {
     }
 
     fn term_solve_metas(
-        exp: &Self::Term,
-        substitution: &HashMap<i32, Self::Exp>,
-    ) -> Self::Term {
+        exp: &CicTerm,
+        substitution: &HashMap<i32, CicTerm>,
+    ) -> CicTerm {
         let mut solved_exp = exp.to_owned();
         for index in substitution.keys() {
             solved_exp = substitute_meta(
@@ -304,9 +304,9 @@ impl Refiner for Cic {
         solved_exp
     }
     fn type_solve_metas(
-        exp: &Self::Type,
-        substitution: &HashMap<i32, Self::Exp>,
-    ) -> Self::Type {
+        exp: &CicTerm,
+        substitution: &HashMap<i32, CicTerm>,
+    ) -> CicTerm {
         let mut solved_exp = exp.to_owned();
         for index in substitution.keys() {
             solved_exp = substitute_meta(
@@ -326,7 +326,7 @@ impl Refiner for Cic {
         match cic_unification(environment, term1, term2) {
             Ok(res) => res,
             //TODO: better handling
-            Err(message) => panic!("{}", message),
+            Err(message) => false,
         }
     }
 
@@ -338,7 +338,7 @@ impl Refiner for Cic {
         match cic_unification(environment, type1, type2) {
             Ok(res) => res,
             //TODO: better handling
-            Err(message) => panic!("{}", message),
+            Err(message) => false,
         }
     }
 }
@@ -382,19 +382,19 @@ impl Reducer for Cic {
 }
 
 impl Interactive for Cic {
-    fn proof_hole() -> Self::Term {
+    fn proof_hole() -> CicTerm {
         CicTerm::Sort("THIS_IS_A_PARTIAL_PROOF_HOLE".to_string())
     }
-    fn empty_target() -> Self::Type {
+    fn empty_target() -> CicTerm {
         CicTerm::Sort("THIS_IS_AN_EMPTY_TERMINATION_PROOF_TARGET".to_string())
     }
 
     fn type_check_tactic(
         environment: &mut Environment<Cic>,
-        tactic: &Tactic<Self::Exp>,
-        target: &Self::Type,
-        partial_proof: &Self::Term,
-    ) -> Result<(Self::Type, Self::Term), String> {
+        tactic: &Tactic<CicTerm>,
+        target: &CicTerm,
+        partial_proof: &CicTerm,
+    ) -> Result<(CicTerm, Vec<CicTerm>), String> {
         type_check_tactic(environment, tactic, target, partial_proof)
     }
 }

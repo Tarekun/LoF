@@ -7,7 +7,7 @@ use nom::{
     IResult,
 };
 
-use super::api::Tactic::{Begin, By, Qed, Suppose};
+use super::api::Tactic::{Apply, Begin, Exact, Intro, Qed};
 use super::api::{Expression, LofParser, Tactic};
 
 //########################### TACTICS PARSER
@@ -25,30 +25,44 @@ impl LofParser {
         Ok((input, Qed()))
     }
 
-    fn suppose<'a>(
+    fn intro<'a>(
         &self,
         input: &'a str,
     ) -> IResult<&'a str, Tactic<Expression>> {
-        let (input, _) = preceded(multispace0, tag("suppose"))(input)?;
+        let (input, _) = preceded(multispace0, tag("intro"))(input)?;
         let (input, (var_name, opt_type)) = preceded(multispace1, |input| {
             self.parse_optionally_typed_identifier(input)
         })(input)?;
 
         Ok((
             input,
-            Suppose(
+            Intro(
                 var_name.to_string(),
                 opt_type.unwrap_or(Expression::Inferator()),
             ),
         ))
     }
 
-    fn by<'a>(&self, input: &'a str) -> IResult<&'a str, Tactic<Expression>> {
-        let (input, _) = preceded(multispace0, tag("by"))(input)?;
+    fn exact<'a>(
+        &self,
+        input: &'a str,
+    ) -> IResult<&'a str, Tactic<Expression>> {
+        let (input, _) = preceded(multispace0, tag("exact"))(input)?;
         let (input, proof_term) =
             preceded(multispace1, |input| self.parse_expression(input))(input)?;
 
-        Ok((input, By(proof_term)))
+        Ok((input, Exact(proof_term)))
+    }
+
+    fn apply<'a>(
+        &self,
+        input: &'a str,
+    ) -> IResult<&'a str, Tactic<Expression>> {
+        let (input, _) = preceded(multispace0, tag("apply"))(input)?;
+        let (input, proof_term) =
+            preceded(multispace1, |input| self.parse_expression(input))(input)?;
+
+        Ok((input, Apply(proof_term)))
     }
 
     pub fn parse_tactic<'a>(
@@ -58,8 +72,9 @@ impl LofParser {
         alt((
             |input| self.begin(input),
             |input| self.qed(input),
-            |input| self.suppose(input),
-            |input| self.by(input),
+            |input| self.intro(input),
+            |input| self.apply(input),
+            |input| self.exact(input),
         ))(input)
     }
 

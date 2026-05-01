@@ -1,7 +1,7 @@
 use crate::{
     parser::api::{
         Expression, LofAst, Statement,
-        Tactic::{self, Begin, By, Qed, Suppose},
+        Tactic::{self, Apply, Begin, Exact, Intro, Qed},
     },
     runtime::program::Schedule,
     type_theory::interface::TypeTheory,
@@ -82,33 +82,39 @@ pub fn elaborate_tactic<E, F: Fn(Expression) -> E>(
     match tactic {
         Begin() => Ok(Begin()),
         Qed() => Ok(Qed()),
-        Suppose(assumption_name, formula) => elaborate_suppose::<E, F>(
+        Intro(assumption_name, formula) => elaborate_intro::<E, F>(
             assumption_name,
             formula,
             elaborate_expression,
         ),
-        By(proof_term) => elaborate_by(proof_term, elaborate_expression),
-        // _ => {
-        //     Err("WIP: tactic {:?} is not yet supported. too bad :(".to_string())
-        // }
+        Exact(proof_term) => elaborate_exact(proof_term, elaborate_expression),
+        Apply(lemma) => elaborate_apply(lemma, elaborate_expression),
     }
 }
 //
 //
-fn elaborate_suppose<E, F: Fn(Expression) -> E>(
+fn elaborate_intro<E, F: Fn(Expression) -> E>(
     assumption_name: String,
     formula: Expression,
     elaborate_expression: F,
 ) -> Result<Tactic<E>, String> {
-    Ok(Suppose(assumption_name, elaborate_expression(formula)))
+    Ok(Intro(assumption_name, elaborate_expression(formula)))
 }
 //
 //
-fn elaborate_by<E, F: Fn(Expression) -> E>(
+fn elaborate_exact<E, F: Fn(Expression) -> E>(
     proof_term: Expression,
     elaborate_expression: F,
 ) -> Result<Tactic<E>, String> {
-    Ok(By(elaborate_expression(proof_term)))
+    Ok(Exact(elaborate_expression(proof_term)))
+}
+//
+//
+fn elaborate_apply<E, F: Fn(Expression) -> E>(
+    lemma: Expression,
+    elaborate_expression: F,
+) -> Result<Tactic<E>, String> {
+    Ok(Apply(elaborate_expression(lemma)))
 }
 //########################### TACTICS ELABORATION
 
@@ -118,42 +124,42 @@ mod unit_tests {
     use crate::{
         parser::api::{
             Expression,
-            Tactic::{By, Suppose},
+            Tactic::{Exact, Intro},
         },
         type_theory::{
             cic::{
                 cic::{CicTerm::Variable, GLOBAL_INDEX},
                 elaboration::elaborate_expression,
             },
-            commons::elaboration::{elaborate_by, elaborate_suppose},
+            commons::elaboration::{elaborate_exact, elaborate_intro},
         },
     };
 
     //TODO: this only checks CIC. is that enough or should i support others?
     #[test]
-    fn test_suppose_elaboration() {
+    fn test_intro_elaboration() {
         assert_eq!(
-            elaborate_suppose(
+            elaborate_intro(
                 "n".to_string(),
                 Expression::VarUse("Nat".to_string()),
                 |exp| elaborate_expression(&exp)
             ),
-            Ok(Suppose(
+            Ok(Intro(
                 "n".to_string(),
                 Variable("Nat".to_string(), GLOBAL_INDEX)
             )),
-            "Suppose elaboration doesnt produce expected tactic"
+            "Intro elaboration doesnt produce expected tactic"
         );
     }
 
     #[test]
-    fn test_by_elaboration() {
+    fn test_exact_elaboration() {
         assert_eq!(
-            elaborate_by(Expression::VarUse("p".to_string()), |exp| {
+            elaborate_exact(Expression::VarUse("p".to_string()), |exp| {
                 elaborate_expression(&exp)
             }),
-            Ok(By(Variable("p".to_string(), GLOBAL_INDEX))),
-            "Suppose elaboration doesnt produce expected tactic"
+            Ok(Exact(Variable("p".to_string(), GLOBAL_INDEX))),
+            "Exact elaboration doesnt produce expected tactic"
         );
     }
 }

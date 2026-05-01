@@ -73,8 +73,9 @@ pub enum Statement {
 pub enum Tactic<E> {
     Begin(),
     Qed(),
-    Suppose(String, E),
-    By(E),
+    Intro(String, E),
+    Exact(E),
+    Apply(E),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum LofAst {

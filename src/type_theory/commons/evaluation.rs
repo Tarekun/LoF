@@ -76,7 +76,7 @@ pub fn reduce_application<
 
     match unpack_name_body(&fun_reduced) {
         Some((var_name, body)) => T::substitute(&body, &var_name, &arg_reduced),
-        None => rebuild_application(fun.to_owned(), arg.to_owned()),
+        None => rebuild_application(fun_reduced, arg_reduced),
     }
 }
 

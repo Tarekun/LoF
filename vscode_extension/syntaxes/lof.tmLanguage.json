@@ -14,7 +14,7 @@
       "patterns": [
         {
           "name": "keyword.control.lof",
-          "match": "\\b(axiom|begin|by|fun|global|if|import|inductive|lambda|lemma|let|match|proposition|qed|sugar|suppose|rec|theorem|with)\\b"
+          "match": "\\b(axiom|begin|exact|fun|global|if|import|inductive|lambda|lemma|let|match|proposition|qed|sugar|intro|rec|theorem|with)\\b"
         }
       ]
     },

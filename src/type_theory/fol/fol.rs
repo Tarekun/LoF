@@ -292,7 +292,7 @@ impl Interactive for Fol {
         tactic: &Tactic<Self::Exp>,
         target: &Self::Type,
         partial_proof: &Self::Term,
-    ) -> Result<(Self::Type, Self::Term), String> {
+    ) -> Result<(Self::Term, Vec<Self::Type>), String> {
         Err("not implemented".to_string())
     }
 }

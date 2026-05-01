@@ -233,13 +233,13 @@ pub trait Interactive: TypeTheory {
     fn empty_target() -> Self::Type;
 
     /// Proof checking for the current `tactic` given a `target` and a `partial_proof`.
-    /// Returns an updated (target, partial_proof) pair
+    /// Returns an updated (proof_term, subgoals) pair
     fn type_check_tactic(
         environment: &mut Environment<Self>,
         tactic: &Tactic<Self::Exp>,
         target: &Self::Type,
         partial_proof: &Self::Term,
-    ) -> Result<(Self::Type, Self::Term), String>
+    ) -> Result<(Self::Term, Vec<Self::Type>), String>
     where
         Self: Sized;
 }
