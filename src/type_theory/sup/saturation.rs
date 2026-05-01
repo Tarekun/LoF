@@ -157,6 +157,7 @@ pub fn saturate(
 
 #[cfg(test)]
 mod unit_tests {
+    use crate::type_theory::sup::freedom::GivingClauseSignature;
     use crate::{
         config::SelectionFunction,
         type_theory::sup::{
@@ -178,8 +179,6 @@ mod unit_tests {
     fn add(n: SupTerm, m: SupTerm) -> SupTerm {
         Application("+".to_string(), vec![n, m])
     }
-
-    use crate::type_theory::sup::freedom::GivingClauseSignature;
 
     fn all_selection_fns() -> Vec<(&'static str, SelectionFunction)> {
         vec![
@@ -227,6 +226,15 @@ mod unit_tests {
                 Variable("R".to_string()),
             ],
         )));
+        // unsolvable equation 1+2 = 4
+        let inconsistent = Not(Box::new(Atom(
+            "add".to_string(),
+            vec![
+                s(zero.clone()),
+                s(s(zero.clone())),
+                s(s(s(s(zero.clone())))),
+            ],
+        )));
 
         for ((sel_name, sel_variant), (gc_name, gc_fn)) in
             all_combinations(all_selection_fns(), all_giving_clause_fns())
@@ -241,6 +249,17 @@ mod unit_tests {
                 mgu.unwrap().resolvent("R"),
                 Some(&s(s(s(zero.clone())))),
                 "predicate logic: wrong solution with selection={sel_name}, giving_clause={gc_name}"
+            );
+
+            // validate its not just passing on anything
+            let res = saturate(
+                &vec![ax1.clone(), ax2.clone(), inconsistent.clone()],
+                &selection_fn,
+                gc_fn,
+            );
+            assert!(
+                res.is_err(),
+                "saturation is succeeding with incosistent input formulas with selection={sel_name}, giving_clause={gc_name}"
             );
         }
     }

@@ -162,7 +162,13 @@ pub fn interactive<T: TypeTheory + Kernel + Reducer>(
                     }
                     Ok(_) => {}
                 }
-                let () = T::evaluate_statement(&mut program.environment, &stm);
+                if let Err(msg) =
+                    T::evaluate_statement(&mut program.environment, &stm)
+                {
+                    println!("Execution error: {}", msg);
+                    //TODO see if i can write better handling
+                    panic!();
+                }
             }
         }
     }
@@ -259,6 +265,39 @@ mod unit_tests {
             assert!(
                 res.is_ok(),
                 "Execution cant process std library:\n{:?}",
+                res.err()
+            );
+        }
+    }
+
+    #[test]
+    fn test_logic_programming_test_scripts() {
+        let config = Config::new(TypeSystem::Fol());
+        let base_dir = "./library/tests/loprog";
+
+        let lof_files: Vec<_> = std::fs::read_dir(base_dir)
+            .expect("failed to read loprog test directory")
+            .flat_map(|entry| {
+                let path = entry.expect("invalid dir entry").path();
+                if path.is_dir() {
+                    std::fs::read_dir(&path)
+                        .expect("failed to read subdirectory")
+                        .map(|e| e.expect("invalid entry").path())
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![path]
+                }
+            })
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("lof"))
+            .collect();
+
+        for file in &lof_files {
+            let path_str = file.to_str().expect("non-UTF-8 path");
+            let res = execute::<Fol>(&config, path_str);
+            assert!(
+                res.is_ok(),
+                "FOL solve execution failed on {}:\n{:?}",
+                path_str,
                 res.err()
             );
         }

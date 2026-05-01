@@ -35,7 +35,6 @@ pub fn type_check_predicate(
     args: &Vec<FolTerm>,
 ) -> Result<FolFormula, String> {
     match environment.get_predicate(pred_name) {
-        None => Err(format!("Unbound predicate {}", pred_name)),
         Some(arg_types) => {
             for i in 0..arg_types.len().max(args.len()) {
                 let formal_type = arg_types.get(i);
@@ -68,6 +67,15 @@ pub fn type_check_predicate(
             }
 
             Ok(Predicate(pred_name.to_string(), args.to_owned()))
+        }
+        // fall back to the context for predicates declared via axiom
+        None => {
+            // TODO this fallback logic should be implemented somewhere in the Environment type, not here
+            if environment.get_variable_type(pred_name).is_some() {
+                Ok(Predicate(pred_name.to_string(), args.to_owned()))
+            } else {
+                Err(format!("Unbound predicate {}", pred_name))
+            }
         }
     }
 }

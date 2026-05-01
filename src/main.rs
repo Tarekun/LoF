@@ -45,11 +45,11 @@ pub mod type_theory {
         mod type_check;
     }
     pub mod sup {
-        mod freedom;
+        pub mod freedom;
         mod inferences;
-        mod saturation;
+        pub mod saturation;
         pub mod sup;
-        mod sup_utils;
+        pub mod sup_utils;
         mod type_check;
         mod unification;
     }

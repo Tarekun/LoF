@@ -1,5 +1,3 @@
-use tracing::{error, info};
-
 use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
 use super::fol::{
     Fol,
@@ -9,7 +7,7 @@ use super::fol::{
 };
 use super::fol_utils::make_multiarg_fun_type;
 use crate::type_theory::commons::evaluation::{
-    evaluate_auto, evaluate_fun, reduce_application, reduce_let,
+    evaluate_auto, evaluate_fun, evaluate_solve, reduce_application, reduce_let,
 };
 use crate::type_theory::fol::fol_utils::clausify;
 use crate::{
@@ -68,7 +66,7 @@ fn fol_reduce_application(
 pub fn evaluate_statement(
     environment: &mut Environment<Fol>,
     stm: &FolStm,
-) -> () {
+) -> Result<(), String> {
     match stm {
         Axiom(axiom_name, formula) => {
             evaluate_axiom::<Fol>(environment, axiom_name, formula)
@@ -98,17 +96,15 @@ pub fn evaluate_statement(
                 proof,
             )
         }
+        FolStm::Solve(goals) => {
+            evaluate_solve::<Fol, _, _>(environment, goals, clausify, |phi| {
+                Not(Box::new(phi.to_owned()))
+            })
+        }
         FolStm::Auto(target) => {
-            if let Err(message) = evaluate_auto::<Fol, _, _>(
-                environment,
-                target,
-                clausify,
-                |phi| Not(Box::new(phi.to_owned())),
-            ) {
-                error!("ATP algorithm failed: {message}");
-            } else {
-                info!("ATP algorithm proved the target successfully!");
-            }
+            evaluate_auto::<Fol, _, _>(environment, target, clausify, |phi| {
+                Not(Box::new(phi.to_owned()))
+            })
         }
     }
 }

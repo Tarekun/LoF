@@ -1,6 +1,6 @@
 use crate::type_theory::environment::Constraint::TypeEq;
 use crate::type_theory::interface::TypeTheory;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug};
 
 pub enum Constraint<T: TypeTheory> {
@@ -325,6 +325,11 @@ impl<T: TypeTheory> Environment<T> {
                 stack.last().map(|ty| (name.to_string(), ty.to_owned()))
             })
             .collect()
+    }
+
+    /// Returns the set of constant symbols contained in the context
+    pub fn get_constants(&self) -> HashSet<String> {
+        self.get_context().into_keys().collect()
     }
     //
     //######################### VARIABLE LOOKUPS

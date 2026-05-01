@@ -83,7 +83,6 @@ where
         self.schedule.peek_latest()
     }
 
-    // TODO: this should handle both terms and type expressions
     pub fn execute_expression(
         &mut self,
         exp: &T::Exp,
@@ -93,8 +92,7 @@ where
     }
 
     pub fn execute_statement(&mut self, stm: &T::Stm) -> Result<(), String> {
-        let _ = T::evaluate_statement(&mut self.environment, stm);
-        Ok(())
+        T::evaluate_statement(&mut self.environment, stm)
     }
 
     /// Execute the prorgam schedule

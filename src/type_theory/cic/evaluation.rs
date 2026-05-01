@@ -71,7 +71,7 @@ fn reduce_match(
 pub fn evaluate_statement(
     environment: &mut Environment<Cic>,
     stm: &CicStm,
-) -> () {
+) -> Result<(), String> {
     match stm {
         Axiom(axiom_name, formula) => {
             evaluate_axiom::<Cic>(environment, axiom_name, formula)
@@ -91,7 +91,7 @@ pub fn evaluate_statement(
                 |(var_name, var_type), body| {
                     Abstraction(var_name, Box::new(var_type), Box::new(body))
                 },
-            );
+            )
         }
         Theorem(theorem_name, formula, proof) => {
             evaluate_theorem::<Cic, CicTerm>(
@@ -120,7 +120,7 @@ pub fn evaluate_inductive(
     params: &Vec<(String, CicTerm)>,
     ariety: &CicTerm,
     constructors: &Vec<(String, CicTerm)>,
-) {
+) -> Result<(), String> {
     //TODO make a record of the full constructor list for match type checking
     let ind_type = make_multiarg_fun_type(params, ariety);
     environment.add_to_context(name, &ind_type);
@@ -137,6 +137,7 @@ pub fn evaluate_inductive(
             constructors.to_owned(),
         ),
     );
+    Ok(())
 }
 //########################### STATEMENTS EXECUTION
 //

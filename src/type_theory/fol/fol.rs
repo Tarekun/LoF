@@ -14,7 +14,9 @@ use crate::type_theory::environment::Environment;
 use crate::type_theory::fol::fol::FolFormula::{
     Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
 };
-use crate::type_theory::fol::fol::FolStm::{Auto, Axiom, Fun, Global, Theorem};
+use crate::type_theory::fol::fol::FolStm::{
+    Auto, Axiom, Fun, Global, Solve, Theorem,
+};
 use crate::type_theory::fol::fol::FolTerm::{
     Abstraction, Application, Let, Tuple, Variable,
 };
@@ -66,6 +68,7 @@ pub enum FolStm {
         bool,
     ),
     Auto(FolFormula),
+    Solve(Vec<FolFormula>),
 }
 
 pub struct Fol;
@@ -80,7 +83,12 @@ impl TypeTheory for Fol {
         Environment::with_defaults(
             vec![],
             vec![],
-            vec![("Unit", &vec![]), ("Top", &vec![])],
+            vec![
+                ("Unit", &vec![]),
+                ("Top", &vec![]),
+                ("TYPE", &vec![]),
+                ("PROP", &vec![]),
+            ],
         )
     }
 
@@ -218,6 +226,12 @@ impl Kernel for Fol {
                 proof,
             ),
             Auto(formula) => type_check_auto::<Fol>(environment, formula),
+            Solve(goals) => {
+                for goal in goals {
+                    Fol::type_check_type(goal, environment)?;
+                }
+                Ok(Predicate("Solved".to_string(), vec![]))
+            }
         }
     }
 }
@@ -257,7 +271,7 @@ impl Reducer for Fol {
     fn evaluate_statement(
         environment: &mut Environment<Fol>,
         stm: &FolStm,
-    ) -> () {
+    ) -> Result<(), String> {
         evaluate_statement(environment, stm)
     }
 }

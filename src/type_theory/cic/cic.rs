@@ -375,7 +375,7 @@ impl Reducer for Cic {
     fn evaluate_statement(
         environment: &mut Environment<Cic>,
         stm: &Self::Stm,
-    ) -> () {
+    ) -> Result<(), String> {
         debug!("Evaluating statement: {:?}", stm);
         evaluate_statement(environment, stm)
     }
