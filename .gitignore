@@ -1,9 +1,13 @@
+# cargo tooling for the language implementation
 target
 .scannerwork
 clippy.json
 cobertura.xml
 
+# js tooling for the VScode extension
 vscode_extension/node_modules/
 vscode_extension/out/
+
+# misc...
 .aider*
 out
