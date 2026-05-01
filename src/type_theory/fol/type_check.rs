@@ -70,6 +70,7 @@ pub fn type_check_predicate(
         }
         // fall back to the context for predicates declared via axiom
         None => {
+            // TODO this fallback logic should be implemented somewhere in the Environment type, not here
             if environment.get_variable_type(pred_name).is_some() {
                 Ok(Predicate(pred_name.to_string(), args.to_owned()))
             } else {

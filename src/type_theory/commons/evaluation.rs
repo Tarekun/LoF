@@ -3,7 +3,7 @@ use crate::{
     misc::Union,
     parser::api::Tactic,
     type_theory::{
-        commons::utils::eta_expand,
+        commons::{unification::Substitution, utils::eta_expand},
         environment::Environment,
         interface::{Automatic, Kernel, Reducer, TypeTheory},
         sup::{
@@ -174,22 +174,24 @@ pub fn evaluate_auto<
     clausify: F,
     complement: G,
 ) -> Result<(), String> {
-    let mut saturation_set = vec![];
-    let context = environment.get_context();
-    let constants = environment.get_constants();
-
-    for (_, var_type) in context.iter() {
-        saturation_set.extend(clausify(var_type, &constants)?);
+    match &saturation_interface(
+        environment,
+        &vec![target.to_owned()],
+        clausify,
+        complement,
+    ) {
+        Ok(_) => {
+            println!(
+                "ATP algorithm proved the target {:?} successfully!",
+                target
+            );
+            Ok(())
+        }
+        Err(msg) => {
+            println!("ATP algorithm failed: {msg}");
+            return Err(msg.to_string());
+        }
     }
-    let clausified_target = clausify(&complement(target), &constants)?;
-    saturation_set.extend(clausified_target);
-
-    let res = Sup::saturate(&saturation_set);
-    match &res {
-        Ok(()) => println!("ATP algorithm proved the target successfully!"),
-        Err(msg) => println!("ATP algorithm failed: {msg}"),
-    }
-    res
 }
 
 /// Evaluates the solve statement by clausifying the negated goals and context hypotheses,
@@ -205,26 +207,7 @@ pub fn evaluate_solve<
     clausify: F,
     complement: G,
 ) -> Result<(), String> {
-    let mut saturation_set = vec![];
-    let context = environment.get_context();
-    let constants = environment.get_constants();
-
-    for (_, var_type) in context.iter() {
-        for clause in clausify(var_type, &constants)? {
-            saturation_set.push(standardize_apart(&clause));
-        }
-    }
-    for goal in goals {
-        // TODO collect unbound variables (the ones to be solved for the user)
-        for clause in clausify(&complement(goal), &constants)? {
-            saturation_set.push(standardize_apart(&clause));
-        }
-    }
-
-    let selection_fn = get_selection_fn(SelectionFunction::Maximal());
-
-    let res = saturate(&saturation_set, &selection_fn, pick_clause);
-    match &res {
+    match &saturation_interface(environment, goals, clausify, complement) {
         Ok(substitution) => {
             // TODO only print tracked unbound variables
             println!("solve succeeded:\n{:?}", substitution);
@@ -235,5 +218,37 @@ pub fn evaluate_solve<
             Err(msg.to_string())
         }
     }
+}
+
+fn saturation_interface<
+    T: TypeTheory,
+    F: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
+    G: Fn(&T::Type) -> T::Type,
+>(
+    environment: &mut Environment<T>,
+    goals: &Vec<T::Type>,
+    clausify: F,
+    complement: G,
+) -> Result<Substitution<SupTerm>, String> {
+    let mut saturation_set = vec![];
+    let constants = environment.get_constants();
+    // TODO take these from the configuration
+    let selection_fn = get_selection_fn(SelectionFunction::Maximal());
+    let clause_giving_fn = pick_clause;
+
+    for (_, var_type) in environment.get_context().iter() {
+        for clause in clausify(var_type, &constants)? {
+            saturation_set.push(standardize_apart(&clause));
+        }
+    }
+    for goal in goals {
+        // TODO collect unbound variables (the ones to be solved for the user)
+        for clause in clausify(&complement(goal), &constants)? {
+            saturation_set.push(standardize_apart(&clause));
+        }
+    }
+    // TODO extend saturation_set with variables from the substitution context and appropriate equality axioms
+
+    saturate(&saturation_set, &selection_fn, clause_giving_fn)
 }
 //########################### STATEMENTS EXECUTION

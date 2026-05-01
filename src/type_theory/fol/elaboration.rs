@@ -171,29 +171,22 @@ pub fn elaborate_application(
     function: &Expression,
     args: &Vec<Expression>,
 ) -> Result<Union<FolTerm, FolFormula>, String> {
-    let fun_elaborated = elaborate_expression(function)?;
+    let mut args_elaborated = vec![];
+    for arg in args {
+        args_elaborated.push(expect_term(elaborate_expression(arg)?)?);
+    }
 
-    // PascalCase head: type-level predicate application (e.g. NatEq t1 t2)
-    if let Union::R(Predicate(pred_name, _)) = fun_elaborated {
-        let mut unwrapped = vec![];
-        for arg in args {
-            unwrapped.push(expect_term(elaborate_expression(arg)?)?);
+    match elaborate_expression(function)? {
+        L(fun_term) => wrap_term::<Fol>(Ok(args_elaborated
+            .into_iter()
+            .fold(fun_term, |acc, arg| {
+                Application(Box::new(acc), Box::new(arg))
+            }))),
+        R(Predicate(pred_name, _)) => {
+            wrap_type::<Fol>(Ok(Predicate(pred_name, args_elaborated)))
         }
-        return wrap_type::<Fol>(Ok(Predicate(pred_name, unwrapped)));
+        _ => Err(format!("Applied expression {:?} isnt an applicable function nor a predicate symbol and can't be applied in FOL", function)),
     }
-
-    // lowercase head: term-level curried application (e.g. f x y)
-    let fun_term = expect_term(fun_elaborated)?;
-    let arg_terms =
-        simple_map(args.to_owned(), |arg| elaborate_expression(&arg));
-    let mut unwrapped: Vec<FolTerm> = vec![];
-    for term in arg_terms {
-        unwrapped.push(expect_term(term?)?);
-    }
-
-    wrap_term::<Fol>(Ok(unwrapped.into_iter().fold(fun_term, |acc, arg| {
-        Application(Box::new(acc), Box::new(arg))
-    })))
 }
 //
 //

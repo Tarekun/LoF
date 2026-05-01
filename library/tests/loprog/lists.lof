@@ -3,16 +3,17 @@ axiom SomeType : TYPE;
 # symbol for List type
 axiom List : TYPE;
 axiom nil  : List;
-axiom cons : ∀h:SomeType. ∀l:List. List;
+axiom cons : SomeType -> List -> List;
 
 # symbol for append function & equality at the List type
-axiom append : ∀l1:List. ∀l2:List. List;
+axiom append : List -> List -> List;
 axiom Eq     : ∀l1:List. ∀l2:List. PROP;
 
 # append([], l) = l
-axiom ax1 : ∀l:List. Eq (append (nil) l) l;
+axiom ax1 : ∀l:List.
+    Eq (append (nil) l) l;
 # append(h::l1, l2) = h::append(l1,l2)
-axiom ax2 : ∀h:SomeType. ∀l1:List. ∀l2:List. 
+axiom ax2 : ∀h:SomeType. ∀l1:List. ∀l2:List.
     Eq (append (cons h l1) l2) (cons h (append l1 l2));
 
 axiom any_list    : List;

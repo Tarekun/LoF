@@ -166,6 +166,7 @@ pub fn interactive<T: TypeTheory + Kernel + Reducer>(
                     T::evaluate_statement(&mut program.environment, &stm)
                 {
                     println!("Execution error: {}", msg);
+                    //TODO see if i can write better handling
                     panic!();
                 }
             }
