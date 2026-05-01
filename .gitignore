@@ -11,3 +11,4 @@ vscode_extension/out/
 # misc...
 .aider*
 out
+docs/.obsidian
