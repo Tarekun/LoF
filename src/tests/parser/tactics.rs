@@ -89,7 +89,7 @@ mod unit_tests {
             "Apply parser cant cope with function application expressions"
         );
         assert!(
-            parser.parse_tactic("apply:h").is_err(),
+            parser.parse_tactic("applyh").is_err(),
             "Apply parser doesnt split keyword and argument"
         );
     }
