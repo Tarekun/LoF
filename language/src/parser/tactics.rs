@@ -1,6 +1,5 @@
 use nom::branch::alt;
 use nom::character::complete::multispace1;
-use nom::error::{Error, ErrorKind};
 use nom::multi::many0;
 use nom::{
     bytes::complete::tag, character::complete::multispace0, sequence::preceded,
@@ -82,16 +81,18 @@ impl LofParser {
         &self,
         input: &'a str,
     ) -> IResult<&'a str, Vec<Tactic<Expression>>> {
-        let (input, partial_proof) =
+        let (input, _) = self.begin(input)?;
+        let (input, parsed_tactics) =
             many0(|input| self.parse_tactic(input))(input)?;
 
-        if partial_proof.len() > 0 && partial_proof[0] != Begin() {
-            // TODO return a better error here
-            // return Err("Interactive proofs must start with a 'begin' tactic");
-            let error = nom::Err::Error(Error::new(input, ErrorKind::Tag));
-            return Err(error);
-        }
-        Ok((input, partial_proof))
+        // strip begin/qed markers as they are syntactic delimiters, not proof steps
+        // TODO reevaluate this approahc
+        let tactics: Vec<Tactic<Expression>> = parsed_tactics
+            .into_iter()
+            .filter(|t| t != &Begin() && t != &Qed())
+            .collect();
+
+        Ok((input, tactics))
     }
 }
 //########################### TACTICS PARSER
