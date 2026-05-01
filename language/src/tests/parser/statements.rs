@@ -425,7 +425,9 @@ mod unit_tests {
     fn test_import() {
         let parser = LofParser::new(Config::default());
         assert!(
-            parser.parse_statement("import \"library/logic\"").is_ok(),
+            parser
+                .parse_statement("import \"../library/logic\"")
+                .is_ok(),
             "Import parser isnt working"
         );
     }

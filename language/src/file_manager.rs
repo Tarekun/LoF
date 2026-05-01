@@ -5,7 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 const SOURCE_FILE_EXTENSION: &str = ".lof";
-const LOGOS_DIRECTORY: &str = "./ascii_logos";
+const LOGOS_DIRECTORY: &str = "../ascii_logos";
 
 /// Opens the file at `filepath` and returns its content in the returned string
 pub fn read_file(filepath: &str) -> Result<String, io::Error> {
@@ -15,6 +15,7 @@ pub fn read_file(filepath: &str) -> Result<String, io::Error> {
 /// Opens the source file at `filepath` and returns its content in the returned string.
 /// Fails in case the file extension isn't .lof
 pub fn read_source_file(filepath: &str) -> Result<String, io::Error> {
+    println!("SOURCE FILE {}", filepath);
     if !filepath.ends_with(SOURCE_FILE_EXTENSION) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,

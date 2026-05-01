@@ -214,7 +214,7 @@ mod unit_tests {
     fn test_parsing() {
         for config in all_system_configs() {
             assert!(
-                parse_only(&config, "./library").is_ok(),
+                parse_only(&config, "../library").is_ok(),
                 "Parsing entrypoint cant process std library"
             );
         }
@@ -226,7 +226,7 @@ mod unit_tests {
             match config.system {
                 TypeSystem::Cic() => {
                     assert!(
-                        parse_and_elaborate::<Cic>(&config, "./library")
+                        parse_and_elaborate::<Cic>(&config, "../library")
                             .is_ok(),
                         "Elaboration entrypoint cant process std library"
                     );
@@ -246,9 +246,9 @@ mod unit_tests {
     #[test]
     fn test_type_check() {
         for config in all_system_configs() {
-            let res = type_check::<Cic>(&config, "./library");
+            let res = type_check::<Cic>(&config, "../library");
             assert!(
-                type_check::<Cic>(&config, "./library").is_ok(),
+                res.is_ok(),
                 "Type checking entrypoint cant process std library:\n{:?}",
                 res.err()
             );
@@ -259,8 +259,8 @@ mod unit_tests {
     fn test_execution() {
         for config in all_system_configs() {
             let res = match config.system {
-                TypeSystem::Cic() => execute::<Cic>(&config, "./library"),
-                TypeSystem::Fol() => execute::<Fol>(&config, "./library"),
+                TypeSystem::Cic() => execute::<Cic>(&config, "../library"),
+                TypeSystem::Fol() => execute::<Fol>(&config, "../library"),
             };
             assert!(
                 res.is_ok(),
@@ -273,7 +273,7 @@ mod unit_tests {
     #[test]
     fn test_logic_programming_test_scripts() {
         let config = Config::new(TypeSystem::Fol());
-        let base_dir = "./library/tests/loprog";
+        let base_dir = "../library/tests/loprog";
 
         let lof_files: Vec<_> = std::fs::read_dir(base_dir)
             .expect("failed to read loprog test directory")
