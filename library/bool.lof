@@ -1,7 +1,7 @@
 # This file is part of the LoF standard library
 # It contains Boolean Algebra basics implemented
 
-import "library/unit"
+import "unit"
 
 !theory_block cic
 inductive Bool : TYPE {
