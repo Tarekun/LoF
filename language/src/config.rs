@@ -1,14 +1,21 @@
 use crate::file_manager::read_file;
+use std::sync::OnceLock;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TypeSystem {
-    Cic(),
-    Fol(),
+    Cic,
+    Fol,
 }
 #[derive(Debug, Clone)]
 pub enum SelectionFunction {
-    Maximal(),
-    All(),
+    Maximal,
+    All,
+}
+
+#[derive(Debug, Clone)]
+pub enum GivingClause {
+    Fifo,
+    Weighted,
 }
 
 pub fn id_to_system(system_id: &str) -> Result<TypeSystem, String> {
@@ -20,13 +27,15 @@ pub struct Config {
     pub system: TypeSystem,
     pub log_level: tracing::Level,
     pub selection_fn: SelectionFunction,
+    pub giving_clause_fn: GivingClause,
 }
 impl Default for Config {
     fn default() -> Self {
         Config {
-            system: TypeSystem::Cic(),
+            system: TypeSystem::Cic,
             log_level: tracing::Level::INFO,
-            selection_fn: SelectionFunction::Maximal(),
+            selection_fn: SelectionFunction::Maximal,
+            giving_clause_fn: GivingClause::Weighted,
         }
     }
 }
@@ -35,7 +44,8 @@ impl Config {
         Config {
             system: type_system,
             log_level: tracing::Level::INFO,
-            selection_fn: SelectionFunction::Maximal(),
+            selection_fn: SelectionFunction::Maximal,
+            giving_clause_fn: GivingClause::Weighted,
         }
     }
 }
@@ -69,14 +79,20 @@ pub fn load_config(config_path: &str) -> Result<Config, String> {
             config.selection_fn = map_selection_fn(selection_fn_str)?;
         }
     }
+    if let Some(giving_clause_fn) = overrides.get("giving_clause_fn") {
+        if let Some(giving_clause_fn_str) = giving_clause_fn.as_str() {
+            config.giving_clause_fn =
+                map_giving_clause_fn(giving_clause_fn_str)?;
+        }
+    }
 
     Ok(config)
 }
 
 fn map_type_system(system: &str) -> Result<TypeSystem, String> {
     match system {
-        "cic" => Ok(TypeSystem::Cic()),
-        "fol" => Ok(TypeSystem::Fol()),
+        "cic" => Ok(TypeSystem::Cic),
+        "fol" => Ok(TypeSystem::Fol),
         _ => Err(format!("Unsupported type system {}", system)),
     }
 }
@@ -97,8 +113,8 @@ fn map_log_level(log_level: &str) -> Result<tracing::Level, String> {
 
 fn map_selection_fn(selection_fn: &str) -> Result<SelectionFunction, String> {
     match selection_fn.to_lowercase().as_str() {
-        "maximal" => Ok(SelectionFunction::Maximal()),
-        "all" => Ok(SelectionFunction::All()),
+        "maximal" => Ok(SelectionFunction::Maximal),
+        "all" => Ok(SelectionFunction::All),
         _ => {
             return Err(format!(
                 "Invalid selection function: {}. Must be one of: maximal, all",
@@ -106,4 +122,31 @@ fn map_selection_fn(selection_fn: &str) -> Result<SelectionFunction, String> {
             ))
         }
     }
+}
+
+fn map_giving_clause_fn(
+    giving_clause_fn: &str,
+) -> Result<GivingClause, String> {
+    match giving_clause_fn.to_lowercase().as_str() {
+        "fifo" => Ok(GivingClause::Fifo),
+        "weighted" => Ok(GivingClause::Weighted),
+        _ => {
+            return Err(format!(
+                "Invalid giving clause function: {}. Must be one of: fifo, weighted",
+                giving_clause_fn
+            ))
+        }
+    }
+}
+
+static GLOBAL_CONFIG: OnceLock<Config> = OnceLock::new();
+
+/// Configures the global Config to be used for this run
+pub fn init_global_config(config: Config) {
+    let _ = GLOBAL_CONFIG.set(config);
+}
+
+/// Reads singleton global Config object used for this run of the program
+pub fn global_config() -> &'static Config {
+    GLOBAL_CONFIG.get_or_init(Config::default)
 }

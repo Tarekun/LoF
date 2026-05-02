@@ -1,15 +1,14 @@
 use crate::{
-    config::SelectionFunction,
+    config::global_config,
     misc::Union,
     parser::api::Tactic,
     type_theory::{
         commons::{unification::Substitution, utils::eta_expand},
         environment::Environment,
-        interface::{Kernel, Reducer, TypeTheory},
+        interface::{Automatic, Kernel, Reducer, TypeTheory},
         sup::{
-            freedom::{get_selection_fn, pick_clause},
-            saturation::saturate,
-            sup::{SupFormula, SupTerm},
+            freedom::{get_giving_clause_fn, get_selection_fn},
+            sup::{Sup, SupFormula, SupTerm},
             sup_utils::standardize_apart,
         },
     },
@@ -245,9 +244,9 @@ fn saturation_interface<
 ) -> Result<Substitution<SupTerm>, String> {
     let mut saturation_set = vec![];
     let constants = environment.get_constants();
-    // TODO take these from the configuration
-    let selection_fn = get_selection_fn(SelectionFunction::Maximal());
-    let clause_giving_fn = pick_clause;
+    let config = global_config();
+    let selection_fn = get_selection_fn(config.selection_fn.clone());
+    let clause_giving_fn = get_giving_clause_fn(config.giving_clause_fn.clone());
 
     for (_, var_type) in environment.get_context().iter() {
         for clause in clausify(var_type, &constants)? {
@@ -273,6 +272,6 @@ fn saturation_interface<
         }
     }
 
-    saturate(&saturation_set, &selection_fn, clause_giving_fn)
+    Sup::saturate(&saturation_set, &selection_fn, &clause_giving_fn)
 }
 //########################### STATEMENTS EXECUTION

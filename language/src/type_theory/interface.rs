@@ -6,6 +6,9 @@ use crate::runtime::program::{
 };
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::{Constraint, Environment};
+use crate::type_theory::sup::freedom::{
+    GivingClauseSignature, SelectionFunctionSignature,
+};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -257,5 +260,9 @@ pub trait Automatic: TypeTheory {
 
     /// Runs the saturation algorithm on the given set, closing the set under
     /// derivation. Terminates when bottom is derived or nothing new can be derived
-    fn saturate(saturation_set: &Vec<Self::Type>) -> Result<(), String>;
+    fn saturate(
+        saturation_set: &Vec<Self::Type>,
+        selection_fn: &SelectionFunctionSignature,
+        giving_clause_fn: &GivingClauseSignature,
+    ) -> Result<Substitution<Self::Term>, String>;
 }

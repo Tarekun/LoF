@@ -397,7 +397,7 @@ mod unit_tests {
 
     #[test]
     fn test_resolution() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let p = Atom("P".to_string(), vec![Variable("x".to_string())]);
         let ligther = Atom("Q".to_string(), vec![]);
         let heavier = Atom(
@@ -438,7 +438,7 @@ mod unit_tests {
             "Resolution doesnt preserve unrelated literals from right clause"
         );
 
-        let maximal_selection = get_selection_fn(SelectionFunction::Maximal());
+        let maximal_selection = get_selection_fn(SelectionFunction::Maximal);
         let (derived, _) = resolution(
             &mut Clause(vec![p.clone(), heavier.clone()]),
             &mut Clause(vec![not_p.clone()]),
@@ -452,7 +452,7 @@ mod unit_tests {
 
     #[test]
     fn test_resolution_unification() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let x = Variable("x".to_string());
         let y = Variable("y".to_string());
         let z = Variable("z".to_string());
@@ -489,7 +489,7 @@ mod unit_tests {
 
     #[test]
     fn test_factoring() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let p = Atom("P".to_string(), vec![]);
         let q = Atom("Q".to_string(), vec![Variable("x".to_string())]);
 
@@ -522,7 +522,7 @@ mod unit_tests {
 
     #[test]
     fn test_factoring_resolution() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let x = Variable("x".to_string());
         let y = Variable("y".to_string());
         let z = Variable("z".to_string());
@@ -545,7 +545,7 @@ mod unit_tests {
 
     #[test]
     fn test_eq_resolution() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let t = Application("f".to_string(), vec![Variable("y".to_string())]);
         let s = Application(
             "f".to_string(),
@@ -585,7 +585,7 @@ mod unit_tests {
 
     #[test]
     fn test_eq_resolution_unification() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let x = Variable("x".to_string());
         let y = Variable("y".to_string());
         let z = Variable("z".to_string());
@@ -607,7 +607,7 @@ mod unit_tests {
 
     #[test]
     fn test_eq_factoring() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let bigger = Application(
             "f".to_string(),
             vec![
@@ -743,7 +743,7 @@ mod unit_tests {
 
     #[test]
     fn test_eq_factoring_unification() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let k = Application("k".to_string(), vec![]);
         let k_prime = Application("k_prime".to_string(), vec![]);
         let s = Application(
@@ -776,7 +776,7 @@ mod unit_tests {
 
     #[test]
     fn test_superposition() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         // unfiable corresponds to l and s in the vampire paper, not testing unification here
         let unifiable =
             Application("l".to_string(), vec![Variable("x".to_string())]);
@@ -876,7 +876,7 @@ mod unit_tests {
     #[test]
     fn test_superposition_no_variable_rewriting() {
         // superposition must NOT fire when the only matching position
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let x = Variable("x".to_string());
         let l = Application("l".to_string(), vec![]);
         let r = Application("r".to_string(), vec![]);
@@ -907,7 +907,7 @@ mod unit_tests {
 
     #[test]
     fn test_superposition_unification() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         // expected mgu will be { x -> k }
         let x = Variable("x".to_string());
         let k = Application("k".to_string(), vec![]);

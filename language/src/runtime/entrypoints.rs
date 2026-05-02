@@ -205,7 +205,7 @@ mod unit_tests {
         vec![
             Config::default(),
             // Config {
-            //     system: TypeSystem::Fol(),
+            //     system: TypeSystem::Fol,
             // },
         ]
     }
@@ -224,14 +224,14 @@ mod unit_tests {
     fn test_elaboration() {
         for config in all_system_configs() {
             match config.system {
-                TypeSystem::Cic() => {
+                TypeSystem::Cic => {
                     assert!(
                         parse_and_elaborate::<Cic>(&config, "../library")
                             .is_ok(),
                         "Elaboration entrypoint cant process std library"
                     );
                 }
-                TypeSystem::Fol() => {
+                TypeSystem::Fol => {
                     assert!(
                         parse_and_elaborate::<Fol>(&config, "./library")
                             .is_ok(),
@@ -259,8 +259,8 @@ mod unit_tests {
     fn test_execution() {
         for config in all_system_configs() {
             let res = match config.system {
-                TypeSystem::Cic() => execute::<Cic>(&config, "../library"),
-                TypeSystem::Fol() => execute::<Fol>(&config, "../library"),
+                TypeSystem::Cic => execute::<Cic>(&config, "../library"),
+                TypeSystem::Fol => execute::<Fol>(&config, "../library"),
             };
             assert!(
                 res.is_ok(),
@@ -272,7 +272,7 @@ mod unit_tests {
 
     #[test]
     fn test_logic_programming_test_scripts() {
-        let config = Config::new(TypeSystem::Fol());
+        let config = Config::new(TypeSystem::Fol);
         let base_dir = "../library/tests/loprog";
 
         let lof_files: Vec<_> = std::fs::read_dir(base_dir)

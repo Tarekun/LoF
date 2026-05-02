@@ -434,8 +434,8 @@ mod unit_tests {
 
     #[test]
     fn test_theory_block() {
-        let cic_parser = LofParser::new(Config::new(TypeSystem::Cic()));
-        let fol_parser = LofParser::new(Config::new(TypeSystem::Fol()));
+        let cic_parser = LofParser::new(Config::new(TypeSystem::Cic));
+        let fol_parser = LofParser::new(Config::new(TypeSystem::Fol));
         assert_eq!(
             cic_parser.parse_statement("!theory_block cic TYPE !end_block"),
             Ok(("", EmptyRoot(vec![Exp(VarUse("TYPE".to_string()))]))),
@@ -458,7 +458,7 @@ mod unit_tests {
 
     #[test]
     fn test_auto() {
-        let parser = LofParser::new(Config::new(TypeSystem::Cic()));
+        let parser = LofParser::new(Config::new(TypeSystem::Cic));
 
         assert_eq!(
             parser.parse_statement("auto \\forall x:T. P x;"),
@@ -491,7 +491,7 @@ mod unit_tests {
 
     #[test]
     fn test_solve() {
-        let parser = LofParser::new(Config::new(TypeSystem::Cic()));
+        let parser = LofParser::new(Config::new(TypeSystem::Cic));
 
         assert_eq!(
             parser.parse_statement("solve P x"),
@@ -534,7 +534,7 @@ mod unit_tests {
 
     #[test]
     fn test_horn_clause() {
-        let parser = LofParser::new(Config::new(TypeSystem::Cic()));
+        let parser = LofParser::new(Config::new(TypeSystem::Cic));
 
         assert_eq!(
             parser.parse_statement("hclause P <- Q;"),

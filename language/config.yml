@@ -1,1 +1,4 @@
+system: cic
 log_level: info
+selection_fn: maximal
+giving_clause_fn: weighted
