@@ -154,10 +154,10 @@ fn main() {
     debug!("Requested entrypoint: {:?}", entrypoint);
 
     match config.system {
-        TypeSystem::Cic() => {
+        TypeSystem::Cic => {
             run_with_theory::<Cic>(config, &filepath, entrypoint)
         }
-        TypeSystem::Fol() => {
+        TypeSystem::Fol => {
             run_with_theory::<Fol>(config, &filepath, entrypoint)
         }
     };

@@ -182,8 +182,8 @@ mod unit_tests {
 
     fn all_selection_fns() -> Vec<(&'static str, SelectionFunction)> {
         vec![
-            ("Maximal", SelectionFunction::Maximal()),
-            ("All", SelectionFunction::All()),
+            ("Maximal", SelectionFunction::Maximal),
+            ("All", SelectionFunction::All),
         ]
     }
 
@@ -306,7 +306,7 @@ mod unit_tests {
 
     #[test]
     fn test_simple_saturation() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let a = Atom("A".to_string(), vec![]);
         let b = Atom("B".to_string(), vec![]);
 
@@ -345,7 +345,7 @@ mod unit_tests {
 
     #[test]
     fn test_unification_resolution() {
-        let selection_fn = get_selection_fn(SelectionFunction::All());
+        let selection_fn = get_selection_fn(SelectionFunction::All);
         let zero = Application("zero".to_string(), vec![]);
         let one = Application("s".to_string(), vec![zero.clone()]);
         let two = Application("s".to_string(), vec![one.clone()]);

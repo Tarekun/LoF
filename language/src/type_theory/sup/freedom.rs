@@ -19,8 +19,8 @@ pub fn get_selection_fn(
     selection_fn: SelectionFunction,
 ) -> SelectionFunctionSignature {
     Box::new(move |clause: &mut Vec<SupFormula>| match selection_fn {
-        Maximal() => drop_maximal_literals(clause),
-        All() => {
+        Maximal => drop_maximal_literals(clause),
+        All => {
             let selected = clause.clone();
             *clause = vec![];
             selected

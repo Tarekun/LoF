@@ -3,13 +3,13 @@ use std::sync::OnceLock;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TypeSystem {
-    Cic(),
-    Fol(),
+    Cic,
+    Fol,
 }
 #[derive(Debug, Clone)]
 pub enum SelectionFunction {
-    Maximal(),
-    All(),
+    Maximal,
+    All,
 }
 
 #[derive(Debug, Clone)]
@@ -32,9 +32,9 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            system: TypeSystem::Cic(),
+            system: TypeSystem::Cic,
             log_level: tracing::Level::INFO,
-            selection_fn: SelectionFunction::Maximal(),
+            selection_fn: SelectionFunction::Maximal,
             giving_clause_fn: GivingClause::Weighted,
         }
     }
@@ -44,7 +44,7 @@ impl Config {
         Config {
             system: type_system,
             log_level: tracing::Level::INFO,
-            selection_fn: SelectionFunction::Maximal(),
+            selection_fn: SelectionFunction::Maximal,
             giving_clause_fn: GivingClause::Weighted,
         }
     }
@@ -91,8 +91,8 @@ pub fn load_config(config_path: &str) -> Result<Config, String> {
 
 fn map_type_system(system: &str) -> Result<TypeSystem, String> {
     match system {
-        "cic" => Ok(TypeSystem::Cic()),
-        "fol" => Ok(TypeSystem::Fol()),
+        "cic" => Ok(TypeSystem::Cic),
+        "fol" => Ok(TypeSystem::Fol),
         _ => Err(format!("Unsupported type system {}", system)),
     }
 }
@@ -113,8 +113,8 @@ fn map_log_level(log_level: &str) -> Result<tracing::Level, String> {
 
 fn map_selection_fn(selection_fn: &str) -> Result<SelectionFunction, String> {
     match selection_fn.to_lowercase().as_str() {
-        "maximal" => Ok(SelectionFunction::Maximal()),
-        "all" => Ok(SelectionFunction::All()),
+        "maximal" => Ok(SelectionFunction::Maximal),
+        "all" => Ok(SelectionFunction::All),
         _ => {
             return Err(format!(
                 "Invalid selection function: {}. Must be one of: maximal, all",
@@ -132,7 +132,7 @@ fn map_giving_clause_fn(
         "weighted" => Ok(GivingClause::Weighted),
         _ => {
             return Err(format!(
-                "Invalid selection function: {}. Must be one of: maximal, all",
+                "Invalid giving clause function: {}. Must be one of: fifo, weighted",
                 giving_clause_fn
             ))
         }
