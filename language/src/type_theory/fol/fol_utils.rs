@@ -574,6 +574,33 @@ pub fn conjunction_normal_form(φ: &FolFormula) -> Vec<FolFormula> {
     to_cnf(φ)
 }
 
+pub fn term_to_sup(
+    term: &FolTerm,
+    constants: &HashSet<String>,
+) -> Result<SupTerm, String> {
+    match &term {
+        Variable(name) => {
+            if constants.contains(name) {
+                Ok(SupTerm::Application(name.to_string(), vec![]))
+            } else {
+                Ok(SupTerm::Variable(name.to_string()))
+            }
+        }
+        Application(_, _) => {
+            let (fun_name, args) = get_application_components(&term)?;
+            let mut sup_args = vec![];
+            for arg in args {
+                sup_args.push(term_to_sup(&arg, constants)?);
+            }
+            Ok(SupTerm::Application(fun_name, sup_args))
+        }
+        _ => Err(format!(
+            "FOL term {:?} doesn't have a corresponding SUP term",
+            term
+        )),
+    }
+}
+
 #[allow(non_snake_case)]
 pub fn clausify(
     φ: &FolFormula,
@@ -601,33 +628,6 @@ pub fn clausify(
         }
     }
 
-    fn term_to_sup(
-        term: FolTerm,
-        constants: &HashSet<String>,
-    ) -> Result<SupTerm, String> {
-        match &term {
-            Variable(name) => {
-                if constants.contains(name) {
-                    Ok(SupTerm::Application(name.to_string(), vec![]))
-                } else {
-                    Ok(SupTerm::Variable(name.to_string()))
-                }
-            }
-            Application(_, _) => {
-                let (fun_name, args) = get_application_components(&term)?;
-                let mut sup_args = vec![];
-                for arg in args {
-                    sup_args.push(term_to_sup(arg, constants)?);
-                }
-                Ok(SupTerm::Application(fun_name, sup_args))
-            }
-            _ => Err(format!(
-                "FOL term {:?} doesn't have a corresponding SUP term",
-                term
-            )),
-        }
-    }
-
     fn clause_to_sup(
         C: FolFormula,
         constants: &HashSet<String>,
@@ -636,7 +636,7 @@ pub fn clausify(
             Predicate(name, args) => {
                 let mut sup_args = vec![];
                 for arg in args {
-                    sup_args.push(term_to_sup(arg, constants)?);
+                    sup_args.push(term_to_sup(&arg, constants)?);
                 }
                 SupFormula::Atom(name, sup_args)
             }

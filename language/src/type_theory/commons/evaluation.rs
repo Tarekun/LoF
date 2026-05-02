@@ -5,11 +5,11 @@ use crate::{
     type_theory::{
         commons::{unification::Substitution, utils::eta_expand},
         environment::Environment,
-        interface::{Automatic, Kernel, Reducer, TypeTheory},
+        interface::{Kernel, Reducer, TypeTheory},
         sup::{
             freedom::{get_selection_fn, pick_clause},
             saturation::saturate,
-            sup::{Sup, SupFormula, SupTerm},
+            sup::{SupFormula, SupTerm},
             sup_utils::standardize_apart,
         },
     },
@@ -165,19 +165,22 @@ pub fn evaluate_theorem<T: TypeTheory, E>(
 /// Evaluates the auto statement, clausifying the target formula along with the current context
 /// and running SUP saturation algorithm with the clausified set of formulas
 pub fn evaluate_auto<
-    T: TypeTheory,
-    F: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
+    T: TypeTheory + Kernel,
+    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
+    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, String>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
     target: &T::Type,
-    clausify: F,
+    clausify: C,
+    term_to_sup: S,
     complement: G,
 ) -> Result<(), String> {
     match &saturation_interface(
         environment,
         &vec![target.to_owned()],
         clausify,
+        term_to_sup,
         complement,
     ) {
         Ok(_) => {
@@ -198,16 +201,24 @@ pub fn evaluate_auto<
 /// running SUP saturation, and returning the answer substitution.
 /// Unlike evaluate_auto, this calls saturate directly to recover the Substitution.
 pub fn evaluate_solve<
-    T: TypeTheory,
-    F: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
+    T: TypeTheory + Kernel,
+    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
+    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, String>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
     goals: &Vec<T::Type>,
-    clausify: F,
+    clausify: C,
+    term_to_sup: S,
     complement: G,
 ) -> Result<(), String> {
-    match &saturation_interface(environment, goals, clausify, complement) {
+    match &saturation_interface(
+        environment,
+        goals,
+        clausify,
+        term_to_sup,
+        complement,
+    ) {
         Ok(substitution) => {
             // TODO only print tracked unbound variables
             println!("solve succeeded:\n{:?}", substitution);
@@ -221,13 +232,15 @@ pub fn evaluate_solve<
 }
 
 fn saturation_interface<
-    T: TypeTheory,
-    F: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
+    T: TypeTheory + Kernel,
+    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
+    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, String>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
     goals: &Vec<T::Type>,
-    clausify: F,
+    clausify: C,
+    term_to_sup: S,
     complement: G,
 ) -> Result<Substitution<SupTerm>, String> {
     let mut saturation_set = vec![];
@@ -241,13 +254,24 @@ fn saturation_interface<
             saturation_set.push(standardize_apart(&clause));
         }
     }
+    for (var_name, body) in environment.get_deltas().iter() {
+        let var_type = T::type_check_term(body, environment)?;
+        for clause in clausify(&var_type, &constants)? {
+            saturation_set.push(standardize_apart(&clause));
+        }
+        // include axiom `var_name = body`
+        let eq_axiom = SupFormula::Equality(
+            SupTerm::Variable(var_name.to_string()),
+            term_to_sup(body, &constants)?,
+        );
+        saturation_set.push(standardize_apart(&eq_axiom));
+    }
     for goal in goals {
         // TODO collect unbound variables (the ones to be solved for the user)
         for clause in clausify(&complement(goal), &constants)? {
             saturation_set.push(standardize_apart(&clause));
         }
     }
-    // TODO extend saturation_set with variables from the substitution context and appropriate equality axioms
 
     saturate(&saturation_set, &selection_fn, clause_giving_fn)
 }
