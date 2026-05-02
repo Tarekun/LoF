@@ -9,7 +9,7 @@ use super::fol_utils::make_multiarg_fun_type;
 use crate::type_theory::commons::evaluation::{
     evaluate_auto, evaluate_fun, evaluate_solve, reduce_application, reduce_let,
 };
-use crate::type_theory::fol::fol_utils::clausify;
+use crate::type_theory::fol::fol_utils::{clausify, term_to_sup};
 use crate::{
     misc::Union,
     type_theory::{
@@ -96,16 +96,20 @@ pub fn evaluate_statement(
                 proof,
             )
         }
-        FolStm::Solve(goals) => {
-            evaluate_solve::<Fol, _, _>(environment, goals, clausify, |phi| {
-                Not(Box::new(phi.to_owned()))
-            })
-        }
-        FolStm::Auto(target) => {
-            evaluate_auto::<Fol, _, _>(environment, target, clausify, |phi| {
-                Not(Box::new(phi.to_owned()))
-            })
-        }
+        FolStm::Solve(goals) => evaluate_solve::<Fol, _, _, _>(
+            environment,
+            goals,
+            clausify,
+            term_to_sup,
+            |phi| Not(Box::new(phi.to_owned())),
+        ),
+        FolStm::Auto(target) => evaluate_auto::<Fol, _, _, _>(
+            environment,
+            target,
+            clausify,
+            term_to_sup,
+            |phi| Not(Box::new(phi.to_owned())),
+        ),
     }
 }
 //########################### STATEMENTS EXECUTION

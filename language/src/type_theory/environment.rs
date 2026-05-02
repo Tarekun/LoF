@@ -318,11 +318,22 @@ impl<T: TypeTheory> Environment<T> {
         }
     }
 
+    /// Returns all var_name : VarType bindings in the context
     pub fn get_context(&self) -> HashMap<String, T::Type> {
         self.context
             .iter()
             .filter_map(|(name, stack)| {
                 stack.last().map(|ty| (name.to_string(), ty.to_owned()))
+            })
+            .collect()
+    }
+
+    /// Returns all var_name := body subsitution in the environment
+    pub fn get_deltas(&self) -> HashMap<String, T::Term> {
+        self.deltas
+            .iter()
+            .filter_map(|(name, stack)| {
+                stack.last().map(|term| (name.to_string(), term.to_owned()))
             })
             .collect()
     }
