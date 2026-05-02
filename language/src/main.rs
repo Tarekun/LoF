@@ -72,7 +72,7 @@ mod tests {
 
 use crate::file_manager::read_ascii_logo;
 use cli::get_flag_value;
-use config::{load_config, Config, TypeSystem};
+use config::{init_global_config, load_config, Config, TypeSystem};
 use logger::init_logger;
 use runtime::entrypoints::{
     execute, help, interactive, parse_and_elaborate, parse_only, type_check,
@@ -147,6 +147,7 @@ fn main() {
     };
 
     let config = load_config(&config_path).unwrap();
+    init_global_config(config.clone());
     init_logger(&config);
 
     debug!("Specified config: {:?}", config);

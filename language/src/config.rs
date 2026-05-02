@@ -1,4 +1,5 @@
 use crate::file_manager::read_file;
+use std::sync::OnceLock;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TypeSystem {
@@ -122,6 +123,7 @@ fn map_selection_fn(selection_fn: &str) -> Result<SelectionFunction, String> {
         }
     }
 }
+
 fn map_giving_clause_fn(
     giving_clause_fn: &str,
 ) -> Result<GivingClause, String> {
@@ -135,4 +137,16 @@ fn map_giving_clause_fn(
             ))
         }
     }
+}
+
+static GLOBAL_CONFIG: OnceLock<Config> = OnceLock::new();
+
+/// Configures the global Config to be used for this run
+pub fn init_global_config(config: Config) {
+    let _ = GLOBAL_CONFIG.set(config);
+}
+
+/// Reads singleton global Config object used for this run of the program
+pub fn global_config() -> &'static Config {
+    GLOBAL_CONFIG.get_or_init(Config::default)
 }

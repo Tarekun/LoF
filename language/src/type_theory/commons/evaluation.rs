@@ -1,5 +1,5 @@
 use crate::{
-    config::{GivingClause, SelectionFunction},
+    config::global_config,
     misc::Union,
     parser::api::Tactic,
     type_theory::{
@@ -244,9 +244,9 @@ fn saturation_interface<
 ) -> Result<Substitution<SupTerm>, String> {
     let mut saturation_set = vec![];
     let constants = environment.get_constants();
-    // TODO take these from the configuration
-    let selection_fn = get_selection_fn(SelectionFunction::Maximal());
-    let clause_giving_fn = get_giving_clause_fn(GivingClause::Fifo);
+    let config = global_config();
+    let selection_fn = get_selection_fn(config.selection_fn.clone());
+    let clause_giving_fn = get_giving_clause_fn(config.giving_clause_fn.clone());
 
     for (_, var_type) in environment.get_context().iter() {
         for clause in clausify(var_type, &constants)? {
