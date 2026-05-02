@@ -3,6 +3,7 @@ use super::api::Statement::{
     Theorem,
 };
 use super::api::{Expression, LofAst, LofParser, Statement};
+use super::commons::{ws0, ws1};
 use crate::config::id_to_system;
 use crate::misc::Union;
 use crate::parser::api::Notation;
@@ -10,9 +11,7 @@ use nom::multi::separated_list1;
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag},
-    character::complete::{
-        char, line_ending, multispace0, multispace1, not_line_ending,
-    },
+    character::complete::{char, line_ending, multispace0, not_line_ending},
     combinator::{map, opt},
     error::{Error, ErrorKind},
     multi::many0,
@@ -23,9 +22,9 @@ use nom::{
 //########################### STATEMENT PARSERS
 impl LofParser {
     fn parse_import<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("import"))(input)?;
+        let (input, _) = preceded(ws0, tag("import"))(input)?;
         let (input, filepath) = preceded(
-            multispace0,
+            ws0,
             delimited(char('"'), is_not("\""), char('"')),
         )(input)?;
 
@@ -38,14 +37,14 @@ impl LofParser {
     //
     //
     fn global<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("global"))(input)?;
-        let (input, (var_name, opt_type)) = preceded(multispace1, |input| {
+        let (input, _) = preceded(ws0, tag("global"))(input)?;
+        let (input, (var_name, opt_type)) = preceded(ws1, |input| {
             self.parse_optionally_typed_identifier(input)
         })(input)?;
-        let (input, _) = preceded(multispace0, tag(":="))(input)?;
+        let (input, _) = preceded(ws0, tag(":="))(input)?;
         let (input, term) =
-            preceded(multispace0, |input| self.parse_expression(input))(input)?;
-        let (input, _) = preceded(multispace0, char(';'))(input)?;
+            preceded(ws0, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(ws0, char(';'))(input)?;
 
         Ok((input, Global(var_name.to_string(), opt_type, term)))
     }
@@ -55,23 +54,21 @@ impl LofParser {
         &self,
         input: &'a str,
     ) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("fun"))(input)?;
-        let (input, is_rec) = opt(preceded(multispace1, tag("rec")))(input)?;
+        let (input, _) = preceded(ws0, tag("fun"))(input)?;
+        let (input, is_rec) = opt(preceded(ws1, tag("rec")))(input)?;
         let is_rec = is_rec.is_some();
 
         let (input, fun_name) =
-            preceded(multispace1, |input| self.parse_identifier(input))(input)?;
+            preceded(ws1, |input| self.parse_identifier(input))(input)?;
         let (input, args) = self.typed_parameter_list(input)?;
-        let (input, _) = preceded(multispace0, tag(":"))(input)?;
+        let (input, _) = preceded(ws0, tag(":"))(input)?;
         let (input, output_type) =
-            preceded(multispace0, |input| self.parse_type_expression(input))(
-                input,
-            )?;
+            preceded(ws0, |input| self.parse_type_expression(input))(input)?;
 
-        let (input, _) = preceded(multispace0, tag("{"))(input)?;
+        let (input, _) = preceded(ws0, tag("{"))(input)?;
         let (input, body) =
-            preceded(multispace0, |input| self.local_expression(input))(input)?;
-        let (input, _) = preceded(multispace0, tag("}"))(input)?;
+            preceded(ws0, |input| self.local_expression(input))(input)?;
+        let (input, _) = preceded(ws0, tag("}"))(input)?;
 
         Ok((
             input,
@@ -88,18 +85,18 @@ impl LofParser {
     //
     fn parse_theorem<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
         let (input, _) = preceded(
-            multispace0,
+            ws0,
             alt((tag("theorem"), tag("lemma"), tag("proposition"))),
         )(input)?;
         let (input, theorem_name) =
-            preceded(multispace1, |input| self.parse_identifier(input))(input)?;
-        let (input, _) = preceded(multispace0, tag(":"))(input)?;
+            preceded(ws1, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, tag(":"))(input)?;
         let (input, formula) =
-            preceded(multispace0, |input| self.parse_expression(input))(input)?;
-        let (input, _) = preceded(multispace0, tag(":="))(input)?;
+            preceded(ws0, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(ws0, tag(":="))(input)?;
 
         let (input, proof) = preceded(
-            multispace0,
+            ws0,
             alt((
                 // term proof should be enclosed in parethesis
                 map(|input| self.parse_parens(input), Union::L),
@@ -113,6 +110,7 @@ impl LofParser {
     //
     //
     fn parse_comment<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+        // only here we need to use multispace0 or we have an infinite recursion
         let (input, _) = multispace0(input)?;
         let (input, _) = tag("#")(input)?;
         let (input, _) = not_line_ending(input)?;
@@ -123,13 +121,13 @@ impl LofParser {
     //
     //
     fn parse_axiom<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("axiom"))(input)?;
+        let (input, _) = preceded(ws0, tag("axiom"))(input)?;
         let (input, axiom_name) =
-            preceded(multispace1, |input| self.parse_identifier(input))(input)?;
-        let (input, _) = preceded(multispace0, tag(":"))(input)?;
+            preceded(ws1, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, tag(":"))(input)?;
         let (input, formula) =
-            preceded(multispace0, |input| self.parse_expression(input))(input)?;
-        let (input, _) = preceded(multispace0, char(';'))(input)?;
+            preceded(ws0, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(ws0, char(';'))(input)?;
 
         Ok((input, Axiom(axiom_name.to_string(), Box::new(formula))))
     }
@@ -139,10 +137,10 @@ impl LofParser {
         &self,
         input: &'a str,
     ) -> IResult<&'a str, (String, Expression)> {
-        let (input, _) = preceded(multispace0, char('|'))(input)?;
+        let (input, _) = preceded(ws0, char('|'))(input)?;
         let (input, constructor_name) =
-            preceded(multispace0, |input| self.parse_identifier(input))(input)?;
-        let (input, _) = preceded(multispace0, tag(":"))(input)?;
+            preceded(ws0, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, tag(":"))(input)?;
         let (input, constructor_type) = self.parse_type_expression(input)?;
 
         Ok((input, (constructor_name.to_string(), constructor_type)))
@@ -151,19 +149,17 @@ impl LofParser {
         &self,
         input: &'a str,
     ) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("inductive"))(input)?;
+        let (input, _) = preceded(ws0, tag("inductive"))(input)?;
         let (input, inductive_type_name) =
-            preceded(multispace1, |input| self.parse_identifier(input))(input)?;
+            preceded(ws1, |input| self.parse_identifier(input))(input)?;
         let (input, parameters) = self.typed_parameter_list(input)?;
-        let (input, _) = preceded(multispace0, tag(":"))(input)?;
+        let (input, _) = preceded(ws0, tag(":"))(input)?;
         let (input, ariety) =
-            preceded(multispace0, |input| self.parse_type_expression(input))(
-                input,
-            )?;
-        let (input, _) = preceded(multispace0, tag("{"))(input)?;
+            preceded(ws0, |input| self.parse_type_expression(input))(input)?;
+        let (input, _) = preceded(ws0, tag("{"))(input)?;
         let (input, constructors) =
             many0(|input| self.parse_inductive_constructor(input))(input)?;
-        let (input, _) = preceded(multispace0, char('}'))(input)?;
+        let (input, _) = preceded(ws0, char('}'))(input)?;
 
         Ok((
             input,
@@ -178,10 +174,10 @@ impl LofParser {
     //
     //
     fn prolog_query<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("solve"))(input)?;
+        let (input, _) = preceded(ws0, tag("solve"))(input)?;
         let (input, goals) = preceded(
-            multispace1,
-            separated_list1(preceded(multispace0, tag(",")), |i| {
+            ws1,
+            separated_list1(preceded(ws0, tag(",")), |i| {
                 self.parse_type_expression(i)
             }),
         )(input)?;
@@ -194,11 +190,11 @@ impl LofParser {
         &self,
         input: &'a str,
     ) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("!theory_block"))(input)?;
+        let (input, _) = preceded(ws0, tag("!theory_block"))(input)?;
         let (input, system_id) =
-            preceded(multispace1, |input| self.parse_identifier(input))(input)?;
+            preceded(ws1, |input| self.parse_identifier(input))(input)?;
         let (input, nodes) = many0(|input| self.parse_node(input))(input)?;
-        let (input, _) = preceded(multispace0, tag("!end_block"))(input)?;
+        let (input, _) = preceded(ws0, tag("!end_block"))(input)?;
 
         match id_to_system(system_id) {
             Ok(type_system) => {
@@ -218,29 +214,29 @@ impl LofParser {
     //
     //
     fn auto<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("auto"))(input)?;
+        let (input, _) = preceded(ws0, tag("auto"))(input)?;
         let (input, formula) =
-            preceded(multispace1, |input| self.parse_expression(input))(input)?;
-        let (input, _) = preceded(multispace0, tag(";"))(input)?;
+            preceded(ws1, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(ws0, tag(";"))(input)?;
 
         Ok((input, Auto(formula)))
     }
     //
     //
     fn horn_clause<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
-        let (input, _) = preceded(multispace0, tag("hclause"))(input)?;
+        let (input, _) = preceded(ws0, tag("hclause"))(input)?;
         let (input, head) =
-            preceded(multispace0, |i| self.parse_type_expression(i))(input)?;
+            preceded(ws0, |i| self.parse_type_expression(i))(input)?;
         let (input, subgoals) = opt(preceded(
-            preceded(multispace0, tag("<-")),
+            preceded(ws0, tag("<-")),
             preceded(
-                multispace0,
-                separated_list1(preceded(multispace0, tag(",")), |i| {
+                ws0,
+                separated_list1(preceded(ws0, tag(",")), |i| {
                     self.parse_type_expression(i)
                 }),
             ),
         ))(input)?;
-        let (input, _) = preceded(multispace0, tag(";"))(input)?;
+        let (input, _) = preceded(ws0, tag(";"))(input)?;
 
         let subgoals = subgoals.unwrap_or_else(Vec::new);
         Ok((input, HClause(head, subgoals)))
@@ -254,10 +250,10 @@ impl LofParser {
         let parse_quoted =
             |input| delimited(char('"'), is_not("\""), char('"'))(input);
 
-        let (input, _) = preceded(multispace0, tag("sugar"))(input)?;
-        let (input, notation) = preceded(multispace1, parse_quoted)(input)?;
-        let (input, _) = preceded(multispace0, tag(":="))(input)?;
-        let (input, body) = preceded(multispace1, parse_quoted)(input)?;
+        let (input, _) = preceded(ws0, tag("sugar"))(input)?;
+        let (input, notation) = preceded(ws1, parse_quoted)(input)?;
+        let (input, _) = preceded(ws0, tag(":="))(input)?;
+        let (input, body) = preceded(ws1, parse_quoted)(input)?;
 
         let pattern_tokens: Vec<String> =
             notation.split_whitespace().map(|s| s.to_string()).collect();

@@ -7,14 +7,33 @@ use super::api::{
 };
 use crate::misc::simple_map;
 use nom::{
+    branch::alt,
     bytes::complete::{tag, take_while1},
-    character::complete::{char, multispace0},
-    combinator::{opt, recognize},
+    character::complete::{char, line_ending, multispace1, not_line_ending},
+    combinator::{map, opt, recognize},
     error::{Error, ErrorKind},
-    multi::many0,
-    sequence::{delimited, preceded},
+    multi::{many0, many1},
+    sequence::{delimited, preceded, tuple},
     IResult,
 };
+
+/// Skips zero or more whitespace characters or line comments (`# ...`).
+pub fn ws0(input: &str) -> IResult<&str, ()> {
+    let (input, _) = many0(alt((
+        map(multispace1, |_| ()),
+        map(tuple((tag("#"), not_line_ending, opt(line_ending))), |_| ()),
+    )))(input)?;
+    Ok((input, ()))
+}
+
+/// Skips one or more whitespace characters or line comments (`# ...`).
+pub fn ws1(input: &str) -> IResult<&str, ()> {
+    let (input, _) = many1(alt((
+        map(multispace1, |_| ()),
+        map(tuple((tag("#"), not_line_ending, opt(line_ending))), |_| ()),
+    )))(input)?;
+    Ok((input, ()))
+}
 
 const RESERVED_KEYWORDS: &[&str] = &[
     "let",
@@ -46,7 +65,7 @@ impl LofParser {
         input: &'a str,
     ) -> IResult<&'a str, &'a str> {
         let (input, identifier) = preceded(
-            multispace0,
+            ws0,
             recognize(take_while1(|c: char| {
                 c == '_'
                     || unicode_xid::UnicodeXID::is_xid_start(c)
@@ -66,12 +85,10 @@ impl LofParser {
         input: &'a str,
     ) -> IResult<&'a str, (String, Expression)> {
         let (input, identifier) =
-            preceded(multispace0, |input| self.parse_identifier(input))(input)?;
-        let (input, _) = preceded(multispace0, tag(":"))(input)?;
+            preceded(ws0, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, tag(":"))(input)?;
         let (input, type_expression) =
-            preceded(multispace0, |input| self.parse_type_expression(input))(
-                input,
-            )?;
+            preceded(ws0, |input| self.parse_type_expression(input))(input)?;
 
         Ok((input, (identifier.to_string(), type_expression)))
     }
@@ -81,15 +98,13 @@ impl LofParser {
         input: &'a str,
     ) -> IResult<&'a str, (String, Option<Expression>)> {
         let (input, identifier) =
-            preceded(multispace0, |input| self.parse_identifier(input))(input)?;
+            preceded(ws0, |input| self.parse_identifier(input))(input)?;
 
         let (input, opt_type) = opt(preceded(
-            multispace0,
+            ws0,
             preceded(
                 tag(":"),
-                preceded(multispace0, |input| {
-                    self.parse_type_expression(input)
-                }),
+                preceded(ws0, |input| self.parse_type_expression(input)),
             ),
         ))(input)?;
 
@@ -101,11 +116,11 @@ impl LofParser {
         input: &'a str,
     ) -> IResult<&'a str, Vec<(String, Expression)>> {
         many0(preceded(
-            multispace0,
+            ws0,
             delimited(
-                preceded(multispace0, char('(')),
+                preceded(ws0, char('(')),
                 |input| self.parse_typed_identifier(input),
-                preceded(multispace0, char(')')),
+                preceded(ws0, char(')')),
             ),
         ))(input)
     }
@@ -211,5 +226,88 @@ impl LofParser {
             // non recursive
             Inferator() => exp.to_owned(),
         }
+    }
+}
+#[cfg(test)]
+mod unit_tests {
+    use crate::parser::commons::{ws0, ws1};
+
+    #[test]
+    fn test_ws0() {
+        assert_eq!(
+            ws0("hello"),
+            Ok(("hello", ())),
+            "ws0 should consume nothing before non-whitespace"
+        );
+        assert_eq!(
+            ws0("  hello"),
+            Ok(("hello", ())),
+            "ws0 should consume leading spaces"
+        );
+        assert_eq!(
+            ws0("\t\n hello"),
+            Ok(("hello", ())),
+            "ws0 should consume tabs and newlines"
+        );
+        assert_eq!(
+            ws0("# comment\nhello"),
+            Ok(("hello", ())),
+            "ws0 should consume a line comment"
+        );
+        assert_eq!(
+            ws0("  # comment\nhello"),
+            Ok(("hello", ())),
+            "ws0 should consume whitespace then a comment"
+        );
+        assert_eq!(
+            ws0("# c1\n# c2\nhello"),
+            Ok(("hello", ())),
+            "ws0 should consume multiple consecutive comments"
+        );
+        assert_eq!(
+            ws0("# comment at eof"),
+            Ok(("", ())),
+            "ws0 should consume a comment with no trailing newline"
+        );
+        assert_eq!(ws0(""), Ok(("", ())), "ws0 should succeed on empty input");
+    }
+
+    #[test]
+    fn test_ws1() {
+        assert!(
+            ws1("hello").is_err(),
+            "ws1 should fail when input starts with non-whitespace"
+        );
+        assert!(ws1("").is_err(), "ws1 should fail on empty input");
+        assert_eq!(
+            ws1("  hello"),
+            Ok(("hello", ())),
+            "ws1 should consume leading spaces"
+        );
+        assert_eq!(
+            ws1("\t\n hello"),
+            Ok(("hello", ())),
+            "ws1 should consume tabs and newlines"
+        );
+        assert_eq!(
+            ws1("# comment\nhello"),
+            Ok(("hello", ())),
+            "ws1 should consume a line comment"
+        );
+        assert_eq!(
+            ws1("  # comment\nhello"),
+            Ok(("hello", ())),
+            "ws1 should consume whitespace then a comment"
+        );
+        assert_eq!(
+            ws1("# c1\n# c2\nhello"),
+            Ok(("hello", ())),
+            "ws1 should consume multiple consecutive comments"
+        );
+        assert_eq!(
+            ws1("# comment at eof"),
+            Ok(("", ())),
+            "ws1 should consume a comment with no trailing newline"
+        );
     }
 }
