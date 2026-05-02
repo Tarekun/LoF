@@ -141,7 +141,6 @@ impl LofParser {
         _config: &Config,
         workspace: &str,
     ) -> Result<LofAst, String> {
-        println!("PARSE WORKSPACE {}", workspace);
         let workspace_is_dir = std::path::Path::new(workspace).is_dir();
         let workspace_path = std::path::Path::new(workspace);
         let lof_files: Vec<String> = list_sources(workspace)
@@ -160,7 +159,6 @@ impl LofParser {
         if workspace_is_dir {
             std::env::set_current_dir(workspace).map_err(|e| e.to_string())?;
         }
-        println!("LOF FILES {:?}", lof_files);
         let mut asts = vec![];
         let mut errors = vec![];
 
@@ -168,7 +166,6 @@ impl LofParser {
             panic!("Directory {} is not a LoF workspace", workspace);
         }
         for filepath in lof_files {
-            println!("HERE");
             let (remainder, ast) = self.parse_source_file(&filepath);
             if !remainder.chars().all(|c| c.is_whitespace()) {
                 errors.push(format!(
