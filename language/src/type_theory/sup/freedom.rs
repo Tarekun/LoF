@@ -2,7 +2,7 @@ use super::sup::{
     SupFormula::{self, Equality, ForAll, Not},
     SupTerm::{self, Variable},
 };
-use crate::type_theory::interface::Automatic;
+use crate::{config::GivingClause, type_theory::interface::Automatic};
 use crate::{
     config::SelectionFunction::{self, All, Maximal},
     type_theory::sup::sup::Sup,
@@ -62,11 +62,6 @@ pub fn drop_maximal_literals(clause: &mut Vec<SupFormula>) -> Vec<SupFormula> {
 /// from the unprocessed set.
 pub type GivingClauseSignature =
     fn(&mut Vec<SupFormula>) -> Result<SupFormula, String>;
-
-pub enum GivingClause {
-    Fifo,
-    Weighted,
-}
 
 pub fn get_giving_clause_fn(strategy: GivingClause) -> GivingClauseSignature {
     match strategy {

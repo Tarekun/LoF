@@ -10,15 +10,18 @@ use crate::{
     misc::Union::{self, L, R},
     runtime::program::Schedule,
     type_theory::{
-        commons::type_check::type_check_variable,
+        commons::{type_check::type_check_variable, unification::Substitution},
         environment::Environment,
         interface::{Automatic, Kernel, TypeTheory},
         sup::{
+            freedom::{
+                get_selection_fn, pick_clause, GivingClauseSignature,
+                SelectionFunctionSignature,
+            },
             sup::{
                 SupFormula::{Atom, Clause, Equality, ForAll, Not},
                 SupTerm::{Application, Variable},
             },
-            freedom::{get_selection_fn, pick_clause},
             sup_utils::{kbo_terms, kbo_types},
         },
     },
@@ -161,10 +164,11 @@ impl Automatic for Sup {
         kbo_types(type1, type2)
     }
 
-    fn saturate(saturation_set: &Vec<SupFormula>) -> Result<(), String> {
-        // TODO properly configure this
-        let selection_fn = get_selection_fn(SelectionFunction::Maximal());
-        let _ = saturate(saturation_set, &selection_fn, pick_clause);
-        Ok(())
+    fn saturate(
+        saturation_set: &Vec<SupFormula>,
+        selection_fn: &SelectionFunctionSignature,
+        giving_clause_fn: &GivingClauseSignature,
+    ) -> Result<Substitution<SupTerm>, String> {
+        saturate(saturation_set, selection_fn, *giving_clause_fn)
     }
 }
