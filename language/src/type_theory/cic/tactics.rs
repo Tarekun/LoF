@@ -29,7 +29,10 @@ pub fn type_check_tactic(
         Apply(lemma) => {
             type_check_apply(environment, target, partial_proof, lemma)
         }
-        _ => Err("TODO".to_string()),
+        _ => Err(format!(
+            "Tactic {:?} currently not type-checkable in CIC",
+            tactic
+        )),
     }
 }
 //

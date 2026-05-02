@@ -4,7 +4,7 @@ mod unit_tests {
         config::Config,
         parser::api::Expression::VarUse,
         parser::api::LofParser,
-        parser::api::Tactic::{Apply, Begin, Exact, Intro, Qed},
+        parser::api::Tactic::{Apply, Exact, Intro},
     };
 
     #[test]
@@ -12,16 +12,16 @@ mod unit_tests {
         let parser = LofParser::new(Config::default());
 
         assert_eq!(
-            parser.parse_interactive_proof("begin qed."),
-            Ok(("", vec![Begin(), Qed()])),
-            "Interactive proof parser doesnt construct proper AST"
+            parser.parse_interactive_proof("begin exact p qed."),
+            Ok(("", vec![Exact(VarUse("p".to_string()))])),
+            "Interactive proof parser should strip begin/qed and return only real tactics"
         );
         assert!(
             parser.parse_interactive_proof("begin").is_ok(),
             "Interactive proof parser doesnt read partial proof"
         );
         assert!(
-            parser.parse_interactive_proof("intro n:Nat").is_err(), 
+            parser.parse_interactive_proof("intro n:Nat").is_err(),
             "Interactive proof parser reads a proof that doesnt start with begin tactic"
         );
     }
