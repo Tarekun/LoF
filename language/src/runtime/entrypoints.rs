@@ -198,7 +198,11 @@ mod unit_tests {
         runtime::entrypoints::{
             execute, parse_and_elaborate, parse_only, type_check,
         },
-        type_theory::{cic::cic::Cic, fol::fol::Fol},
+        type_theory::{
+            cic::cic::Cic,
+            fol::fol::Fol,
+            interface::{Kernel, Reducer},
+        },
     };
 
     fn all_system_configs() -> Vec<Config> {
@@ -271,35 +275,61 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_logic_programming_test_scripts() {
-        let config = Config::new(TypeSystem::Fol);
-        let base_dir = "../library/tests/loprog";
+    fn test_dedicated_scripts() {
+        /// directory navigation & script execution function
+        fn test_scripts_run<T: Kernel + Reducer>(
+            base_dir: &str,
+            config: Config,
+            error_prefix: &str,
+        ) {
+            let lof_files: Vec<_> = std::fs::read_dir(base_dir)
+                .expect("failed to read test directory")
+                .flat_map(|entry| {
+                    let path = entry.expect("invalid dir entry").path();
+                    if path.is_dir() {
+                        std::fs::read_dir(&path)
+                            .expect("failed to read subdirectory")
+                            .map(|e| e.expect("invalid entry").path())
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![path]
+                    }
+                })
+                .filter(|p| {
+                    p.extension().and_then(|e| e.to_str()) == Some("lof")
+                })
+                .collect();
 
-        let lof_files: Vec<_> = std::fs::read_dir(base_dir)
-            .expect("failed to read loprog test directory")
-            .flat_map(|entry| {
-                let path = entry.expect("invalid dir entry").path();
-                if path.is_dir() {
-                    std::fs::read_dir(&path)
-                        .expect("failed to read subdirectory")
-                        .map(|e| e.expect("invalid entry").path())
-                        .collect::<Vec<_>>()
-                } else {
-                    vec![path]
-                }
-            })
-            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("lof"))
-            .collect();
-
-        for file in &lof_files {
-            let path_str = file.to_str().expect("non-UTF-8 path");
-            let res = execute::<Fol>(&config, path_str);
-            assert!(
-                res.is_ok(),
-                "FOL solve execution failed on {}:\n{:?}",
-                path_str,
-                res.err()
-            );
+            for file in &lof_files {
+                let path_str = file.to_str().expect("non-UTF-8 path");
+                let res = execute::<T>(&config, path_str);
+                assert!(
+                    res.is_ok(),
+                    "{}. File: {}, Error: {:?}",
+                    error_prefix,
+                    path_str,
+                    res.err()
+                );
+            }
         }
+
+        // test complex CIC expressions parsing and type checking
+        test_scripts_run::<Cic>(
+            "../library/tests/expressions",
+            Config::new(TypeSystem::Cic),
+            "CIC complex expressions failed",
+        );
+        // test CIC proof checking
+        test_scripts_run::<Cic>(
+            "../library/tests/proofs",
+            Config::new(TypeSystem::Cic),
+            "CIC proofs execution failed",
+        );
+        // test FOL logic programming
+        test_scripts_run::<Fol>(
+            "../library/tests/loprog",
+            Config::new(TypeSystem::Fol),
+            "FOL solve execution failed",
+        );
     }
 }
