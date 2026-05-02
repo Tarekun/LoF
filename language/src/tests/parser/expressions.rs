@@ -457,6 +457,90 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_comment_as_whitespace() {
+        let parser = LofParser::new(Config::default());
+
+        assert_eq!(
+            parser.parse_expression("f # apply f to x\n x"),
+            Ok((
+                "",
+                Application(
+                    Box::new(VarUse("f".to_string())),
+                    vec![VarUse("x".to_string())]
+                )
+            )),
+            "Comment between function and argument should be treated as whitespace"
+        );
+
+        assert_eq!(
+            parser.parse_expression("f x # second arg\n y"),
+            Ok((
+                "",
+                Application(
+                    Box::new(VarUse("f".to_string())),
+                    vec![VarUse("x".to_string()), VarUse("y".to_string())]
+                )
+            )),
+            "Comment between arguments should be treated as whitespace"
+        );
+
+        assert_eq!(
+            parser.parse_expression("A # domain type\n -> B"),
+            Ok((
+                "",
+                Arrow(
+                    Box::new(VarUse("A".to_string())),
+                    Box::new(VarUse("B".to_string()))
+                )
+            )),
+            "Comment between arrow domain and arrow token should be treated as whitespace"
+        );
+
+        assert_eq!(
+            parser.parse_expression("λx:T. # lambda body follows\n x"),
+            Ok((
+                "",
+                Abstraction(
+                    "x".to_string(),
+                    Box::new(VarUse("T".to_string())),
+                    Box::new(VarUse("x".to_string()))
+                )
+            )),
+            "Comment before lambda body should be treated as whitespace"
+        );
+
+        assert_eq!(
+            parser.parse_expression("let n := zero; # bind n\n n"),
+            Ok((
+                "",
+                Let(
+                    "n".to_string(),
+                    Box::new(None),
+                    Box::new(VarUse("zero".to_string())),
+                    Box::new(VarUse("n".to_string()))
+                )
+            )),
+            "Comment between let semicolon and body should be treated as whitespace"
+        );
+
+        assert!(
+            parser
+                .parse_statement("fun f (x: Nat) : Nat {\n  # increment\n  s x\n}")
+                .is_ok(),
+            "Comment inside function body should be treated as whitespace"
+        );
+
+        assert!(
+            parser
+                .parse_statement(
+                    "inductive nat : TYPE {\n  # zero constructor\n  | o: nat\n  # succ constructor\n  | s: nat -> nat\n}"
+                )
+                .is_ok(),
+            "Comments between inductive constructors should be treated as whitespace"
+        );
+    }
+
+    #[test]
     fn test_infer_operator() {
         let parser = LofParser::new(Config::default());
 

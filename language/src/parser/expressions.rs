@@ -5,10 +5,11 @@ use super::api::{
     },
     LofParser,
 };
+use super::commons::{ws0, ws1};
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{char, multispace0, multispace1},
+    character::complete::char,
     combinator::{map, opt},
     error::{Error, ErrorKind},
     multi::{many0, many1},
@@ -24,9 +25,9 @@ impl LofParser {
         input: &'a str,
     ) -> IResult<&'a str, Expression> {
         delimited(
-            preceded(multispace0, char('(')),
+            preceded(ws0, char('(')),
             |input| self.parse_expression(input),
-            preceded(multispace0, char(')')),
+            preceded(ws0, char(')')),
         )(input)
     }
     //
@@ -41,15 +42,15 @@ impl LofParser {
     //
     fn parse_abs<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
         let (input, _) =
-            preceded(multispace0, alt((tag("λ"), tag("\\lambda "))))(input)?;
+            preceded(ws0, alt((tag("λ"), tag("\\lambda "))))(input)?;
 
         let (input, opt_param) = opt(preceded(
-            multispace0,
+            ws0,
             //TODO: use optionally type identifier for abstractions at some point
             tuple((
                 |input| self.parse_identifier(input),
-                preceded(multispace0, char(':')),
-                preceded(multispace0, |input| {
+                preceded(ws0, char(':')),
+                preceded(ws0, |input| {
                     self.parse_type_expression(input)
                 }),
             )),
@@ -60,9 +61,9 @@ impl LofParser {
             ("it".to_string(), VarUse("Unit".to_string()))
         };
 
-        let (input, _) = preceded(multispace0, char('.'))(input)?;
+        let (input, _) = preceded(ws0, char('.'))(input)?;
         let (input, body) =
-            preceded(multispace0, |input| self.parse_expression(input))(input)?;
+            preceded(ws0, |input| self.parse_expression(input))(input)?;
 
         Ok((
             input,
@@ -80,20 +81,18 @@ impl LofParser {
         input: &'a str,
     ) -> IResult<&'a str, Expression> {
         let (input, _) = preceded(
-            multispace0,
+            ws0,
             alt((tag("Π"), tag("∀"), tag("\\forall"))),
         )(input)?;
         let (input, var_name) =
-            preceded(multispace0, |input| self.parse_identifier(input))(input)?;
-        let (input, _) = preceded(multispace0, tag(":"))(input)?;
+            preceded(ws0, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, tag(":"))(input)?;
         //TODO should allow product type expressions here or only predefined type vars?
         let (input, type_var) =
-            preceded(multispace0, |input| self.parse_type_expression(input))(
-                input,
-            )?;
-        let (input, _) = preceded(multispace0, char('.'))(input)?;
+            preceded(ws0, |input| self.parse_type_expression(input))(input)?;
+        let (input, _) = preceded(ws0, char('.'))(input)?;
         let (input, body) =
-            preceded(multispace0, |input| self.parse_expression(input))(input)?;
+            preceded(ws0, |input| self.parse_expression(input))(input)?;
 
         Ok((
             input,
@@ -115,7 +114,7 @@ impl LofParser {
             |input| self.parse_app(input),
             |input| self.parse_var(input),
         ))(input)?;
-        let (input, _) = preceded(multispace0, tag("->"))(input)?;
+        let (input, _) = preceded(ws0, tag("->"))(input)?;
         let (input, codomain) = self.parse_type_expression(input)?;
 
         Ok((input, Arrow(Box::new(domain), Box::new(codomain))))
@@ -146,10 +145,8 @@ impl LofParser {
     }
     fn parse_app<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
         let (input, left) =
-            preceded(multispace0, |input| self.applicable_expression(input))(
-                input,
-            )?;
-        let (input, args) = many1(preceded(multispace1, |input| {
+            preceded(ws0, |input| self.applicable_expression(input))(input)?;
+        let (input, args) = many1(preceded(ws1, |input| {
             self.argument_expression(input)
         }))(input)?;
 
@@ -175,12 +172,12 @@ impl LofParser {
         &self,
         input: &'a str,
     ) -> IResult<&'a str, (Expression, Expression)> {
-        let (input, _) = preceded(multispace0, char('|'))(input)?;
+        let (input, _) = preceded(ws0, char('|'))(input)?;
         let (input, pattern) = self.parse_pattern(input)?;
-        let (input, _) = preceded(multispace0, tag("=>"))(input)?;
+        let (input, _) = preceded(ws0, tag("=>"))(input)?;
         let (input, body) =
-            preceded(multispace0, |input| self.parse_expression(input))(input)?;
-        let (input, _) = preceded(multispace0, char(','))(input)?;
+            preceded(ws0, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(ws0, char(','))(input)?;
 
         Ok((input, (pattern, body)))
     }
@@ -188,10 +185,10 @@ impl LofParser {
         &self,
         input: &'a str,
     ) -> IResult<&'a str, Expression> {
-        let (input, _) = preceded(multispace0, tag("match"))(input)?;
+        let (input, _) = preceded(ws0, tag("match"))(input)?;
         let (input, term) =
-            preceded(multispace1, |input| self.parse_expression(input))(input)?;
-        let (input, _) = preceded(multispace1, tag("with"))(input)?;
+            preceded(ws1, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(ws1, tag("with"))(input)?;
         let (input, branches) =
             many1(|input| self.parse_match_branch(input))(input)?;
 
@@ -199,22 +196,22 @@ impl LofParser {
     }
 
     fn parse_meta<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
-        let (input, _) = preceded(multispace0, char('?'))(input)?;
+        let (input, _) = preceded(ws0, char('?'))(input)?;
 
         Ok((input, Inferator()))
     }
 
     fn let_def<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
-        let (input, _) = preceded(multispace0, tag("let"))(input)?;
-        let (input, (var_name, opt_type)) = preceded(multispace1, |input| {
+        let (input, _) = preceded(ws0, tag("let"))(input)?;
+        let (input, (var_name, opt_type)) = preceded(ws1, |input| {
             self.parse_optionally_typed_identifier(input)
         })(input)?;
-        let (input, _) = preceded(multispace0, tag(":="))(input)?;
+        let (input, _) = preceded(ws0, tag(":="))(input)?;
         let (input, term) =
-            preceded(multispace0, |input| self.parse_expression(input))(input)?;
-        let (input, _) = preceded(multispace0, char(';'))(input)?;
+            preceded(ws0, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(ws0, char(';'))(input)?;
         let (input, scope) =
-            preceded(multispace1, |input| self.local_expression(input))(input)?;
+            preceded(ws1, |input| self.local_expression(input))(input)?;
 
         Ok((
             input,
@@ -231,18 +228,14 @@ impl LofParser {
         // TODO should i avoid returning here if there's no '|' ?
         // so this doesnt conflict with other parsers
         let (input, first_type) =
-            preceded(multispace0, |input| self.parse_type_expression(input))(
-                input,
-            )?;
+            preceded(ws0, |input| self.parse_type_expression(input))(input)?;
 
         // parse zero or more additional types separated by '|'
         let (input, other_types) = many1(preceded(
-            multispace1,
+            ws1,
             preceded(
                 tag("|"),
-                preceded(multispace0, |input| {
-                    self.parse_type_expression(input)
-                }),
+                preceded(ws0, |input| self.parse_type_expression(input)),
             ),
         ))(input)?;
 
@@ -252,20 +245,20 @@ impl LofParser {
     }
 
     fn parse_tuple<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
-        let (input, _) = preceded(multispace0, char('('))(input)?;
+        let (input, _) = preceded(ws0, char('('))(input)?;
 
         let (input, first_expr) = self.parse_expression(input)?;
         let (input, remaining_exprs) = many0(preceded(
-            multispace0,
+            ws0,
             preceded(
                 char(','),
-                preceded(multispace0, |input| self.parse_expression(input)),
+                preceded(ws0, |input| self.parse_expression(input)),
             ),
         ))(input)?;
 
         // optional trailing comma
-        let (input, _) = preceded(multispace0, opt(char(',')))(input)?;
-        let (input, _) = preceded(multispace0, char(')'))(input)?;
+        let (input, _) = preceded(ws0, opt(char(',')))(input)?;
+        let (input, _) = preceded(ws0, char(')'))(input)?;
 
         let mut all_exprs = vec![first_expr];
         all_exprs.extend(remaining_exprs);
@@ -294,7 +287,7 @@ impl LofParser {
                     remaining
                 } else {
                     let token_parsing =
-                        preceded(multispace0, tag(token.as_str()))(remaining);
+                        preceded(ws0, tag(token.as_str()))(remaining);
                     if token_parsing.is_err() {
                         matched = false;
                         break;
