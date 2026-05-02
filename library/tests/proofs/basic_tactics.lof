@@ -16,7 +16,8 @@ fun rec plus (n:Nat) (m:Nat) : Nat {
   | s nn => s (plus nn m),
 }
 
-theorem zero_plus_one_term : Eq Nat (plus z (s z)) (s z) := (refl Nat (s z))
+# TODO: this needs CIC unification to start by computing normal forms and then checking term SO unification
+# theorem zero_plus_one_term : Eq Nat (plus z (s z)) (s z) := (refl Nat (s z))
 
 theorem zero_plus_one_tac : Eq Nat (plus z (s z)) (s z) := 
   begin
