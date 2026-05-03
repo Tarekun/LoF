@@ -12,17 +12,26 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "lof-core.helloWorld",
-        "title": "Hello World"
+    "configuration": {
+      "title": "LoF Core",
+      "properties": {
+        "lof.proofrPath": {
+          "type": "string",
+          "default": "proofr",
+          "description": "path to the proofr executable (leave as 'proofr' to use PATH, or set an absolute path to a specific build)"
+        }
       }
-    ],
+    },
     "languages": [
       {
         "id": "lof",
-        "aliases": ["LoF", "lof"],
-        "extensions": [".lof"],
+        "aliases": [
+          "LoF",
+          "lof"
+        ],
+        "extensions": [
+          ".lof"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -43,14 +52,20 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.97.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/vscode": "^1.97.0",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
-    "eslint": "^9.19.0",
-    "typescript": "^5.7.3",
     "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.19.0",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "vscode-uri": "^3.1.0"
   }
 }
