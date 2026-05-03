@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::misc::Union::{L, R};
-use crate::parser::api::LofAst;
 use crate::parser::api::LofParser;
+use crate::parser::api::{Expression, LofAst, Tactic};
 use crate::runtime::program::Schedule;
 use crate::runtime::program::{Program, ProgramNode};
 use crate::type_theory::environment::Environment;
@@ -15,7 +15,7 @@ pub enum EntryPoint {
     TypeCheck,
     Elaborate,
     ParseOnly,
-    Help,
+    Help(Vec<String>),
     Interactive,
 }
 
@@ -174,20 +174,133 @@ pub fn interactive<T: TypeTheory + Kernel + Reducer>(
     }
 }
 
-pub fn help() {
-    println!("Usage: lof <operation> <workspace> [--flags]");
-    println!("workspace can be a path to either a .lof file or a directory");
-    println!();
-    println!("Operations:");
-    println!("\trun\t\tExecute the code");
-    println!("\tcheck\t\tParse and type check the code");
-    println!("\tparse\t\tOnly parse code");
-    println!(
-        "\telaborate\tParse and map the AST to the configured type system"
-    );
-    println!();
-    println!("Flags:");
-    println!("\t--config <path>\t\tSpecify a custom config file path (defaults to ./config.yml)");
+fn print_entries(entries: &[(&str, &str)]) {
+    let w = entries.iter().map(|(key, _)| key.len()).max().unwrap_or(0);
+    for (key, val) in entries {
+        println!("\t{key:<w$}\t{val}");
+    }
+}
+
+pub fn help(args: Vec<String>) {
+    fn generic() {
+        println!("Usage: lof <operation> <arg> [--flags]");
+        println!();
+        println!("Operations:");
+        print_entries(&[
+            ("run <workspace>",    "Execute the code at the path pointed by <workspace>"),
+            ("check <workspace>",  "Run type checking on the code at the path pointed by <workspace>"),
+            ("help [subcommands]", "Access LoF documentation (use `lof help help` to see extended functionality)"),
+            ("parse",              "Only parse code"),
+            ("elaborate",          "Parse and map the AST to the configured type system"),
+        ]);
+        println!();
+        println!("Flags:");
+        print_entries(&[(
+            "--config <path>",
+            "Specify a custom config file path (defaults to ./config.yml)",
+        )]);
+    }
+    fn help_help() {
+        println!("Usage: lof help [subcommands]");
+        println!("Without a subcommand, prints the general usage message.");
+        println!();
+        println!("Subcommands:");
+        print_entries(&[
+            ("help", "Show this message"),
+            ("tactics", "List tactics supported in the language"),
+            ("systems", "List type systems supported in the language"),
+            ("run", "Details on how to run LoF scripts"),
+        ]);
+    }
+    fn help_systems() {
+        println!("Type systems define what LoF expressions are considered well-formed expressions and affects the type (or proof) checking algorithm.");
+        println!("You can use the `system` field in the YAML config to select the type system to use (defaults to 'cic')");
+        println!();
+        println!("Type systems supported");
+        print_entries(&[
+            ("cic", "Calculus of Inductive Constructions, higher-order type system mainly use for ITP (constructive system)"),
+            ("fol", "First-Order Logic, traditional logic system in its classical form"),
+            ("sup", "Superposition calculus, FO grammar in CNF used for proof automation")
+        ]);
+    }
+    fn help_tactics(tactic: Option<&String>) {
+        match tactic {
+            Some(tactic) => match tactic.as_str() {
+                "intro" => {
+                    println!("`intro` is used to introduce a new hypothesis.");
+                    println!();
+                    println!("When the current goal contains an hypothesis (you have to prove an implication H -> T or the quantification a ∀x:H. T) `intro` introduces that hypothesis.");
+                    println!("Using `intro` alone will use the same variable name found for the goal's type declaration, but you can override the hypothesis name with `intro h_name`");
+                }
+                "exact" => {
+                    println!("`exact` is used to close the current goal by providing a term with a type that unifies with it.");
+                    println!();
+                    println!("Say you have to prove the goal P 1 and have the following hypothesis:");
+                    print_entries(&[
+                        ("bc :", "P 0"),
+                        ("ic :", "P n -> P (s n)"),
+                    ]);
+                    println!("Then you can close the goal with the tactic `exact (ic bc)` and conclude the proof (by ic P 0 implies P 1).");
+                    println!();
+                    println!(
+                        "{}. {}. {}",
+                        "Note this tactic normalizes both the provided term and the target before computing unification",
+                        "Suppose you have defined the `plus` function on naturals and trying to prove plus 0 1 = 1, where equality = is inductively defined with the `refl` constructor",
+                        "Then you can prove plus 0 1 = 1 by simply using `exact refl Nat (plus 0 1) 1`, since `plus 0 1` will be reduced to 1"
+                    );
+                }
+                "apply" => {
+                    println!("`apply` is used when you need to close a goal that is given by the conclusion of some theorem you already have.");
+                    println!();
+                    println!("{}, {}. {}",
+                        "If you need to prove goal G and you have a functional term with type  f: H -> G",
+                        "then you can use `apply f` to close G. This will open the new goal H, moving the proof by backwards reasoning",
+                        "Once you construct a term `h: H` you'll be able to close goal H and the obtained proof is equivalent to using `exact f h`"
+                    );
+                    println!("The same concept applies if the the applied term is a universal quantification f: ∀x:H. G");
+                }
+                _ => println!("Tactic named `{}` does not exist", tactic),
+            },
+            None => {
+                println!("Tactics are commands that can be used in interactive proofs, to code your proof without having to build convoluted proof terms.");
+                println!("Use `lof help tactics <tactic>` to get more details on a specific tactic");
+                println!("Currently tactics and interactive proofs are only supported with the 'cic' type system");
+                println!();
+                println!("Tactics supported:");
+                print_entries(&[
+                    ("intro [name]", "When the open goal is an implication or universal quantification, assume the hypothesis and optionally give it a name"),
+                    ("exact <term>", "Prove a goal with the supplied term of appropriate type"),
+                    ("apply <lemma>", "Prove a goal with the supplied lemma, opening subgoals for its hypothesis"),
+                ]);
+            }
+        }
+    }
+    fn help_run() {
+        println!("Usage: lof run <workspace>");
+        println!();
+        println!("This command executes the LoF scripts at the workspace path provided.");
+        println!("A workspace can either be a single .lof file or a directory containing multiple files.");
+        println!("This means that both `lof run ./my_lof_project/main.lof` and `lof run ./my_lof_project/` are allowed commands.");
+        println!();
+        println!(
+            "{}, {}. {}",
+            "Note that when running a single file the execution is carried out within the current working directory",
+            "but if the workspace points to a directory it will be set as the root directory for the execution",
+            "This can impact relative imports defined in source files."
+        );
+    }
+
+    if args.len() == 0 {
+        generic()
+    } else {
+        match args[0].as_str() {
+            "help" => help_help(),
+            "systems" => help_systems(),
+            "tactics" => help_tactics(args.get(1)),
+            "run" => help_run(),
+            _ => println!("No help available for subcommand `{}`. Run `lof help help` to see what is available", args[0]),
+        }
+    }
 }
 
 //########################### UNIT TESTS

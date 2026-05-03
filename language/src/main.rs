@@ -91,10 +91,10 @@ fn determine_entrypoint(args: &[String]) -> EntryPoint {
         "check" => EntryPoint::TypeCheck,
         "elaborate" => EntryPoint::Elaborate,
         "parse" => EntryPoint::ParseOnly,
-        "help" => EntryPoint::Help,
+        "help" => EntryPoint::Help(args[2..].to_vec()),
         "run" => EntryPoint::Execute,
         "interactive" => EntryPoint::Interactive,
-        _ => EntryPoint::Help,
+        _ => EntryPoint::Help(vec![]),
     }
 }
 
@@ -122,7 +122,7 @@ fn run_with_theory<T: TypeTheory + Kernel + Reducer>(
             Err(message) => error!("Program failed: {}", message),
             Ok(_) => {}
         },
-        EntryPoint::Help => help(),
+        EntryPoint::Help(subcommands) => help(subcommands),
         EntryPoint::Interactive => match interactive::<T>(&config, filepath) {
             Err(message) => error!("Program failed: {}", message),
             Ok(_) => {}
