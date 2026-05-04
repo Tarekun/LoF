@@ -9,6 +9,7 @@ import {
   ServerOptions,
   TransportKind,
 } from 'vscode-languageclient/node';
+import { registerInfoview } from './infoview';
 
 let client: LanguageClient;
 
@@ -41,6 +42,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   // ensure the server process is killed when the extension is deactivated or the window closes
   context.subscriptions.push({ dispose: () => client.stop() });
+
+  registerInfoview(context);
 }
 
 export function deactivate(): Thenable<void> | undefined {
