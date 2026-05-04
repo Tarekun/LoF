@@ -15,7 +15,7 @@ function getOrCreatePanel(): vscode.WebviewPanel {
     'lofInfoview',
     'LoF Infoview',
     { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
-    { enableScripts: false },
+    { enableScripts: true },
   );
 
   panel.webview.html = buildHtml();
@@ -45,8 +45,22 @@ function buildHtml(): string {
 <body>
   <!-- TODO: replace static string with real language output once the infoview protocol is wired up -->
   <p>Hello from LoF</p>
+  <pre id="content" style="white-space: pre-wrap; margin: 0;"></pre>
+  <script>
+    window.addEventListener('message', (event) => {
+      document.getElementById('content').textContent = event.data.content;
+    });
+  </script>
 </body>
 </html>`;
+}
+
+function postCursor(document: vscode.TextDocument, position: vscode.Position): void {
+  // collect everything from the start of the file up to (but not including) the cursor.
+  // this mirrors Lean's infoview model: only the content before the cursor is relevant for
+  // computing the current goal state — future work will send this slice to the language server.
+  const content = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
+  panel?.webview.postMessage({ content });
 }
 
 export function registerInfoview(context: vscode.ExtensionContext): void {
@@ -55,12 +69,24 @@ export function registerInfoview(context: vscode.ExtensionContext): void {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor?.document.languageId === 'lof') {
         getOrCreatePanel();
+        postCursor(editor.document, editor.selection.active);
+      }
+    }),
+  );
+
+  // update the cursor line on every selection/cursor change inside a .lof file
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorSelection((e) => {
+      if (e.textEditor.document.languageId === 'lof') {
+        postCursor(e.textEditor.document, e.selections[0].active);
       }
     }),
   );
 
   // also open immediately if a .lof file is already active at extension startup
-  if (vscode.window.activeTextEditor?.document.languageId === 'lof') {
+  const active = vscode.window.activeTextEditor;
+  if (active?.document.languageId === 'lof') {
     getOrCreatePanel();
+    postCursor(active.document, active.selection.active);
   }
 }
