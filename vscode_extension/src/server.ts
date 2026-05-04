@@ -100,12 +100,11 @@ function check(uri: string, fsPath: string): void {
   const hasError = output.includes('Program failed:');
 
   if (hasError) {
-    // anchor at (0,0) — this is the whole-file position vscode uses when no line info is available.
-    // it shows up in the Problems panel and as a red dot in the Explorer, which is our MVP target.
-    // precise line/column positioning can be added once proofr emits structured location data.
+    // TODO: replace hardcoded range with real AST node coordinates once proofr emits location data.
+    // For now, highlight line 2 columns 3–10 (0-indexed) to prove we can control where the squiggle lands.
     diagnostics.push({
       severity: DiagnosticSeverity.Error,
-      range: Range.create(0, 0, 0, 0),
+      range: Range.create(1, 3, 1, 10),
       message: extractMessage(output),
       source: 'proofr',
     });
