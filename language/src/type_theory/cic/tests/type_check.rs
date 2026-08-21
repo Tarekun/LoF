@@ -631,6 +631,243 @@ mod tests {
     }
 
     #[test]
+    fn test_nested_pattern_match() {
+        let nat = Variable("nat".to_string(), GLOBAL_INDEX);
+        let mut test_env = Cic::default_environment();
+        test_env.add_to_context("nat", &Sort("TYPE".to_string()));
+        test_env.add_to_context("o", &nat);
+        test_env.add_to_context(
+            "s",
+            &Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone()),
+            ),
+        );
+        test_env.add_to_context("c", &nat.clone());
+
+        assert_eq!(
+            Cic::type_check_term(
+                &Match(
+                    Box::new(var("c")),
+                    vec![
+                        (var("o"), var("o")),
+                        // s (s n) => n : unpacks the argument of the nested
+                        // `s` constructor instead of binding it as a whole
+                        (
+                            app("s", vec![app("s", vec![var("n")])]),
+                            var("n")
+                        ),
+                    ]
+                ),
+                &mut test_env
+            )
+            .unwrap(),
+            nat.clone(),
+            "Type checker refuses match with a nested constructor pattern unpacking an argument of the same inductive type"
+        );
+
+        assert_eq!(
+            Cic::type_check_term(
+                &Match(
+                    Box::new(var("c")),
+                    vec![
+                        (var("o"), var("o")),
+                        // s (s (s n)) => n : unpacking should keep working at
+                        // arbitrary nesting depth
+                        (
+                            app(
+                                "s",
+                                vec![app("s", vec![app("s", vec![var("n")])])]
+                            ),
+                            var("n")
+                        ),
+                    ]
+                ),
+                &mut test_env
+            )
+            .unwrap(),
+            nat.clone(),
+            "Type checker refuses match with a doubly nested constructor pattern"
+        );
+    }
+
+    #[test]
+    fn test_nested_pattern_match_recursive_type() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let list = Variable("List".to_string(), GLOBAL_INDEX);
+        let type_var = vardbi("T", 0);
+        let sort = Sort("TYPE".to_string());
+        let mut test_env = Cic::default_environment();
+
+        test_env.add_to_context("Nat", &sort);
+        test_env.add_to_context("zero", &nat);
+        test_env.add_to_context(
+            "List",
+            &Product(
+                "T".to_string(),
+                Box::new(sort.clone()),
+                Box::new(sort.clone()),
+            ),
+        );
+        test_env.add_to_context(
+            "nil",
+            &Product(
+                "T".to_string(),
+                Box::new(sort.clone()),
+                Box::new(Application(
+                    Box::new(list.clone()),
+                    Box::new(type_var.clone()),
+                )),
+            ),
+        );
+        test_env.add_to_context(
+            "cons",
+            &Product(
+                "T".to_string(),
+                Box::new(sort.clone()),
+                Box::new(Product(
+                    "e".to_string(),
+                    Box::new(type_var.clone()),
+                    Box::new(Product(
+                        "l".to_string(),
+                        Box::new(Application(
+                            Box::new(list.clone()),
+                            Box::new(type_var.clone()),
+                        )),
+                        Box::new(Application(
+                            Box::new(list.clone()),
+                            Box::new(type_var.clone()),
+                        )),
+                    )),
+                )),
+            ),
+        );
+        test_env.add_to_context(
+            "test_list",
+            &Application(Box::new(list.clone()), Box::new(nat.clone())),
+        );
+
+        // cons Nat n (cons Nat m nil) => m : unpacks a nested list pattern
+        // where a recursive `List` constructor argument is expected
+        let double_nested_pattern = app(
+            "cons",
+            vec![
+                nat.clone(),
+                var("n"),
+                app(
+                    "cons",
+                    vec![nat.clone(), var("m"), app("nil", vec![nat.clone()])],
+                ),
+            ],
+        );
+        assert_eq!(
+            Cic::type_check_term(
+                &Match(
+                    Box::new(var("test_list")),
+                    vec![
+                        (app("nil", vec![nat.clone()]), var("zero")),
+                        (double_nested_pattern, var("m")),
+                    ]
+                ),
+                &mut test_env
+            )
+            .unwrap(),
+            nat.clone(),
+            "Type checker refuses match unpacking a nested list constructor pattern"
+        );
+
+        // cons Nat n (cons Nat m (cons Nat o nil)) => o : unpacking should
+        // also work with a triply nested pattern
+        let triple_nested_pattern = app(
+            "cons",
+            vec![
+                nat.clone(),
+                var("n"),
+                app(
+                    "cons",
+                    vec![
+                        nat.clone(),
+                        var("m"),
+                        app(
+                            "cons",
+                            vec![
+                                nat.clone(),
+                                var("o"),
+                                app("nil", vec![nat.clone()]),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        );
+        assert_eq!(
+            Cic::type_check_term(
+                &Match(
+                    Box::new(var("test_list")),
+                    vec![
+                        (app("nil", vec![nat.clone()]), var("zero")),
+                        (triple_nested_pattern, var("o")),
+                    ]
+                ),
+                &mut test_env
+            )
+            .unwrap(),
+            nat.clone(),
+            "Type checker refuses match unpacking a triply nested list constructor pattern"
+        );
+    }
+
+    #[test]
+    fn test_nested_pattern_match_type_mismatch() {
+        let nat = Variable("nat".to_string(), GLOBAL_INDEX);
+        let wrapped = Variable("Wrapped".to_string(), GLOBAL_INDEX);
+        let mut test_env = Cic::default_environment();
+        test_env.add_to_context("nat", &Sort("TYPE".to_string()));
+        test_env.add_to_context("o", &nat);
+        test_env.add_to_context(
+            "s",
+            &Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone()),
+            ),
+        );
+        test_env.add_to_context("c", &nat.clone());
+        // a second, unrelated inductive type whose constructor also expects
+        // an argument, so it can be used to build an ill-typed nested pattern
+        test_env.add_to_context("Wrapped", &Sort("TYPE".to_string()));
+        test_env.add_to_context(
+            "wrap",
+            &Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(wrapped.clone()),
+            ),
+        );
+
+        assert!(
+            Cic::type_check_term(
+                &Match(
+                    Box::new(var("c")),
+                    vec![
+                        (var("o"), var("o")),
+                        // s (wrap o) => o : `wrap o` produces `Wrapped`, but
+                        // `s` expects an argument of type `nat`
+                        (
+                            app("s", vec![app("wrap", vec![var("o")])]),
+                            var("o")
+                        ),
+                    ]
+                ),
+                &mut test_env
+            )
+            .is_err(),
+            "Type checker accepts a nested pattern that produces a type incompatible with the expected argument type"
+        );
+    }
+
+    #[test]
     //TODO add check of exaustiveness of patterns
     fn test_type_check_match() {
         let nat = Variable("nat".to_string(), GLOBAL_INDEX);
