@@ -1,7 +1,9 @@
 use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::tactics::type_check_tactic;
 use super::type_check::type_check_sort;
-use super::unification::{cic_unification, solve_unification};
+use super::unification::{
+    cic_so_unification, cic_unification, solve_unification,
+};
 use crate::misc::Union::{self};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
@@ -15,7 +17,6 @@ use crate::type_theory::cic::elaboration::{
 use crate::type_theory::cic::type_check::{
     type_check_inductive, type_check_match,
 };
-use crate::type_theory::cic::unification::cic_so_unification;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
     type_check_axiom, type_check_fo_universal, type_check_function,
@@ -101,13 +102,17 @@ impl TypeTheory for Cic {
         term1: &CicTerm,
         term2: &CicTerm,
     ) -> Result<(), String> {
-        common_unification_check(term1, term2)
+        // tbh im not really sure these specific functions should use unification instead of syntactic equality
+        let _ = cic_so_unification(term1, term2)?;
+        Ok(())
     }
     fn base_type_equality(
         type1: &CicTerm,
         type2: &CicTerm,
     ) -> Result<(), String> {
-        common_unification_check(type1, type2)
+        // tbh im not really sure these specific functions should use unification instead of syntactic equality
+        let _ = cic_so_unification(type1, type2)?;
+        Ok(())
     }
 
     fn elaborate_expression(exp: &Expression) -> Result<CicTerm, String> {
@@ -323,11 +328,7 @@ impl Refiner for Cic {
         term1: &CicTerm,
         term2: &CicTerm,
     ) -> bool {
-        match cic_unification(environment, term1, term2) {
-            Ok(res) => res,
-            //TODO: better handling
-            Err(message) => false,
-        }
+        cic_unification(environment, term1, term2).is_ok()
     }
 
     fn types_unify(
@@ -335,11 +336,7 @@ impl Refiner for Cic {
         type1: &CicTerm,
         type2: &CicTerm,
     ) -> bool {
-        match cic_unification(environment, type1, type2) {
-            Ok(res) => res,
-            //TODO: better handling
-            Err(message) => false,
-        }
+        cic_unification(environment, type1, type2).is_ok()
     }
 }
 
@@ -396,21 +393,5 @@ impl Interactive for Cic {
         partial_proof: &CicTerm,
     ) -> Result<(CicTerm, Vec<CicTerm>), String> {
         type_check_tactic(environment, tactic, target, partial_proof)
-    }
-}
-
-fn common_unification_check(
-    term1: &CicTerm,
-    term2: &CicTerm,
-) -> Result<(), String> {
-    if solve_unification(vec![Constraint::TypeEq(
-        term1.to_owned(),
-        term2.to_owned(),
-    )])
-    .is_ok()
-    {
-        Ok(())
-    } else {
-        Err(format!("{:?} and {:?} do not unifiy", term1, term2))
     }
 }

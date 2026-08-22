@@ -186,6 +186,8 @@ fn occurs(term: &CicTerm, name: &str) -> bool {
 }
 
 /// Second order unification of meta-variable for type inference
+/// This function does NOT support normalization of terms to be unified and hence
+/// does not require an environment to be passed
 pub fn cic_so_unification(
     term1: &CicTerm,
     term2: &CicTerm,
@@ -201,14 +203,16 @@ pub fn cic_so_unification(
     .reduce(|term, idx, arg| substitute_meta(term, &idx.parse().unwrap(), arg)))
 }
 
+/// Entrypoint for CIC unification. It normalizes the given term and then computes
+/// unification of their normal form
 pub fn cic_unification(
     environment: &mut Environment<Cic>,
     term1: &CicTerm,
     term2: &CicTerm,
-) -> Result<bool, String> {
+) -> Result<Substitution<CicTerm>, String> {
     let norm1 = Cic::normalize_term(environment, term1);
     let norm2 = Cic::normalize_term(environment, term2);
-    Ok(cic_so_unification(&norm1, &norm2).is_ok())
+    cic_so_unification(&norm1, &norm2)
 }
 
 // TODO fully get rid of this function. nowhere in the code this should be used
@@ -865,7 +869,7 @@ mod unit_tests {
         );
 
         assert!(
-            cic_unification(&mut env, &plus_zero_one, &one).unwrap_or(false),
+            cic_unification(&mut env, &plus_zero_one, &one).is_ok(),
             "plus(z, s(z)) should unify with s(z) after normalization"
         );
     }
