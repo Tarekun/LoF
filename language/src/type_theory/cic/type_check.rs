@@ -38,10 +38,12 @@ pub fn type_check_sort(
 
 /// Returns the vector of type judgements for the variables provided if they match the constructor type
 fn type_constr_vars(
-    constr_type: &CicTerm,
+    environment: &mut Environment<Cic>,
     pattern: &CicTerm,
+    constr_type: &CicTerm,
 ) -> Result<Vec<(String, CicTerm)>, String> {
     fn solver(
+        environment: &mut Environment<Cic>,
         constr_type: &CicTerm,
         variables: Vec<CicTerm>,
     ) -> Result<Vec<(String, CicTerm)>, String> {
@@ -53,6 +55,7 @@ fn type_constr_vars(
                         let reduced_codomain =
                             substitute(&codomain, type_var, &variables[0]);
                         let mut typed_vars = solver(
+                            environment,
                             &reduced_codomain,
                             variables[1..].to_vec(),
                         )?;
@@ -61,16 +64,33 @@ fn type_constr_vars(
                         Ok(typed_vars)
                     }
                     Meta(_) => {
-                        //TODO this function has no env now, figure out if this check is needed here
-                        // after all type_constr_vars is called after type_check_pattern that already did these checks
-                        // let _ = Cic::type_check_type(domain, environment); 
-                        // make sure ? can be unified with domain (eg no occurs check failure)
+                        // TODO im not sure this call will ever fail here, is this needed?
                         let _ = cic_so_unification(domain, &variables[0])?;
-                        // simply recur, if user used a ? here they're not using this variable in the rest of the term
                         solver(
+                            environment,
                             codomain,
                             variables[1..].to_vec(),
                         )
+                    }
+                    Application(_, _) => {
+                        let nested_constr = get_applied_function(&variables[0]);
+                        let nested_constr_type =
+                            Cic::type_check_term(&nested_constr, environment)?;
+                        // recursively solve for names in this nested pattern
+                        let mut nested_vars = solver(
+                            environment,
+                            &nested_constr_type,
+                            application_args(&variables[0]),
+                        )?;
+                        let reduced_codomain =
+                            substitute(&codomain, type_var, &variables[0]);
+                        let remaining_vars = solver(
+                            environment,
+                            &reduced_codomain,
+                            variables[1..].to_vec(),
+                        )?;
+                        nested_vars.extend(remaining_vars);
+                        Ok(nested_vars)
                     }
                     _ => Err(format!(
                         "Found illegal term in place of variable {:?}",
@@ -85,7 +105,7 @@ fn type_constr_vars(
     }
 
     let variables = application_args(pattern);
-    solver(constr_type, variables)
+    solver(environment, constr_type, variables)
 }
 
 /// Type checks the provided terms with the constructor type and returns the actual instanciation
@@ -97,23 +117,23 @@ fn type_check_pattern(
 ) -> Result<CicTerm, String> {
     fn solver(
         constr_type: &CicTerm,
-        variables: Vec<CicTerm>,
+        arguments: Vec<CicTerm>,
         environment: &mut Environment<Cic>,
     ) -> Result<CicTerm, String> {
-        match variables.len() {
+        match arguments.len() {
             0 => Ok(constr_type.clone()),
             1.. => match constr_type  {
-                Product(var_name, domain, codomain) => match variables[0] {
+                Product(var_name, domain, codomain) => match arguments[0] {
                     Variable(_, _) => {
                         // TODO if the variable is an argument to the type it should be type checked
                         // (if its constructor argument its simply a new binded variable)
                         let reduced_codomain =
-                            substitute(&codomain, var_name, &variables[0]);
+                            substitute(&codomain, var_name, &arguments[0]);
                         // doesnt need to update the context, here var_name is a type variable, not a term
                         solver(
                             &reduced_codomain,
                             // TODO dont reclone this vector
-                            variables[1..].to_vec(),
+                            arguments[1..].to_vec(),
                             environment,
                         )
                     }
@@ -121,24 +141,49 @@ fn type_check_pattern(
                         // make sure domain is a type to make sure a metavariable is allowed
                         let _ = Cic::type_check_type(domain, environment);
                         // make sure ? can be unified with domain (eg no occurs check failure)
-                        let _ = cic_so_unification(domain, &variables[0])?;
+                        let _ = cic_so_unification(domain, &arguments[0])?;
                         // let reduced_codomain = substitute_meta(&codomain, &idx, domain);
                         solver(
                             &codomain,
                             // &reduced_codomain,
                             // TODO dont reclone this vector
-                            variables[1..].to_vec(),
+                            arguments[1..].to_vec(),
                             environment,
                         )
                     }
-                    // TODO to extend functionality for constr argument expansion in the pattern
-                    // simply support other cases here (eg nested applications)
+                    Application(_, _) => {
+                        // recursivelye validate subpatter
+                        // NOTE: cant use type_check_term on arguments[0] here because it might contain
+                        // unbound pattern variable names
+                        let nested_constr = get_applied_function(&arguments[0]);
+                        let nested_constr_type =
+                            Cic::type_check_term(&nested_constr, environment)?;
+                        let nested_result_type = solver(
+                            &nested_constr_type,
+                            application_args(&arguments[0]),
+                            environment,
+                        )?;
+
+                        if !Cic::terms_unify(environment, &nested_result_type, domain) {
+                            return Err(format!(
+                                "Nested pattern {:?} produces type {:?} but expected {:?}",
+                                arguments[0], nested_result_type, domain
+                            ));
+                        }
+                        let reduced_codomain =
+                            substitute(&codomain, var_name, &arguments[0]);
+                        solver(
+                            &reduced_codomain,
+                            arguments[1..].to_vec(),
+                            environment,
+                        )
+                    }
                     _ => Err(format!(
                         "Found illegal term in place of variable {:?}",
-                        variables[0],
+                        arguments[0],
                     )),
                 },
-                _ => Err("Mismatch in number of variables for constructor"
+                _ => Err("Mismatch in number of arguments for constructor"
                     .to_string()),
     
                 
@@ -146,10 +191,15 @@ fn type_check_pattern(
         }
     }
 
-    let variables = application_args(pattern);
-    solver(constr_type, variables, environment)
+    let arguments = application_args(pattern);
+    solver(constr_type, arguments, environment)
 }
 
+// TODO: a pattern is essentially an application containing unbound variables;
+// those variables are put into context for the branch body once their type has been solved with the constructor (ie function) type;
+// this boils down to type checking an application against a target type where all of its arguments' types are to be infered;
+// => i have a strong feeling type_constr_vars&type_check_pattern can be simplified using unification
+//    (every unbound variable gets a ?_i type, the overall application is unified against the target type)
 pub fn type_check_match(
     environment: &mut Environment<Cic>,
     matched_term: &CicTerm,
@@ -186,7 +236,7 @@ pub fn type_check_match(
 
         //body type checking
         let pattern_assumptions =
-            type_constr_vars(&constr_type, pattern)?;
+            type_constr_vars(environment, pattern, &constr_type)?;
         let body_type = environment
             .with_local_assumptions(&pattern_assumptions, |local_env| {
                 Cic::type_check_term(body, local_env)
@@ -468,7 +518,7 @@ pub fn type_check_inductive(
         },
     )?;
 
-    evaluate_inductive(
+    let _ = evaluate_inductive(
         environment,
         type_name,
         params,
