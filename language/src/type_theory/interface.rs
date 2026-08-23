@@ -146,6 +146,34 @@ pub trait TypeInference: TypeTheory {
 
 /// Refiner module, implements unification
 pub trait Refiner: TypeTheory {
+    fn term_collect_unifications(
+        exp: &Self::Term,
+        environment: &mut Environment<Self>,
+    ) -> Result<Vec<(Self::Exp, Self::Exp)>, String>
+    where
+        Self: Sized;
+    fn type_collect_unifications(
+        exp: &Self::Type,
+        environment: &mut Environment<Self>,
+    ) -> Result<Vec<(Self::Exp, Self::Exp)>, String>
+    where
+        Self: Sized;
+    fn solve_unifications(
+        constraints: Vec<(Self::Exp, Self::Exp)>,
+        environment: &mut Environment<Self>,
+    ) -> Result<Substitution<Self::Exp>, String>
+    where
+        Self: Sized;
+    fn term_apply_unifier(
+        exp: &Self::Term,
+        substitution: &Substitution<Self::Exp>,
+    ) -> Self::Term;
+    fn type_apply_unifier(
+        exp: &Self::Type,
+        substitution: &Substitution<Self::Exp>,
+    ) -> Self::Type;
+    fn needs_refinement(exp: &Self::Exp) -> bool;
+
     /// Algorithm to compute the MCU given a set of constraints.
     /// Returns a substitution for all solvable meta variables or an error
     fn solve_unification(
