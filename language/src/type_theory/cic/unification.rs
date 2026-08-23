@@ -4,11 +4,12 @@ use super::cic::CicTerm::{
 };
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::{
-    application_args, get_applied_function, is_constant, substitute_meta,
+    application_args, get_applied_function, get_arg_types, is_constant,
+    substitute_meta,
 };
-use crate::type_theory::commons::unification::{unify, Substitution};
+use crate::type_theory::commons::unification::{ucs, unify, Substitution};
 use crate::type_theory::environment::{Constraint, Environment};
-use crate::type_theory::interface::Reducer;
+use crate::type_theory::interface::{Kernel, Reducer};
 use std::collections::{HashMap, VecDeque};
 
 fn is_substitutable(term: &CicTerm) -> Option<String> {
@@ -201,6 +202,80 @@ pub fn cic_so_unification(
         occurs,
     )?
     .reduce(|term, idx, arg| substitute_meta(term, &idx.parse().unwrap(), arg)))
+}
+
+pub fn cic_solve_unifications(
+    constraints: Vec<(CicTerm, CicTerm)>,
+    environment: &mut Environment<Cic>,
+) -> Result<Substitution<CicTerm>, String> {
+    let mut reduced_constraints = VecDeque::new();
+    for (left, right) in constraints {
+        reduced_constraints.push_back((
+            Cic::normalize_term(environment, &left),
+            Cic::normalize_term(environment, &right),
+        ));
+    }
+
+    Ok(ucs(
+        &mut Substitution::empty(),
+        reduced_constraints,
+        is_substitutable,
+        structurally_equal,
+        explode,
+        occurs,
+    )?
+    .reduce(|term, idx, arg| {
+        let stripped_idx = idx.strip_prefix("metavariable_").unwrap_or(idx);
+        substitute_meta(term, &stripped_idx.parse().unwrap(), arg)
+    }))
+}
+
+pub fn cic_collect_unifications(
+    term: &CicTerm,
+    environment: &mut Environment<Cic>,
+) -> Result<Vec<(CicTerm, CicTerm)>, String> {
+    match term {
+        Abstraction(_var_name, var_type, body) => {
+            let type_cons = cic_collect_unifications(var_type, environment)?;
+            let body_cons = cic_collect_unifications(body, environment)?;
+
+            Ok([type_cons, body_cons].concat())
+        }
+        Application(fun, arg) => {
+            let fun_cons = cic_collect_unifications(fun, environment)?;
+            let arg_cons = cic_collect_unifications(arg, environment)?;
+
+            let arg_type = Cic::type_check_term(arg, environment)?;
+            let fun_type = Cic::type_check_term(fun, environment)?;
+            let first_arg_type = &get_arg_types(&fun_type)[0];
+
+            Ok([
+                fun_cons,
+                vec![(first_arg_type.to_owned(), arg_type)],
+                arg_cons,
+            ]
+            .concat())
+        }
+        _ => Ok(vec![]),
+    }
+}
+pub fn cic_apply_unifier(
+    exp: &CicTerm,
+    substitution: &Substitution<CicTerm>,
+) -> CicTerm {
+    let mut solved_exp = exp.to_owned();
+    for index in substitution.names() {
+        solved_exp = substitute_meta(
+            &solved_exp,
+            &index
+                .strip_prefix("metavariable_")
+                .unwrap_or(index)
+                .parse()
+                .unwrap(),
+            substitution.get(index).unwrap(),
+        )
+    }
+    solved_exp
 }
 
 /// Entrypoint for CIC unification. It normalizes the given term and then computes

@@ -7,7 +7,7 @@ use super::unification::{
 use crate::misc::Union::{self};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
-use crate::type_theory::cic::cic::CicTerm::{Meta, Product};
+use crate::type_theory::cic::cic::CicTerm::{Application, Meta, Product};
 use crate::type_theory::cic::cic_utils::{
     make_multiarg_fun_type, substitute, substitute_meta,
 };
@@ -16,6 +16,9 @@ use crate::type_theory::cic::elaboration::{
 };
 use crate::type_theory::cic::type_check::{
     type_check_inductive, type_check_match,
+};
+use crate::type_theory::cic::unification::{
+    cic_apply_unifier, cic_collect_unifications, cic_solve_unifications,
 };
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
@@ -281,6 +284,46 @@ impl TypeInference for Cic {
 }
 
 impl Refiner for Cic {
+    fn solve_unifications(
+        constraints: Vec<(CicTerm, CicTerm)>,
+        environment: &mut Environment<Cic>,
+    ) -> Result<Substitution<CicTerm>, String>
+    where
+        Self: Sized,
+    {
+        cic_solve_unifications(constraints, environment)
+    }
+    fn term_collect_unifications(
+        exp: &CicTerm,
+        environment: &mut Environment<Cic>,
+    ) -> Result<Vec<(CicTerm, CicTerm)>, String> {
+        cic_collect_unifications(exp, environment)
+    }
+    fn type_collect_unifications(
+        exp: &CicTerm,
+        environment: &mut Environment<Cic>,
+    ) -> Result<Vec<(CicTerm, CicTerm)>, String> {
+        cic_collect_unifications(exp, environment)
+    }
+    fn term_apply_unifier(
+        exp: &CicTerm,
+        substitution: &Substitution<CicTerm>,
+    ) -> CicTerm {
+        cic_apply_unifier(exp, substitution)
+    }
+    fn type_apply_unifier(
+        exp: &CicTerm,
+        substitution: &Substitution<CicTerm>,
+    ) -> CicTerm {
+        cic_apply_unifier(exp, substitution)
+    }
+    fn needs_refinement(exp: &CicTerm) -> bool {
+        true
+    }
+
+    ///////////////////////////////////////////////////////////
+
+    ///////////////////////////////////////////////////////////
     fn solve_unification(
         constraints: Vec<Constraint<Cic>>,
     ) -> Result<HashMap<i32, CicTerm>, String> {
