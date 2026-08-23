@@ -22,9 +22,9 @@ use crate::type_theory::cic::unification::{
 };
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    type_check_axiom, type_check_fo_universal, type_check_function,
-    type_check_global, type_check_let, type_check_theorem, type_check_variable,
-    u_type_check_abstraction, u_type_check_application,
+    i_type_check_abstraction, i_type_check_application, type_check_axiom,
+    type_check_fo_universal, type_check_function, type_check_global,
+    type_check_let, type_check_theorem, type_check_variable,
 };
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::{Constraint, Environment};
@@ -137,7 +137,7 @@ impl Kernel for Cic {
                 type_check_variable::<Cic>(environment, var_name)
             }
             CicTerm::Abstraction(var_name, var_type, body) => {
-                u_type_check_abstraction::<Cic, _>(
+                i_type_check_abstraction::<Cic, _>(
                     environment,
                     var_name,
                     var_type,
@@ -159,7 +159,7 @@ impl Kernel for Cic {
                     body,
                 )
             }
-            CicTerm::Application(left, right) => u_type_check_application(
+            CicTerm::Application(left, right) => i_type_check_application(
                 environment,
                 left,
                 right,
@@ -170,6 +170,9 @@ impl Kernel for Cic {
                         (**codomain).to_owned(),
                     )),
                     _ => None,
+                },
+                |l, r| {
+                    Application(Box::new(l.to_owned()), Box::new(r.to_owned()))
                 },
                 Cic::substitute,
             ),
