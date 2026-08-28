@@ -1,15 +1,16 @@
-#[cfg(test)]
-mod unit_tests {
-    use crate::type_theory::{
-        environment::Environment,
-        fol::fol::{
-            Fol,
-            FolFormula::{self, Arrow, ForAll, Predicate},
-            FolStm::{Axiom, Fun, Global},
-            FolTerm::{Abstraction, Application, Let, Variable},
-        },
-        interface::{Kernel, TypeTheory},
-    };
+use crate::type_theory::{
+    environment::Environment,
+    fol::fol::{
+        Fol,
+        FolFormula::{self, Arrow, ForAll, Predicate},
+        FolStm::{Axiom, Fun, Global},
+        FolTerm::{Abstraction, Application, Let, Variable},
+    },
+    interface::{Kernel, TypeTheory},
+};
+
+mod variable {
+    use super::*;
 
     #[test]
     fn test_var_type_check() {
@@ -35,6 +36,10 @@ mod unit_tests {
             "Top level type checker doesnt support variables"
         );
     }
+}
+
+mod abstraction {
+    use super::*;
 
     #[test]
     fn test_abs_type_check() {
@@ -97,6 +102,10 @@ mod unit_tests {
             "Abstraction type checker accepts argument over ill typed body"
         );
     }
+}
+
+mod application {
+    use super::*;
 
     #[test]
     fn test_app_type_check() {
@@ -171,6 +180,10 @@ mod unit_tests {
             "Application type checking accepts application with incompatible types"
         );
     }
+}
+
+mod sort {
+    use super::*;
 
     #[test]
     fn test_sort_type_check() {
@@ -191,6 +204,10 @@ mod unit_tests {
             "Predicate-type type checking accepts unbound type"
         );
     }
+}
+
+mod arrow {
+    use super::*;
 
     #[test]
     fn test_arrow_type_check() {
@@ -235,6 +252,10 @@ mod unit_tests {
             "Arrow type checker accepts unbound codomain"
         );
     }
+}
+
+mod forall {
+    use super::*;
 
     #[test]
     fn test_forall_type_check() {
@@ -289,6 +310,10 @@ mod unit_tests {
             "Forall type checker accepts forall with ill typed body"
         );
     }
+}
+
+mod let_expr {
+    use super::*;
 
     #[test]
     fn test_type_check_let() {
@@ -366,6 +391,10 @@ mod unit_tests {
             "Let type checker accepts definition with ill-typed scope"
         );
     }
+}
+
+mod axiom {
+    use super::*;
 
     #[test]
     fn test_axiom_type_check() {
@@ -396,6 +425,10 @@ mod unit_tests {
             "Axiom type checker did not update the context"
         );
     }
+}
+
+mod global {
+    use super::*;
 
     #[test]
     fn test_global_type_check() {
@@ -463,6 +496,10 @@ mod unit_tests {
             "Let type checker accepts definition with ill typed body"
         );
     }
+}
+
+mod fun_stm {
+    use super::*;
 
     #[test]
     fn test_fun_type_check() {
