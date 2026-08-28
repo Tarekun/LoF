@@ -22,7 +22,7 @@ use crate::{
 
 //########################### TERM βδ-REDUCTION
 pub fn one_step_reduction(
-    environment: &mut Environment<Fol>,
+    environment: &Environment<Fol>,
     term: &FolTerm,
 ) -> FolTerm {
     match term {
@@ -41,7 +41,7 @@ pub fn one_step_reduction(
 //
 //
 fn fol_reduce_application(
-    environment: &mut Environment<Fol>,
+    environment: &Environment<Fol>,
     left: &FolTerm,
     right: &FolTerm,
 ) -> FolTerm {

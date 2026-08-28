@@ -16,7 +16,7 @@ use core::panic;
 
 //########################### TERM βδ-REDUCTION
 pub fn one_step_reduction(
-    environment: &mut Environment<Cic>,
+    environment: &Environment<Cic>,
     term: &CicTerm,
 ) -> CicTerm {
     match term {
@@ -49,7 +49,7 @@ pub fn one_step_reduction(
 //
 //
 fn reduce_match(
-    environment: &mut Environment<Cic>,
+    environment: &Environment<Cic>,
     matched_term: &CicTerm,
     branches: &Vec<(CicTerm, CicTerm)>,
 ) -> CicTerm {

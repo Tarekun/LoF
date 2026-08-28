@@ -246,7 +246,7 @@ impl Reducer for Fol {
     }
 
     fn normalize_expression(
-        environment: &mut Environment<Fol>,
+        environment: &Environment<Fol>,
         exp: &Union<FolTerm, FolFormula>,
     ) -> Union<FolTerm, FolFormula> {
         match exp {
@@ -258,7 +258,7 @@ impl Reducer for Fol {
     }
 
     fn normalize_term(
-        environment: &mut Environment<Fol>,
+        environment: &Environment<Fol>,
         term: &FolTerm,
     ) -> FolTerm {
         generic_term_normalization::<Fol, _>(

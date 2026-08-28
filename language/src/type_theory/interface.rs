@@ -206,14 +206,14 @@ pub trait Reducer: TypeTheory {
 
     /// Reduces the given term to its normal form
     fn normalize_term(
-        environment: &mut Environment<Self>,
+        environment: &Environment<Self>,
         term: &Self::Term,
     ) -> Self::Term
     where
         Self: Sized;
 
     fn normalize_expression(
-        environment: &mut Environment<Self>,
+        environment: &Environment<Self>,
         exp: &Self::Exp,
     ) -> Self::Exp
     where

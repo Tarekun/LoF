@@ -349,7 +349,7 @@ impl Reducer for Cic {
     }
 
     fn normalize_expression(
-        environment: &mut Environment<Cic>,
+        environment: &Environment<Cic>,
         term: &CicTerm,
     ) -> CicTerm {
         debug!("Normalizing term: {:?}", term);
@@ -361,7 +361,7 @@ impl Reducer for Cic {
     }
 
     fn normalize_term(
-        environment: &mut Environment<Cic>,
+        environment: &Environment<Cic>,
         term: &CicTerm,
     ) -> CicTerm {
         debug!("Normalizing term: {:?}", term);

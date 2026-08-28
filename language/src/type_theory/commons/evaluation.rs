@@ -20,9 +20,9 @@ use std::collections::HashSet;
 /// Returns the transitive closure of ->β
 pub fn generic_term_normalization<
     T: TypeTheory,
-    F: Fn(&mut Environment<T>, &T::Term) -> T::Term,
+    F: Fn(&Environment<T>, &T::Term) -> T::Term,
 >(
-    environment: &mut Environment<T>,
+    environment: &Environment<T>,
     term: &T::Term,
     one_step_reduction: F,
 ) -> T::Term {
@@ -62,7 +62,7 @@ pub fn reduce_application<
     F: Fn(&T::Term) -> Option<(String, T::Term)>,
     G: Fn(T::Term, T::Term) -> T::Term,
 >(
-    environment: &mut Environment<T>,
+    environment: &Environment<T>,
     fun: &T::Term,
     arg: &T::Term,
     unpack_name_body: F,
@@ -83,7 +83,7 @@ pub fn reduce_application<
 /// is reduced to its scope term where `var_name` is substituted with
 /// the `body`'s normal form
 pub fn reduce_let<T: TypeTheory + Reducer>(
-    environment: &mut Environment<T>,
+    environment: &Environment<T>,
     var_name: &str,
     _var_type: &Option<T::Type>,
     body: &T::Term,
@@ -246,7 +246,8 @@ fn saturation_interface<
     let constants = environment.get_constants();
     let config = global_config();
     let selection_fn = get_selection_fn(config.selection_fn.clone());
-    let clause_giving_fn = get_giving_clause_fn(config.giving_clause_fn.clone());
+    let clause_giving_fn =
+        get_giving_clause_fn(config.giving_clause_fn.clone());
 
     for (_, var_type) in environment.get_context().iter() {
         for clause in clausify(var_type, &constants)? {
