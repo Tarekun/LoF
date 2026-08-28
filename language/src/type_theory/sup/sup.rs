@@ -6,7 +6,6 @@ use super::{
     },
 };
 use crate::{
-    config::SelectionFunction,
     misc::Union::{self, L, R},
     runtime::program::Schedule,
     type_theory::{
@@ -14,10 +13,7 @@ use crate::{
         environment::Environment,
         interface::{Automatic, Kernel, TypeTheory},
         sup::{
-            freedom::{
-                get_selection_fn, pick_clause, GivingClauseSignature,
-                SelectionFunctionSignature,
-            },
+            freedom::{GivingClauseSignature, SelectionFunctionSignature},
             sup::{
                 SupFormula::{Atom, Clause, Equality, ForAll, Not},
                 SupTerm::{Application, Variable},
