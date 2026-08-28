@@ -292,7 +292,8 @@ pub fn type_check_global<T: TypeTheory + Kernel>(
     let _ = T::type_check_type(&var_type, environment)?;
 
     if T::base_type_equality(&var_type, &body_type).is_ok() {
-        evaluate_global::<T>(environment, var_name, &Some(var_type), body);
+        let _ =
+            evaluate_global::<T>(environment, var_name, &Some(var_type), body);
         Ok(body_type)
     } else {
         Err(format!(
@@ -338,7 +339,7 @@ pub fn type_check_function<
         ));
     }
 
-    evaluate_fun::<T, _, _>(
+    let _ = evaluate_fun::<T, _, _>(
         environment,
         fun_name,
         args,
@@ -359,7 +360,7 @@ pub fn type_check_axiom<T: TypeTheory + Kernel>(
     predicate: &T::Type,
 ) -> Result<T::Type, String> {
     let _ = T::type_check_type(predicate, environment)?;
-    evaluate_axiom::<T>(environment, axiom_name, predicate);
+    let _ = evaluate_axiom::<T>(environment, axiom_name, predicate);
 
     Ok(predicate.to_owned())
 }
@@ -382,7 +383,7 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
                     formula, proof_type
                 ));
             }
-            evaluate_theorem::<T, T::Exp>(
+            let _ = evaluate_theorem::<T, T::Exp>(
                 environment,
                 theorem_name,
                 formula,

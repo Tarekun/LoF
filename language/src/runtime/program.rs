@@ -79,10 +79,6 @@ where
         }
     }
 
-    pub fn peek_top_schedule(&self) -> Option<&ProgramNode<T::Exp, T::Stm>> {
-        self.schedule.peek_latest()
-    }
-
     pub fn execute_expression(
         &mut self,
         exp: &T::Exp,
