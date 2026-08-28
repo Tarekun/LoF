@@ -57,37 +57,6 @@ where
 
 // context handling
 impl<T: TypeTheory> Environment<T> {
-    pub fn with_defaults(
-        axioms: Vec<(&str, &T::Type)>,
-        deltas: Vec<(&str, &T::Term, &Option<T::Type>)>,
-        predicates: Vec<(&str, &Vec<T::Type>)>,
-    ) -> Self {
-        let mut context_map = HashMap::new();
-        let mut deltas_map = HashMap::new();
-        let mut predicates_map = HashMap::new();
-
-        for (name, term) in axioms {
-            context_map.insert(name.to_string(), vec![term.clone()]);
-        }
-        for (name, term, typee) in deltas {
-            deltas_map.insert(name.to_string(), vec![term.clone()]);
-            if let Some(typee) = typee.as_ref() {
-                context_map.insert(name.to_string(), vec![typee.clone()]);
-            }
-        }
-        for (name, arg_types) in predicates {
-            predicates_map.insert(name.to_string(), arg_types.clone());
-        }
-
-        Self {
-            context: context_map,
-            deltas: deltas_map,
-            predicates: predicates_map,
-            constraints: vec![],
-            next_index: 0,
-        }
-    }
-
     fn context_stack(&mut self, name: &str) -> &mut Vec<T::Type> {
         self.context
             .entry(name.to_string())
@@ -280,6 +249,37 @@ impl<T: TypeTheory> Environment<T> {
 
 // other utilities
 impl<T: TypeTheory> Environment<T> {
+    pub fn with_defaults(
+        axioms: Vec<(&str, &T::Type)>,
+        deltas: Vec<(&str, &T::Term, &Option<T::Type>)>,
+        predicates: Vec<(&str, &Vec<T::Type>)>,
+    ) -> Self {
+        let mut context_map = HashMap::new();
+        let mut deltas_map = HashMap::new();
+        let mut predicates_map = HashMap::new();
+
+        for (name, term) in axioms {
+            context_map.insert(name.to_string(), vec![term.clone()]);
+        }
+        for (name, term, typee) in deltas {
+            deltas_map.insert(name.to_string(), vec![term.clone()]);
+            if let Some(typee) = typee.as_ref() {
+                context_map.insert(name.to_string(), vec![typee.clone()]);
+            }
+        }
+        for (name, arg_types) in predicates {
+            predicates_map.insert(name.to_string(), arg_types.clone());
+        }
+
+        Self {
+            context: context_map,
+            deltas: deltas_map,
+            predicates: predicates_map,
+            constraints: vec![],
+            next_index: 0,
+        }
+    }
+
     /// Returns true if `var_name` is present in the context (bound)
     /// false otherwise (fresh)
     pub fn is_var_bound(&self, var_name: &str) -> bool {
