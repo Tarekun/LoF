@@ -208,17 +208,38 @@ pub fn type_check_match(
     let matching_type = Cic::type_check_term(matched_term, environment)?;
     let mut return_type = None;
 
+    let ind_type_constructor = get_applied_function(&matching_type);
+    let matching_type_name = match ind_type_constructor {
+        Variable(name, _) => name,
+        _ => {
+            return Err(format!(
+                "Unable to reconstruct which inductive type is being matched {:?}",
+                ind_type_constructor
+            ))
+        }
+    };
+    let mut expected_constrs= match environment.get_constructors_for(&matching_type_name) {
+        Some(constrs) => constrs,
+        _ => {
+            return Err(format!(
+                "Inductive type named {:?} does not appear to be registered",
+                matching_type_name
+            ))
+        }
+    };
+    println!("found constructor for {:?} are {:?}", matching_type_name, expected_constrs);
+
     for (pattern, body) in branches {
         //pattern type checking
         let constructor = get_applied_function(pattern);
-        let constr_type = if let Variable(_, _) = constructor {
-            Cic::type_check_term(&constructor, environment)
+        let (constr_type, constr_name) = if let Variable(constr_name, _) = &constructor {
+            (Cic::type_check_term(&constructor, environment)?, constr_name.to_string())
         } else {
-            Err(format!(
+            return Err(format!(
                 "Pattern should start with constructor variable application, found {:?}",
                 constructor
-            ))
-        }?;
+            ));
+        };
         let result_type = type_check_pattern(
             environment,
             pattern,
@@ -232,6 +253,10 @@ pub fn type_check_match(
                     result_type
                 )
             );
+        }
+
+        if expected_constrs.contains(&constr_name) {
+            expected_constrs.remove(&constr_name);
         }
 
         //body type checking
@@ -256,6 +281,12 @@ pub fn type_check_match(
                 )
             );
         }
+    }
+
+    if !expected_constrs.is_empty() {
+        return Err(format!(
+            "Not all constructors have been covered",
+        ))
     }
 
     Ok(return_type.unwrap())

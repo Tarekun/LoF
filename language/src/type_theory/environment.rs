@@ -258,6 +258,20 @@ impl<T: TypeTheory> Environment<T> {
     ) {
         self.something_store.insert(name.to_string(), typee.clone());
     }
+
+    pub fn get_constructors_for(&self, name: &str) -> Option<HashSet<String>> {
+        match self.something_store.get(name) {
+            None => None,
+            Some(list) => {
+                let res: HashSet<String> = list
+                    .into_iter()
+                    .map(|(constr_name, _)| constr_name.to_owned())
+                    .collect();
+
+                Some(res)
+            }
+        }
+    }
 }
 
 // other utilities

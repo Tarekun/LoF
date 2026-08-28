@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::type_theory::cic::{
+    use crate::type_theory::{cic::{
         cic::{
-            Cic, CicStm::{Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, FIRST_INDEX, GLOBAL_INDEX, PLACEHOLDER_DBI
-        }, cic_utils::make_multiarg_fun_type, type_check::{inductive_eliminator, type_check_inductive}
-    };
+            Cic, CicStm::{Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, GLOBAL_INDEX, PLACEHOLDER_DBI
+        }, evaluation::evaluate_inductive, type_check::{inductive_eliminator, type_check_inductive}
+    }, environment::Environment};
     use crate::type_theory::interface::Kernel;
     use crate::type_theory::interface::TypeTheory;
 
@@ -25,6 +25,67 @@ mod tests {
                 Box::new(last_arg.clone()),
             )
         }
+    }
+    fn packed_env() -> Environment<Cic>{
+        let mut test_env = Cic::default_environment();
+        let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let list = Variable("List".to_string(), GLOBAL_INDEX);
+        let type_var = Variable("T".to_string(), GLOBAL_INDEX);
+
+        let _ = evaluate_inductive(
+            &mut test_env,
+            "List",
+            &vec![("T".to_string(), Sort("TYPE".to_string()))],
+            &Sort("TYPE".to_string()),
+            &vec![
+                ("nil".to_string(), Application(
+                    Box::new(list.clone()), 
+                    Box::new(type_var.clone())
+                )),
+                ("cons".to_string(), Product(
+                    "e".to_string(), 
+                    Box::new(type_var.clone()), 
+                    Box::new(Product(
+                        "l".to_string(), 
+                        Box::new(Application(
+                            Box::new(list.clone()), 
+                            Box::new(type_var.clone())
+                        )), 
+                        Box::new(Application(
+                            Box::new(list.clone()), 
+                            Box::new(type_var.clone())
+                        ))
+                    ))
+                ))
+            ],
+        );
+        let _ = evaluate_inductive(
+            &mut test_env,
+            "Bool",
+            &vec![],
+            &Sort("TYPE".to_string()),
+            &vec![
+                ("true".to_string(), boolean.clone()),
+                ("false".to_string(), boolean.clone()),
+            ],
+        );
+        let _ = evaluate_inductive(
+            &mut test_env,
+            "Nat",
+            &vec![],
+            &Sort("TYPE".to_string()),
+            &vec![
+                ("0".to_string(), nat.clone()),
+                ("s".to_string(), Product(
+                    "_".to_string(),
+                    Box::new(nat.clone()),
+                    Box::new(nat.clone()),
+                ))
+            ],
+        );
+
+        return test_env;
     }
 
     #[test]
@@ -468,31 +529,17 @@ mod tests {
         let sort = Sort("TYPE".to_string());
         let mut test_env = Cic::default_environment();
 
-        test_env.add_to_context(
-            "List", 
-            &Product(
-                "T".to_string(), 
-                Box::new(sort.clone()), 
-                Box::new(sort.clone())
-            )
-        );
-        test_env.add_to_context(
-            "nil",
-            &Product(
-                "T".to_string(),
-                Box::new(sort.clone()),
-                Box::new(Application(
+        let _ = evaluate_inductive(
+            &mut test_env,
+            "List",
+            &vec![("T".to_string(), Sort("TYPE".to_string()))],
+            &Sort("TYPE".to_string()),
+            &vec![
+                ("nil".to_string(), Application(
                     Box::new(list.clone()), 
                     Box::new(type_var.clone())
-                ))
-            )
-        );
-        test_env.add_to_context(
-            "cons",
-            &Product(
-                "T".to_string(),
-                Box::new(sort.clone()),
-                Box::new(Product(
+                )),
+                ("cons".to_string(), Product(
                     "e".to_string(), 
                     Box::new(type_var.clone()), 
                     Box::new(Product(
@@ -506,9 +553,10 @@ mod tests {
                             Box::new(type_var.clone())
                         ))
                     ))
-                )),
-            )
+                ))
+            ],
         );
+        
         test_env.add_to_context(
             "test_list",
             &Application(
@@ -583,35 +631,7 @@ mod tests {
 
     #[test]
     fn test_match_inference() {
-        let mut test_env = Cic::default_environment();
-        test_env.add_to_context(
-            "List",
-            &make_multiarg_fun_type(
-                &vec![("T".to_string(), Sort("TYPE".to_string()))],
-                &Sort("TYPE".to_string()),
-            ),
-        );
-        test_env.add_to_context("Bool", &Sort("TYPE".to_string()));
-        // test_env.add_to_context("T", &Sort("TYPE".to_string()));
-        test_env.add_to_context("true", &var("Bool"));
-        test_env.add_to_context(
-            "nil",
-            &make_multiarg_fun_type(
-                &vec![("T".to_string(), Sort("TYPE".to_string()))],
-                &app("List", vec![vardbi("T", FIRST_INDEX)]),
-            ),
-        );
-        test_env.add_to_context(
-            "cons",
-            &make_multiarg_fun_type(
-                &vec![
-                    ("T".to_string(), Sort("TYPE".to_string())),
-                    ("h".to_string(), vardbi("T", FIRST_INDEX)),
-                    ("l".to_string(), app("List", vec![vardbi("T", FIRST_INDEX)])),
-                ],
-                &app("List", vec![vardbi("T", FIRST_INDEX)]),
-            ),
-        );
+        let mut test_env = packed_env();
 
         let tt = var("true");
         let matched = app("nil", vec![var("Bool")]);
@@ -625,25 +645,15 @@ mod tests {
 
         assert_eq!(
             Cic::type_check_term(&matc, &mut test_env),
-            Ok(var("Bool")),
+            Ok(Variable("Bool".to_string(), GLOBAL_INDEX)),
             "Match type checking fails when pattern make use of metavariables"
         );
     }
 
     #[test]
     fn test_nested_pattern_match() {
-        let nat = Variable("nat".to_string(), GLOBAL_INDEX);
-        let mut test_env = Cic::default_environment();
-        test_env.add_to_context("nat", &Sort("TYPE".to_string()));
-        test_env.add_to_context("o", &nat);
-        test_env.add_to_context(
-            "s",
-            &Product(
-                "_".to_string(),
-                Box::new(nat.clone()),
-                Box::new(nat.clone()),
-            ),
-        );
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let mut test_env = packed_env();
         test_env.add_to_context("c", &nat.clone());
 
         assert_eq!(
@@ -651,7 +661,7 @@ mod tests {
                 &Match(
                     Box::new(var("c")),
                     vec![
-                        (var("o"), var("o")),
+                        (var("0"), var("0")),
                         // s (s n) => n : unpacks the argument of the nested
                         // `s` constructor instead of binding it as a whole
                         (
@@ -672,7 +682,7 @@ mod tests {
                 &Match(
                     Box::new(var("c")),
                     vec![
-                        (var("o"), var("o")),
+                        (var("0"), var("0")),
                         // s (s (s n)) => n : unpacking should keep working at
                         // arbitrary nesting depth
                         (
@@ -696,53 +706,7 @@ mod tests {
     fn test_nested_pattern_match_recursive_type() {
         let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
         let list = Variable("List".to_string(), GLOBAL_INDEX);
-        let type_var = vardbi("T", 0);
-        let sort = Sort("TYPE".to_string());
-        let mut test_env = Cic::default_environment();
-
-        test_env.add_to_context("Nat", &sort);
-        test_env.add_to_context("zero", &nat);
-        test_env.add_to_context(
-            "List",
-            &Product(
-                "T".to_string(),
-                Box::new(sort.clone()),
-                Box::new(sort.clone()),
-            ),
-        );
-        test_env.add_to_context(
-            "nil",
-            &Product(
-                "T".to_string(),
-                Box::new(sort.clone()),
-                Box::new(Application(
-                    Box::new(list.clone()),
-                    Box::new(type_var.clone()),
-                )),
-            ),
-        );
-        test_env.add_to_context(
-            "cons",
-            &Product(
-                "T".to_string(),
-                Box::new(sort.clone()),
-                Box::new(Product(
-                    "e".to_string(),
-                    Box::new(type_var.clone()),
-                    Box::new(Product(
-                        "l".to_string(),
-                        Box::new(Application(
-                            Box::new(list.clone()),
-                            Box::new(type_var.clone()),
-                        )),
-                        Box::new(Application(
-                            Box::new(list.clone()),
-                            Box::new(type_var.clone()),
-                        )),
-                    )),
-                )),
-            ),
-        );
+        let mut test_env = packed_env();
         test_env.add_to_context(
             "test_list",
             &Application(Box::new(list.clone()), Box::new(nat.clone())),
@@ -766,7 +730,7 @@ mod tests {
                 &Match(
                     Box::new(var("test_list")),
                     vec![
-                        (app("nil", vec![nat.clone()]), var("zero")),
+                        (app("nil", vec![nat.clone()]), var("0")),
                         (double_nested_pattern, var("m")),
                     ]
                 ),
@@ -806,7 +770,7 @@ mod tests {
                 &Match(
                     Box::new(var("test_list")),
                     vec![
-                        (app("nil", vec![nat.clone()]), var("zero")),
+                        (app("nil", vec![nat.clone()]), var("0")),
                         (triple_nested_pattern, var("o")),
                     ]
                 ),
@@ -871,32 +835,38 @@ mod tests {
     //TODO add check of exaustiveness of patterns
     fn test_type_check_match() {
         let nat = Variable("nat".to_string(), GLOBAL_INDEX);
+        let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
         let mut test_env = Cic::default_environment();
         test_env
             .add_to_context("nat", &Sort("TYPE".to_string()));
-        test_env.add_to_context(
-            "Bool",
+
+        let _ = evaluate_inductive(
+            &mut test_env,
+            "nat",
+            &vec![],
             &Sort("TYPE".to_string()),
+            &vec![
+                ("o".to_string(), nat.clone()),
+                ("s".to_string(), Product(
+                    "_".to_string(),
+                    Box::new(nat.clone()),
+                    Box::new(nat.clone()),
+                ))
+            ],
         );
-        test_env.add_to_context(
-            "o",
-            &nat,
-        );
-        test_env.add_to_context(
-            "s",
-            &Product(
-                "_".to_string(),
-                Box::new(nat.clone()),
-                Box::new(nat.clone()),
-            ),
+        let _ = evaluate_inductive(
+            &mut test_env,
+            "Bool",
+            &vec![],
+            &Sort("TYPE".to_string()),
+            &vec![
+                ("true".to_string(), boolean.clone()),
+                ("false".to_string(), boolean.clone()),
+            ],
         );
         test_env.add_to_context(
             "c",
             &nat.clone(),
-        );
-        test_env.add_to_context(
-            "true",
-            &Variable("Bool".to_string(), GLOBAL_INDEX),
         );
 
         assert_eq!(
@@ -997,6 +967,48 @@ mod tests {
         //     .is_err(),
         //     "Type checker accepts match with random (properly typed) variable in place of constructor"
         // );
+    }
+
+    #[test]
+    fn test_match_exhaustiveness() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let mut test_env = packed_env();
+        test_env.add_to_context(
+            "n",
+            &nat,
+        );
+
+        assert!(
+            Cic::type_check_term(&Match(
+                Box::new(var("n")), vec![
+                    (var("0"), var("0"))
+                ]), &mut test_env
+            ).is_err(),
+            "Match type checking accepts natural matching without a successor case"
+        );
+        assert!(
+            Cic::type_check_term(&Match(
+                Box::new(var("n")), vec![
+                    (Application(
+                        Box::new(var("s")),
+                        Box::new(var("m"))
+                    ), var("0"))
+                ]), &mut test_env
+            ).is_err(),
+            "Match type checking accepts natural matching without a 0 base case"
+        );
+        assert!(
+            Cic::type_check_term(&Match(
+                Box::new(var("n")), vec![
+                    (var("0"), var("0")),
+                    (Application(
+                        Box::new(var("s")), 
+                        Box::new(var("0")),
+                    ), var("0")),
+                ]), &mut test_env
+            ).is_err(),
+            "Match type checking accepts natural matching that covers all constructor but one not exhaustively"
+        );
     }
 
     #[test]
@@ -1316,21 +1328,7 @@ mod tests {
     #[test]
     fn test_type_check_fun() {
         let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let mut test_env = Cic::default_environment();
-        test_env
-            .add_to_context("Nat", &Sort("TYPE".to_string()));
-        test_env.add_to_context(
-            "z",
-            &nat.clone(),
-        );
-        test_env.add_to_context(
-            "s",
-            &Product(
-                "_".to_string(),
-                Box::new(nat.clone()),
-                Box::new(nat.clone()),
-            ),
-        );
+        let mut test_env = packed_env();
 
         assert!(
             Cic::type_check_stm(
@@ -1353,7 +1351,7 @@ mod tests {
         ];
         let zerobranch = (
             //patter
-            Variable("z".to_string(), GLOBAL_INDEX),
+            Variable("0".to_string(), GLOBAL_INDEX),
             //body
             Variable("m".to_string(), GLOBAL_INDEX),
         );
