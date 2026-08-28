@@ -366,6 +366,7 @@ pub fn type_check_function<
         ));
     }
 
+    // include fun_namefun_name into the context for following script
     let _ = evaluate_fun::<T, _, _>(
         environment,
         fun_name,
@@ -392,24 +393,68 @@ pub fn type_check_axiom<T: TypeTheory + Kernel>(
     Ok(predicate.to_owned())
 }
 
-/// Generic theorem type checking. If `proof` is a term style proof it type checks
-/// the body and checks unification with the theorem `formula`;
-pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
+/// Generic equality-based theorem type checking, supporting both term-based and
+/// tactic-based proofs.
+/// This variants uses type equality to compare the inhabited type against the
+/// target one (ie T::base_type_equality)
+pub fn eq_type_check_theorem<T: TypeTheory + Kernel + Interactive>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
     proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
 ) -> Result<T::Type, String> {
+    type_check_theorem_base(
+        environment,
+        theorem_name,
+        formula,
+        proof,
+        |proof_type, formula| {
+            T::base_type_equality(proof_type, formula).is_ok()
+        },
+    )
+}
+/// Generic unification-based theorem type checking, supporting both term-based
+/// and tactic-based proofs.
+/// This variants uses type unification to compare the inhabited type against the
+/// target one (ie T::types_unify)
+pub fn u_type_check_theorem<T: TypeTheory + Kernel + Interactive + Refiner>(
+    environment: &mut Environment<T>,
+    theorem_name: &str,
+    formula: &T::Type,
+    proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
+) -> Result<T::Type, String> {
+    type_check_theorem_base(
+        &mut environment.clone(),
+        theorem_name,
+        formula,
+        proof,
+        |proof_type, formula| T::types_unify(environment, proof_type, formula),
+    )
+}
+/// Base implementation for generic type checking of theorem proofs, parametric
+/// on `are_compatible` for types (equality, unification).
+/// Includes `theorem_name` in the context for future usage
+fn type_check_theorem_base<T: TypeTheory + Kernel + Interactive, P>(
+    environment: &mut Environment<T>,
+    theorem_name: &str,
+    formula: &T::Type,
+    proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
+    mut are_compatible: P,
+) -> Result<T::Type, String>
+where
+    P: FnMut(&T::Type, &T::Type) -> bool,
+{
     let _ = T::type_check_type(formula, environment)?;
     match proof {
         L(proof_term) => {
             let proof_type = T::type_check_term(proof_term, environment)?;
-            if T::base_type_equality(&formula, &proof_type).is_err() {
+            if !are_compatible(&proof_type, formula) {
                 return Err(format!(
                     "Proof term's type doesn't unify with the theorem statement. Expected {:?} but found {:?}",
                     formula, proof_type
                 ));
             }
+            // include theorem_name into the context for following script
             let _ = evaluate_theorem::<T, T::Exp>(
                 environment,
                 theorem_name,
@@ -425,7 +470,7 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
             )?;
             // check that the proof proves the statement
             let proof_type = T::type_check_term(&proof, environment)?;
-            if T::base_type_equality(&proof_type, formula).is_err() {
+            if !are_compatible(&proof_type, formula) {
                 // TODO figure out what to do in this branch:
                 // this is a pratial proof are we sure we should fail if the goal isnt matched?
                 // proof_type might not be syntactically equal to formula but unify with it; should it fail or require refinement?

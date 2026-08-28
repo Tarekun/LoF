@@ -6,8 +6,8 @@ use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    type_check_abstraction, type_check_application, type_check_auto,
-    type_check_axiom, type_check_global, type_check_let, type_check_theorem,
+    eq_type_check_theorem, type_check_abstraction, type_check_application,
+    type_check_auto, type_check_axiom, type_check_global, type_check_let,
     type_check_variable,
 };
 use crate::type_theory::environment::Environment;
@@ -219,12 +219,14 @@ impl Kernel for Fol {
                 body,
                 is_rec,
             ),
-            Theorem(theorem_name, formula, proof) => type_check_theorem::<Fol>(
-                environment,
-                theorem_name,
-                formula,
-                proof,
-            ),
+            Theorem(theorem_name, formula, proof) => {
+                eq_type_check_theorem::<Fol>(
+                    environment,
+                    theorem_name,
+                    formula,
+                    proof,
+                )
+            }
             Auto(formula) => type_check_auto::<Fol>(environment, formula),
             Solve(goals) => {
                 for goal in goals {
