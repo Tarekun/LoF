@@ -33,9 +33,6 @@ pub mod type_theory {
         mod tactics;
         mod type_check;
         mod unification;
-        pub mod tests {
-            pub mod type_check;
-        }
     }
     pub mod fol {
         mod elaboration;
