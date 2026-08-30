@@ -53,6 +53,7 @@ const RESERVED_KEYWORDS: &[&str] = &[
     "qed.",
     "intro",
     "exact",
+    "induction",
     "sugar",
     "query",
     "hclause",

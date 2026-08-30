@@ -81,6 +81,8 @@ pub enum Tactic<E> {
     Intro(String, E),
     Exact(E),
     Apply(E),
+    /// (variable to induct on)
+    Induction(String),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum LofAst {

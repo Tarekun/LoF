@@ -5,7 +5,7 @@ use nom::{
     bytes::complete::tag, character::complete::multispace0, sequence::preceded,
 };
 
-use super::api::Tactic::{Apply, Begin, Exact, Intro, Qed};
+use super::api::Tactic::{Apply, Begin, Exact, Induction, Intro, Qed};
 use super::api::{Expression, LofParser, PResult, Tactic};
 
 //########################### TACTICS PARSER
@@ -63,6 +63,17 @@ impl LofParser {
         Ok((input, Apply(proof_term)))
     }
 
+    fn induction<'a>(
+        &self,
+        input: &'a str,
+    ) -> PResult<'a, Tactic<Expression>> {
+        let (input, _) = preceded(multispace0, tag("induction"))(input)?;
+        let (input, var_name) =
+            preceded(multispace1, |input| self.parse_identifier(input))(input)?;
+
+        Ok((input, Induction(var_name.to_string())))
+    }
+
     pub fn parse_tactic<'a>(
         &self,
         input: &'a str,
@@ -73,6 +84,7 @@ impl LofParser {
             |input| self.intro(input),
             |input| self.apply(input),
             |input| self.exact(input),
+            |input| self.induction(input),
         ))(input)
     }
 
