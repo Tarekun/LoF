@@ -4,7 +4,7 @@ mod unit_tests {
         config::Config,
         parser::api::Expression::VarUse,
         parser::api::LofParser,
-        parser::api::Tactic::{Apply, Exact, Intro},
+        parser::api::Tactic::{Apply, Exact, Induction, Intro},
     };
 
     #[test]
@@ -91,6 +91,25 @@ mod unit_tests {
         assert!(
             parser.parse_tactic("applyh").is_err(),
             "Apply parser doesnt split keyword and argument"
+        );
+    }
+
+    #[test]
+    fn test_induction() {
+        let parser = LofParser::new(Config::default());
+
+        assert_eq!(
+            parser.parse_tactic("induction n"),
+            Ok(("", Induction("n".to_string()))),
+            "Induction parser doesnt construct the proper node"
+        );
+        assert!(
+            parser.parse_tactic("\n\r\t induction   \t n\t").is_ok(),
+            "Induction parser cant cope with whitespaces"
+        );
+        assert!(
+            parser.parse_tactic("inductionn").is_err(),
+            "Induction parser doesnt split keyword and argument"
         );
     }
 }
