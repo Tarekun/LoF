@@ -244,6 +244,13 @@ impl<T: TypeTheory> Environment<T> {
             }
         }
     }
+
+    pub fn get_constructors(
+        &mut self,
+        name: &str,
+    ) -> Option<&Vec<(String, T::Type)>> {
+        self.constructor_store.get(name)
+    }
 }
 
 // other utilities

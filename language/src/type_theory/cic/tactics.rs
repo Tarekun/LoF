@@ -118,6 +118,102 @@ fn type_check_apply(
         Err(LofError::unification_failure(target, conclusion))
     }
 }
+//
+//
+/// Proves `target` (which may depend on `var_name : I` for some inductive type
+/// `I`) by case-splitting on `I`'s constructors. For each constructor a subgoal
+/// is produced (`target` with `var_name` replaced by that constructor's
+/// pattern), and for each recursive argument of the constructor an induction
+/// hypothesis (`target` with `var_name` replaced by that argument) is bound
+/// into the environment alongside the argument itself, ready for the
+/// subsequent tactics that close each subgoal.
+fn type_check_induction(
+    environment: &mut Environment<Cic>,
+    target: &CicTerm,
+    partial_proof: &CicTerm,
+    var_name: &str,
+) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
+    let var_type =
+        environment.get_variable_type(var_name).ok_or_else(|| {
+            LofError::custom(format!(
+                "Induction tactic: variable `{}` not found in context",
+                var_name
+            ))
+        })?;
+    let type_name = match get_applied_function(&var_type) {
+        Variable(name, _) => name,
+        _ => {
+            return Err(LofError::custom(format!(
+                "Induction tactic: type {:?} of `{}` is not an inductive type",
+                var_type, var_name
+            )))
+        }
+    };
+
+    let constructors = environment
+        .get_constructors(&type_name)
+        .cloned()
+        .ok_or_else(|| {
+            LofError::custom(format!(
+                "Induction tactic: `{}` is not a registered inductive type",
+                type_name
+            ))
+        })?;
+
+    let mut branches = vec![];
+    let mut subgoals = vec![];
+
+    for (constr_name, constr_type) in &constructors {
+        let arg_types = get_arg_types(constr_type);
+        let n_args = arg_types.len();
+        let mut pattern_args = vec![];
+
+        for (index, arg_type) in arg_types.iter().enumerate() {
+            let arg_name = if n_args == 1 {
+                var_name.to_string()
+            } else {
+                format!("{}_{}", var_name, index)
+            };
+            // environment.add_to_context(&arg_name, arg_type);
+            pattern_args.push(Variable(arg_name.clone(), PLACEHOLDER_DBI));
+
+            if is_instance_of(arg_type, &type_name) {
+                let ih_name = if n_args == 1 {
+                    format!("ih_{}", var_name)
+                } else {
+                    format!("ih_{}_{}", var_name, index)
+                };
+                let ih_type = substitute(
+                    target,
+                    var_name,
+                    &Variable(arg_name, PLACEHOLDER_DBI),
+                );
+                // environment.add_to_context(&ih_name, &ih_type);
+            }
+        }
+
+        let pattern = apply_arguments(
+            &Variable(constr_name.to_owned(), GLOBAL_INDEX),
+            pattern_args,
+        );
+        let case_target = substitute(target, var_name, &pattern);
+
+        subgoals.push(case_target);
+        branches.push((pattern, Cic::proof_hole()));
+    }
+    // the subgoal stack is LIFO (see `solver` in commons/type_check.rs), so
+    // reverse: the first-declared constructor's subgoal must be the last one
+    // pushed in order to be the first one popped/addressed by the script
+    subgoals.reverse();
+
+    let match_term = Match(
+        Box::new(Variable(var_name.to_string(), PLACEHOLDER_DBI)),
+        branches,
+    );
+    let new_partial_proof = swap_body(partial_proof, &match_term);
+
+    Ok((new_partial_proof, subgoals))
+}
 
 //########################### UNIT TESTS
 #[cfg(test)]
@@ -305,6 +401,87 @@ mod unit_tests {
             subgoals,
             vec![premise1, premise2],
             "Apply tactic doesnt track all premises of the applied lemma"
+        );
+    }
+
+    #[test]
+    fn test_induction() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let succ_type = Product(
+            "_".to_string(),
+            Box::new(nat.clone()),
+            Box::new(nat.clone()),
+        );
+        let predicate = |arg: CicTerm| {
+            Application(
+                Box::new(Variable("P".to_string(), GLOBAL_INDEX)),
+                Box::new(arg),
+            )
+        };
+
+        let mut test_env = Cic::default_environment();
+        test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
+        test_env.add_to_context("z", &nat);
+        test_env.add_to_context("s", &succ_type);
+        test_env.add_to_context("n", &nat);
+        test_env.add_constructor_store(
+            "Nat",
+            vec![
+                ("z".to_string(), nat.clone()),
+                ("s".to_string(), succ_type.clone()),
+            ],
+        );
+
+        let target = predicate(Variable("n".to_string(), PLACEHOLDER_DBI));
+
+        let (proof, subgoals) = type_check_induction(
+            &mut test_env,
+            &target,
+            &Cic::proof_hole(),
+            "n",
+        )
+        .expect(
+            "Induction tactic should succeed on a registered inductive type",
+        );
+
+        let z_pattern = Variable("z".to_string(), GLOBAL_INDEX);
+        let s_pattern = Application(
+            Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+            Box::new(Variable("n".to_string(), PLACEHOLDER_DBI)),
+        );
+        assert_eq!(
+            proof,
+            Match(
+                Box::new(Variable("n".to_string(), PLACEHOLDER_DBI)),
+                vec![
+                    (z_pattern.clone(), Cic::proof_hole()),
+                    (s_pattern.clone(), Cic::proof_hole()),
+                ],
+            ),
+            "Induction tactic must produce a Match with one holed branch per constructor, in declaration order"
+        );
+
+        assert_eq!(
+            subgoals,
+            vec![predicate(s_pattern.clone()), predicate(z_pattern.clone())],
+            "Induction tactic must push subgoals reversed so the first-declared constructor is addressed first"
+        );
+
+        assert_eq!(
+            test_env.get_variable_type("ih_n"),
+            Some(predicate(Variable("n".to_string(), PLACEHOLDER_DBI))),
+            "Induction tactic must bind the induction hypothesis for the recursive case into context"
+        );
+
+        assert!(
+            type_check_tactic(
+                &mut test_env,
+                &Induction("n".to_string()),
+                &target,
+                &Cic::proof_hole(),
+            )
+            .is_ok(),
+            "Top-level tactic checker doesnt support induction"
         );
     }
 }
