@@ -1,10 +1,13 @@
 use super::cic::CicTerm;
-use super::cic::CicTerm::{Abstraction, Application, Product};
+use super::cic::CicTerm::{Abstraction, Application, Match, Product, Variable};
 use super::cic_utils::swap_body;
 use crate::error::LofError;
-use crate::parser::api::Tactic::{self, Apply, Exact, Intro};
-use crate::type_theory::cic::cic::Cic;
-use crate::type_theory::cic::cic_utils::{get_arg_types, get_prod_innermost};
+use crate::parser::api::Tactic::{self, Apply, Exact, Induction, Intro};
+use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX, PLACEHOLDER_DBI};
+use crate::type_theory::cic::cic_utils::{
+    apply_arguments, get_applied_function, get_arg_types, get_prod_innermost,
+    is_instance_of, substitute,
+};
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
     Interactive, Kernel, Reducer, Refiner, TypeInference, TypeTheory,
@@ -29,6 +32,9 @@ pub fn type_check_tactic(
         }
         Apply(lemma) => {
             type_check_apply(environment, target, partial_proof, lemma)
+        }
+        Induction(var_name) => {
+            type_check_induction(environment, target, partial_proof, var_name)
         }
         _ => Err(LofError::custom(format!(
             "Tactic {:?} currently not type-checkable in CIC",

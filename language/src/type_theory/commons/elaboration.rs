@@ -2,7 +2,7 @@ use crate::{
     error::LofError,
     parser::api::{
         Expression, LofAst, Statement,
-        Tactic::{self, Apply, Begin, Exact, Intro, Qed},
+        Tactic::{self, Apply, Begin, Exact, Induction, Intro, Qed},
     },
     runtime::program::Schedule,
     type_theory::interface::TypeTheory,
@@ -86,6 +86,7 @@ pub fn elaborate_tactic<E, F: Fn(Expression) -> E>(
         ),
         Exact(proof_term) => elaborate_exact(proof_term, elaborate_expression),
         Apply(lemma) => elaborate_apply(lemma, elaborate_expression),
+        Induction(var_name) => Ok(Induction(var_name)),
     }
 }
 //
