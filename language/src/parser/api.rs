@@ -71,6 +71,8 @@ pub enum Tactic<Term, Type> {
     Exact(Term),
     /// (lemma)
     Apply(Term),
+    /// (variable to induct on)
+    Induction(String),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum LofAst {
