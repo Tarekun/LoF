@@ -8,6 +8,7 @@ use crate::type_theory::cic::elaboration::index_variables_in_store;
 use crate::type_theory::commons::utils::{
     generic_multiarg_fun_type, ElabStore,
 };
+use crate::type_theory::interface::Interactive;
 use std::fmt;
 
 fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -127,21 +128,55 @@ pub fn clone_product_with_different_result(
     }
 }
 
-/// Clones the given `proof_term`, swapping the hole with the given `new_body`
-pub fn swap_proof_hole(proof_term: &CicTerm, new_body: &CicTerm) -> CicTerm {
-    match proof_term {
-        Abstraction(var_name, var_type, body) => {
-            let new_body = swap_proof_hole(body, new_body);
-            Abstraction(
-                var_name.to_owned(),
-                var_type.clone(),
-                Box::new(new_body),
-            )
+/// Returns `true` if the partial-proof hole sentinel occurs anywhere within `term`
+fn contains_hole(term: &CicTerm) -> bool {
+    if term == &Cic::proof_hole() {
+        return true;
+    }
+    match term {
+        Abstraction(_, _, body) => contains_hole(body),
+        Application(_, right) => contains_hole(right),
+        Match(_, branches) => branches.iter().any(|(_, body)| contains_hole(body)),
+        _ => false,
+    }
+}
+
+/// Clones the given partial proof term, replacing the unique occurrence of the
+/// partial-proof hole sentinel (`Cic::proof_hole()`) with `new_body`. The hole
+/// is looked for following the same shape a partial proof is built in by the
+/// tactics that produce one: at the end of a chain of `Abstraction`s (`intro`),
+/// as the rightmost argument of an `Application` (`apply`), or, for `Match`
+/// (`induction`), inside the first branch (in declaration order) that still
+/// contains a hole.
+pub fn swap_proof_hole(term: &CicTerm, new_body: &CicTerm) -> CicTerm {
+    if term == &Cic::proof_hole() {
+        return new_body.to_owned();
+    }
+    match term {
+        Abstraction(var_name, var_type, body) => Abstraction(
+            var_name.to_owned(),
+            var_type.clone(),
+            Box::new(swap_proof_hole(body, new_body)),
+        ),
+        Application(left, right) => {
+            Application(left.clone(), Box::new(swap_proof_hole(right, new_body)))
         }
-        Sort(_) => new_body.to_owned(),
-        Variable(_, _) => new_body.to_owned(),
-        Application(_, _) => new_body.to_owned(),
-        _ => panic!("TODO: handle better"),
+        Match(matched_term, branches) => {
+            let mut filled = false;
+            let new_branches = branches
+                .iter()
+                .map(|(pattern, body)| {
+                    if !filled && contains_hole(body) {
+                        filled = true;
+                        (pattern.to_owned(), swap_proof_hole(body, new_body))
+                    } else {
+                        (pattern.to_owned(), body.to_owned())
+                    }
+                })
+                .collect();
+            Match(matched_term.clone(), new_branches)
+        }
+        _ => term.to_owned(),
     }
 }
 
@@ -634,12 +669,16 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
 //########################### UNIT TESTS
 #[cfg(test)]
 mod unit_tests {
-    use crate::type_theory::cic::{
+    use crate::type_theory::{
         cic::{
-            CicTerm::{Abstraction, Application, Match, Sort, Variable},
-            NameKind, PLACEHOLDER_DBI,
+            cic::{
+                Cic,
+                CicTerm::{Abstraction, Application, Match, Sort, Variable},
+                NameKind, PLACEHOLDER_DBI,
+            },
+            cic_utils::{index_variables, swap_proof_hole},
         },
-        cic_utils::{index_variables, swap_proof_hole},
+        interface::Interactive,
     };
 
     fn placeholder(name: &str) -> crate::type_theory::cic::cic::CicTerm {
@@ -752,6 +791,56 @@ mod unit_tests {
                 )),
             ),
             "swap_proof_hole must preserve Abstraction shape through nested expressions"
+        );
+    }
+
+    #[test]
+    fn test_swap_proof_hole_match_fills_branches_in_order() {
+        // Mirrors the skeleton `induction` produces: a Match with one holed
+        // branch per constructor. Each swap_proof_hole call must fill exactly the
+        // first still-open branch (in declaration order) and leave the rest
+        // untouched, so that sequential tactics in a script land on the
+        // correct case.
+        let scrutinee = Box::new(Variable("n".to_string(), NameKind::Bound(PLACEHOLDER_DBI)));
+        let z_pattern = Variable("z".to_string(), NameKind::Const());
+        let s_pattern = Application(
+            Box::new(Variable("s".to_string(), NameKind::Const())),
+            Box::new(Variable("n".to_string(), NameKind::Bound(PLACEHOLDER_DBI))),
+        );
+        let partial_proof = Match(
+            scrutinee.clone(),
+            vec![
+                (z_pattern.clone(), Cic::proof_hole()),
+                (s_pattern.clone(), Cic::proof_hole()),
+            ],
+        );
+
+        let z_proof = Variable("z_proof".to_string(), NameKind::Const());
+        let after_first = swap_proof_hole(&partial_proof, &z_proof);
+        assert_eq!(
+            after_first,
+            Match(
+                scrutinee.clone(),
+                vec![
+                    (z_pattern.clone(), z_proof.clone()),
+                    (s_pattern.clone(), Cic::proof_hole()),
+                ],
+            ),
+            "swap_proof_hole must fill the first (declaration-order) still-open branch"
+        );
+
+        let s_proof = Variable("s_proof".to_string(), NameKind::Const());
+        let after_second = swap_proof_hole(&after_first, &s_proof);
+        assert_eq!(
+            after_second,
+            Match(
+                scrutinee,
+                vec![
+                    (z_pattern, z_proof),
+                    (s_pattern, s_proof),
+                ],
+            ),
+            "swap_proof_hole must leave an already-filled branch untouched and fill the next open one"
         );
     }
 
