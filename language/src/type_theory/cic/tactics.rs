@@ -184,7 +184,7 @@ fn type_check_induction(
             } else {
                 format!("{}_{}", var_name, index)
             };
-            // environment.add_to_context(&arg_name, arg_type);
+            environment.add_to_context(&arg_name, arg_type);
             pattern_args.push(Variable(arg_name.clone(), NameKind::Bound(PLACEHOLDER_DBI)));
 
             if is_instance_of(arg_type, &type_name) {
@@ -198,7 +198,7 @@ fn type_check_induction(
                     var_name,
                     &Variable(arg_name, NameKind::Bound(PLACEHOLDER_DBI)),
                 );
-                // environment.add_to_context(&ih_name, &ih_type);
+                environment.add_to_context(&ih_name, &ih_type);
             }
         }
 
@@ -232,18 +232,20 @@ fn type_check_induction(
 #[cfg(test)]
 mod unit_tests {
     use crate::{
-        parser::api::Tactic::{Apply, Intro},
+        parser::api::Tactic::{Apply, Induction, Intro},
         type_theory::{
             cic::{
                 cic::{
-                    Cic,
+                    Cic, CicTerm,
                     CicTerm::{
-                        Abstraction, Application, Meta, Product, Sort, Variable,
+                        Abstraction, Application, Match, Meta, Product, Sort,
+                        Variable,
                     },
-                    NameKind,
+                    NameKind, PLACEHOLDER_DBI,
                 },
                 tactics::{
-                    type_check_exact, type_check_intro, type_check_tactic,
+                    type_check_exact, type_check_induction, type_check_intro,
+                    type_check_tactic,
                 },
             },
             interface::{Interactive, TypeTheory},
@@ -457,6 +459,36 @@ mod unit_tests {
             subgoals,
             vec![premise1, premise2],
             "Apply tactic doesnt track all premises of the applied lemma"
+        );
+    }
+
+    #[test]
+    fn test_intro_binds_context() {
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let mut test_env = Cic::default_environment();
+
+        assert_eq!(
+            test_env.get_variable_type("n"),
+            None,
+            "Sanity check: `n` isnt bound before intro runs"
+        );
+
+        let _ = type_check_intro(
+            &mut test_env,
+            &Product(
+                "n".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone()),
+            ),
+            &Cic::proof_hole(),
+            "n",
+            &nat.clone(),
+        );
+
+        assert_eq!(
+            test_env.get_variable_type("n"),
+            Some(nat),
+            "Intro tactic must bind the introduced variable into the environment context"
         );
     }
 
