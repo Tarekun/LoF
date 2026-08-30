@@ -5,12 +5,11 @@ use crate::runtime::program::{
     Schedule,
 };
 use crate::type_theory::commons::unification::Substitution;
-use crate::type_theory::environment::{Constraint, Environment};
+use crate::type_theory::environment::Environment;
 use crate::type_theory::sup::freedom::{
     GivingClauseSignature, SelectionFunctionSignature,
 };
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::fmt::Debug;
 
 /// Base trait for type systems. Requires a grammar for terms,
@@ -146,31 +145,42 @@ pub trait TypeInference: TypeTheory {
 
 /// Refiner module, implements unification
 pub trait Refiner: TypeTheory {
-    /// Algorithm to compute the MCU given a set of constraints.
-    /// Returns a substitution for all solvable meta variables or an error
-    fn solve_unification(
-        constraints: Vec<Constraint<Self>>,
-    ) -> Result<HashMap<i32, Self::Exp>, String>
+    /// Collects unification constraints necessary for `term`
+    fn term_collect_unifications(
+        term: &Self::Term,
+        environment: &mut Environment<Self>,
+    ) -> Result<Vec<(Self::Exp, Self::Exp)>, String>
     where
         Self: Sized;
 
-    /// Given a term expression containing metavariables and a `substitution`,
-    /// returns the same expression where solved metavariables are substituted
-    /// with their body
-    fn term_solve_metas(
-        exp: &Self::Term,
-        substitution: &HashMap<i32, Self::Exp>,
-    ) -> Self::Term;
-    /// Given a type expression containing metavariables and a `substitution`,
-    /// returns the same expression where solved metavariables are substituted
-    /// with their body
-    fn type_solve_metas(
-        exp: &Self::Type,
-        substitution: &HashMap<i32, Self::Exp>,
-    ) -> Self::Type;
+    /// Collects unification constraints necessary for `typee`
+    fn type_collect_unifications(
+        typee: &Self::Type,
+        environment: &mut Environment<Self>,
+    ) -> Result<Vec<(Self::Exp, Self::Exp)>, String>
+    where
+        Self: Sized;
 
-    /// Given an expression, if it's a metavariable returns its index, None otherwise
-    fn meta_index(meta: &Self::Type) -> Option<i32>;
+    /// Algorithm to compute the MCU given a set of constraints.
+    /// Returns a substitution for all solvable meta variables or an error
+    fn solve_unifications(
+        constraints: Vec<(Self::Exp, Self::Exp)>,
+        environment: &mut Environment<Self>,
+    ) -> Result<Substitution<Self::Exp>, String>
+    where
+        Self: Sized;
+
+    /// Applies a given Substitution to `term`
+    fn term_apply_unifier(
+        term: &Self::Term,
+        substitution: &Substitution<Self::Exp>,
+    ) -> Self::Term;
+
+    /// Applies a given Substitution to `typee`
+    fn type_apply_unifier(
+        typee: &Self::Type,
+        substitution: &Substitution<Self::Exp>,
+    ) -> Self::Type;
 
     /// Check if the two terms provided unify with one another
     /// ie they are structurally equal, given a unifier for metavariables

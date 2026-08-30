@@ -4,11 +4,13 @@ use super::cic::CicTerm::{
 };
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::{
-    application_args, get_applied_function, is_constant, substitute_meta,
+    application_args, get_applied_function, get_arg_types, is_constant,
+    substitute_meta,
 };
-use crate::type_theory::commons::unification::{unify, Substitution};
-use crate::type_theory::environment::{Constraint, Environment};
-use std::collections::{HashMap, VecDeque};
+use crate::type_theory::commons::unification::{ucs, Substitution};
+use crate::type_theory::environment::Environment;
+use crate::type_theory::interface::{Kernel, Reducer};
+use std::collections::VecDeque;
 
 fn is_substitutable(term: &CicTerm) -> Option<String> {
     match term {
@@ -27,6 +29,12 @@ fn structurally_equal(term1: &CicTerm, term2: &CicTerm) -> bool {
     match (term1, term2) {
         (Sort(_), Sort(_)) => true,
         (Meta(_), Meta(_)) => true,
+        // TODO this is a bug: ? and Nat should be able to unify the same way x and 3 can at FO
+        // however this needs to make sure the Variable actually is a type name and not some random term
+        // idx == GLOBAL_INDEX is a current hack (global type names get assigned this value) but should be fixed
+        (Meta(_), Variable(_, idx)) | (Variable(_, idx), Meta(_)) => {
+            *idx == GLOBAL_INDEX
+        }
         (Variable(name1, dbi1), Variable(name2, dbi2)) => {
             // same dbi1 and if they are global constants then also the constant symbols must be the same
             dbi1 == dbi2 && (!is_constant(term1) || name1 == name2)
@@ -184,240 +192,118 @@ fn occurs(term: &CicTerm, name: &str) -> bool {
     }
 }
 
-/// Second order unification of meta-variable for type inference
+/// Binary second order unification of meta-variable for type inference
+/// This function does NOT support normalization of terms to be unified and hence
+/// does not require an environment to be passed
 pub fn cic_so_unification(
     term1: &CicTerm,
     term2: &CicTerm,
 ) -> Result<Substitution<CicTerm>, String> {
-    Ok(unify(
-        term1,
-        term2,
+    solve_unifications_unnormalized(VecDeque::from([(
+        term1.to_owned(),
+        term2.to_owned(),
+    )]))
+}
+
+pub fn cic_solve_unifications(
+    constraints: Vec<(CicTerm, CicTerm)>,
+    environment: &mut Environment<Cic>,
+) -> Result<Substitution<CicTerm>, String> {
+    let mut reduced_constraints = VecDeque::new();
+    for (left, right) in constraints {
+        reduced_constraints.push_back((
+            Cic::normalize_term(environment, &left),
+            Cic::normalize_term(environment, &right),
+        ));
+        // reduced_constraints.push_back((left, right));
+    }
+
+    solve_unifications_unnormalized(reduced_constraints)
+}
+
+fn solve_unifications_unnormalized(
+    constraints: VecDeque<(CicTerm, CicTerm)>,
+) -> Result<Substitution<CicTerm>, String> {
+    Ok(ucs(
+        &mut Substitution::empty(),
+        constraints,
         is_substitutable,
         structurally_equal,
         explode,
         occurs,
     )?
-    .reduce(|term, idx, arg| substitute_meta(term, &idx.parse().unwrap(), arg)))
+    .reduce(|term, idx, arg| {
+        let stripped_idx = idx.strip_prefix("metavariable_").unwrap_or(idx);
+        substitute_meta(term, &stripped_idx.parse().unwrap(), arg)
+    }))
 }
 
-pub fn cic_unification(
-    _: &mut Environment<Cic>,
-    term1: &CicTerm,
-    term2: &CicTerm,
-) -> Result<bool, String> {
-    Ok(cic_so_unification(term1, term2).is_ok())
+pub fn cic_collect_unifications(
+    term: &CicTerm,
+    environment: &mut Environment<Cic>,
+) -> Result<Vec<(CicTerm, CicTerm)>, String> {
+    match term {
+        Abstraction(_var_name, var_type, body) => {
+            let type_cons = cic_collect_unifications(var_type, environment)?;
+            let body_cons = cic_collect_unifications(body, environment)?;
+
+            Ok([type_cons, body_cons].concat())
+        }
+        Application(fun, arg) => {
+            let fun_cons = cic_collect_unifications(fun, environment)?;
+            let arg_cons = cic_collect_unifications(arg, environment)?;
+
+            let arg_type = Cic::type_check_term(arg, environment)?;
+            let fun_type = Cic::type_check_term(fun, environment)?;
+            let first_arg_type = &get_arg_types(&fun_type)[0];
+
+            Ok([
+                fun_cons,
+                vec![(first_arg_type.to_owned(), arg_type)],
+                arg_cons,
+            ]
+            .concat())
+        }
+        _ => Ok(vec![]),
+    }
 }
-
-// TODO fully get rid of this function. nowhere in the code this should be used
-pub fn solve_unification(
-    constraints: Vec<Constraint<Cic>>,
-) -> Result<HashMap<i32, CicTerm>, String> {
-    fn occurs_meta_check(
-        meta_index: i32,
-        term: &CicTerm,
-    ) -> Result<(), String> {
-        match term {
-            Meta(index) => {
-                if meta_index == *index {
-                    Err("Unification Failure: cyclical metavariable reference"
-                        .to_string())
-                } else {
-                    Ok(())
-                }
-            }
-            Abstraction(_, arg_type, body) => {
-                occurs_meta_check(meta_index, arg_type)?;
-                occurs_meta_check(meta_index, body)
-            }
-            Product(_, arg_type, body) => {
-                occurs_meta_check(meta_index, arg_type)?;
-                occurs_meta_check(meta_index, body)
-            }
-            Application(left, right) => {
-                occurs_meta_check(meta_index, &left)?;
-                occurs_meta_check(meta_index, &right)
-            }
-            Match(matched, branches) => {
-                for (pattern, body) in branches {
-                    occurs_meta_check(meta_index, pattern)?;
-                    occurs_meta_check(meta_index, body)?;
-                }
-                occurs_meta_check(meta_index, &matched)
-            }
-            _ => Ok(()),
-        }
+pub fn cic_apply_unifier(
+    exp: &CicTerm,
+    substitution: &Substitution<CicTerm>,
+) -> CicTerm {
+    let mut solved_exp = exp.to_owned();
+    for index in substitution.names() {
+        solved_exp = substitute_meta(
+            &solved_exp,
+            &index
+                .strip_prefix("metavariable_")
+                .unwrap_or(index)
+                .parse()
+                .unwrap(),
+            substitution.get(index).unwrap(),
+        )
     }
-
-    fn handle_meta(
-        index: i32,
-        term: &CicTerm,
-        substitution: HashMap<i32, CicTerm>,
-    ) -> Result<HashMap<i32, CicTerm>, String> {
-        if let Meta(_) = term {
-            return Err("TF am i supposed todo with this?".to_string());
-        }
-        occurs_meta_check(index, &term)?;
-
-        // this update introduces a quadratic cost in the overall algo
-        let mut substitution: HashMap<i32, CicTerm> = substitution
-            .iter()
-            .map(|(k, v)| (*k, substitute_meta(v, &index, &term)))
-            .collect();
-        substitution.insert(index, term.clone());
-        Ok(substitution)
-    }
-
-    fn missmatch_error(
-        left: &CicTerm,
-        right: &CicTerm,
-    ) -> Result<HashMap<i32, CicTerm>, String> {
-        Err(format!(
-            "Unification failed: {:?} and {:?} don't unify",
-            left, right
-        ))
-    }
-
-    fn solver(
-        mut constraints: VecDeque<Constraint<Cic>>,
-        substitution: HashMap<i32, CicTerm>,
-    ) -> Result<HashMap<i32, CicTerm>, String> {
-        match constraints.len() {
-            0 => Ok(substitution),
-            _ => {
-                let (left, right) = match constraints.pop_front().unwrap() {
-                    Constraint::TypeEq(left, right) => (left, right),
-                };
-                let error_obj = missmatch_error(&left, &right);
-                match (left, right) {
-                    (Meta(index), right) => solver(
-                        constraints,
-                        handle_meta(index, &right, substitution)?,
-                    ),
-                    (left, Meta(index)) => solver(
-                        constraints,
-                        handle_meta(index, &left, substitution)?,
-                    ),
-                    (
-                        Variable(left_name, left_dbi),
-                        Variable(right_name, right_dbi),
-                    ) => {
-                        if (left_dbi != right_dbi)
-                            || (left_dbi == GLOBAL_INDEX
-                                && left_name != right_name)
-                        {
-                            return error_obj;
-                        } else {
-                            solver(constraints, substitution)
-                        }
-                    }
-                    (Sort(left_sort), Sort(right_sort)) => {
-                        //TODO support universes/subtypes
-                        if left_sort != right_sort {
-                            return error_obj;
-                        } else {
-                            solver(constraints, substitution)
-                        }
-                    }
-                    (
-                        Abstraction(_, left_arg_type, left_body),
-                        Abstraction(_, right_arg_type, right_body),
-                    ) => {
-                        //TODO add eta reduction like in matita?
-                        constraints.push_back(Constraint::TypeEq(
-                            *left_arg_type,
-                            *right_arg_type,
-                        ));
-                        constraints.push_back(Constraint::TypeEq(
-                            *left_body,
-                            *right_body,
-                        ));
-                        solver(constraints, substitution)
-                    }
-                    (
-                        Product(_, left_arg_type, left_body),
-                        Product(_, right_arg_type, right_body),
-                    ) => {
-                        constraints.push_back(Constraint::TypeEq(
-                            *left_arg_type,
-                            *right_arg_type,
-                        ));
-                        constraints.push_back(Constraint::TypeEq(
-                            *left_body,
-                            *right_body,
-                        ));
-                        solver(constraints, substitution)
-                    }
-                    (
-                        Application(left_fun, left_arg),
-                        Application(right_fun, right_arg),
-                    ) => {
-                        constraints.push_back(Constraint::TypeEq(
-                            *left_fun, *right_fun,
-                        ));
-                        constraints.push_back(Constraint::TypeEq(
-                            *left_arg, *right_arg,
-                        ));
-                        solver(constraints, substitution)
-                    }
-                    //TODO figure out what to do with branches
-                    (
-                        Match(left_matched_term, left_branches),
-                        Match(right_matched_term, right_branches),
-                    ) => {
-                        if left_branches.len() != right_branches.len() {
-                            return error_obj;
-                        }
-
-                        constraints.push_back(Constraint::TypeEq(
-                            (*left_matched_term).clone(),
-                            (*right_matched_term).clone(),
-                        ));
-                        // for unification to work here constructor branch ordering must be the same
-                        // TODO would be nice to have match unification be independent of branch ordering
-                        for i in 0..left_branches.len() {
-                            let (left_pattern, left_body) = &left_branches[i];
-                            let (right_pattern, right_body) =
-                                &right_branches[i];
-                            constraints.push_back(Constraint::TypeEq(
-                                left_pattern.clone(),
-                                right_pattern.clone(),
-                            ));
-                            constraints.push_back(Constraint::TypeEq(
-                                left_body.clone(),
-                                right_body.clone(),
-                            ));
-                        }
-
-                        solver(constraints, substitution)
-                    }
-                    _ => error_obj,
-                }
-            }
-        }
-    }
-
-    solver(constraints.into_iter().collect(), HashMap::new())
+    solved_exp
 }
 
 #[cfg(test)]
 mod unit_tests {
-    use crate::type_theory::cic::cic::FIRST_INDEX;
+    use crate::type_theory::cic::cic::{Cic, FIRST_INDEX};
+    use crate::type_theory::cic::cic::{
+        CicStm::{Fun, InductiveDef},
+        CicTerm::{
+            self, Abstraction, Application, Let, Match, Meta, Product, Sort,
+            Variable,
+        },
+        GLOBAL_INDEX,
+    };
     use crate::type_theory::cic::unification::{
-        cic_so_unification, explode, is_substitutable, occurs,
-        solve_unification,
+        cic_so_unification, cic_solve_unifications, explode, is_substitutable,
+        occurs, solve_unifications_unnormalized,
     };
     use crate::type_theory::commons::unification::Substitution;
-    use crate::type_theory::{
-        cic::cic::{
-            CicTerm::{
-                self, Abstraction, Application, Let, Match, Meta, Product,
-                Sort, Variable,
-            },
-            GLOBAL_INDEX,
-        },
-        environment::Constraint::{self, TypeEq},
-    };
-    use std::collections::HashMap;
+    use crate::type_theory::interface::{Kernel, TypeTheory};
+    use std::collections::VecDeque;
 
     #[test]
     fn test_variable_ground_unification() {
@@ -443,7 +329,7 @@ mod unit_tests {
         );
 
         let constraints = vec![
-            Constraint::TypeEq(
+            (
                 Meta(1),
                 Product(
                     "_".to_string(),
@@ -451,23 +337,21 @@ mod unit_tests {
                     Box::new(Meta(0)),
                 ),
             ),
-            Constraint::TypeEq(Meta(0), nat.clone()),
+            (Meta(0), nat.clone()),
         ];
-        let expected = {
-            let mut map = HashMap::new();
-            map.insert(
-                1,
+        let expected = Substitution::from([
+            (
+                "metavariable_1".to_string(),
                 Product(
                     "_".to_string(),
                     Box::new(nat.clone()),
                     Box::new(nat.clone()),
                 ),
-            );
-            map.insert(0, nat.clone());
-            map
-        };
+            ),
+            ("metavariable_0".to_string(), nat.clone()),
+        ]);
         assert_eq!(
-                solve_unification(constraints).unwrap(),
+                cic_solve_unifications(constraints, &mut Cic::default_environment()).unwrap(),
                 expected,
                 "Unification couldnt solve a problem with a function over metavariables"
             );
@@ -476,12 +360,9 @@ mod unit_tests {
     #[test]
     fn test_match_unification() {
         let t = Variable("true".to_string(), GLOBAL_INDEX);
-        let expected = {
-            let mut map = HashMap::new();
-            map.insert(1, t.clone());
-            map
-        };
-        let constraints = vec![TypeEq(
+        let expected =
+            Substitution::from([("metavariable_1".to_string(), t.clone())]);
+        let constraints = vec![(
             Match(
                 Box::new(Variable("b".to_string(), 0)),
                 vec![
@@ -504,18 +385,15 @@ mod unit_tests {
             ),
         )];
         assert_eq!(
-            solve_unification(constraints).unwrap(),
+            solve_unifications_unnormalized(VecDeque::from(constraints)).unwrap(),
             expected,
             "Unification couldnt solve a problem of constructor recovery in pattern matching"
         );
 
         let body = Sort("TYPE".to_string());
-        let expected = {
-            let mut map = HashMap::new();
-            map.insert(2, body.clone());
-            map
-        };
-        let constraints = vec![TypeEq(
+        let expected =
+            Substitution::from([("metavariable_2".to_string(), body.clone())]);
+        let constraints = vec![(
             Match(
                 Box::new(Variable("b".to_string(), 0)),
                 vec![
@@ -532,7 +410,8 @@ mod unit_tests {
             ),
         )];
         assert_eq!(
-            solve_unification(constraints).unwrap(),
+            solve_unifications_unnormalized(VecDeque::from(constraints))
+                .unwrap(),
             expected,
             "Unification couldnt solve unification of pattern match bodies"
         );
@@ -757,6 +636,108 @@ mod unit_tests {
                 name_key
             ),
             "occurs check passes on a term that doesnt reference the variable"
+        );
+    }
+
+    #[test]
+    fn test_plus_zero_one_unification() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let mut env = Cic::default_environment();
+
+        Cic::type_check_stm(
+            &InductiveDef(
+                "Nat".to_string(),
+                vec![],
+                Box::new(Sort("TYPE".to_string())),
+                vec![
+                    ("z".to_string(), nat.clone()),
+                    (
+                        "s".to_string(),
+                        Product(
+                            "_".to_string(),
+                            Box::new(nat.clone()),
+                            Box::new(nat.clone()),
+                        ),
+                    ),
+                ],
+            ),
+            &mut env,
+        )
+        .expect("Failed to set up Nat");
+
+        Cic::type_check_stm(
+            &Fun(
+                "plus".to_string(),
+                vec![
+                    ("n".to_string(), nat.clone()),
+                    ("m".to_string(), nat.clone()),
+                ],
+                Box::new(nat.clone()),
+                Box::new(Match(
+                    Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                    vec![
+                        (
+                            Variable("z".to_string(), GLOBAL_INDEX),
+                            Variable("m".to_string(), GLOBAL_INDEX),
+                        ),
+                        (
+                            Application(
+                                Box::new(Variable(
+                                    "s".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                                Box::new(Variable(
+                                    "nn".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                            ),
+                            Application(
+                                Box::new(Variable(
+                                    "s".to_string(),
+                                    GLOBAL_INDEX,
+                                )),
+                                Box::new(Application(
+                                    Box::new(Application(
+                                        Box::new(Variable(
+                                            "plus".to_string(),
+                                            GLOBAL_INDEX,
+                                        )),
+                                        Box::new(Variable(
+                                            "nn".to_string(),
+                                            GLOBAL_INDEX,
+                                        )),
+                                    )),
+                                    Box::new(Variable(
+                                        "m".to_string(),
+                                        GLOBAL_INDEX,
+                                    )),
+                                )),
+                            ),
+                        ),
+                    ],
+                )),
+                true,
+            ),
+            &mut env,
+        )
+        .expect("Failed to set up plus");
+
+        let z = Variable("z".to_string(), GLOBAL_INDEX);
+        let s = Variable("s".to_string(), GLOBAL_INDEX);
+        let one = Application(Box::new(s.clone()), Box::new(z.clone()));
+        let plus_zero_one = Application(
+            Box::new(Application(
+                Box::new(Variable("plus".to_string(), GLOBAL_INDEX)),
+                Box::new(z.clone()),
+            )),
+            Box::new(one.clone()),
+        );
+
+        assert!(
+            cic_solve_unifications(vec![(plus_zero_one, one)], &mut env)
+                .is_ok(),
+            // cic_unification(&mut env, &plus_zero_one, &one).is_ok(),
+            "plus(z, s(z)) should unify with s(z) after normalization"
         );
     }
 }

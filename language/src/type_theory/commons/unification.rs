@@ -212,7 +212,7 @@ where
     E: Fn(&T) -> Vec<T>,
     O: Fn(&T, &str) -> bool,
 {
-    return solver(
+    return ucs(
         mgu,
         VecDeque::from(vec![(exp1.clone(), exp2.clone())]),
         is_variable,
@@ -222,7 +222,10 @@ where
     );
 }
 
-fn solver<T: PartialEq, Iv, Se, E, O>(
+/// Unification Constraint Solver (UCS). Recursive solver for queue of `constraints` (assumed to be unifications ≐)
+/// `mgu` is a base Substitution to build on top of, while other function arguments are the utilities needed
+/// to perform HM-style unification being agnostic of the system's grammar
+pub fn ucs<T: PartialEq, Iv, Se, E, O>(
     mgu: &mut Substitution<T>,
     mut constraints: VecDeque<(T, T)>,
     is_variable: Iv,
@@ -241,7 +244,7 @@ where
         // produce substitution v1 -> e2
         if let Some(var_name) = is_variable(&exp1) {
             mgu.add_substitution(&var_name, &exp2, &occurs, &is_variable)?;
-            solver(
+            ucs(
                 mgu,
                 constraints,
                 is_variable,
@@ -253,7 +256,7 @@ where
         // produce substitution v2 -> e1
         else if let Some(var_name) = is_variable(&exp2) {
             mgu.add_substitution(&var_name, &exp1, &occurs, &is_variable)?;
-            solver(
+            ucs(
                 mgu,
                 constraints,
                 is_variable,
@@ -276,7 +279,7 @@ where
             for (s, t) in sub1.into_iter().zip(sub2.into_iter()) {
                 constraints.push_back((s, t));
             }
-            solver(
+            ucs(
                 mgu,
                 constraints,
                 is_variable,

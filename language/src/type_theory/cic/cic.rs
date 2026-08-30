@@ -1,11 +1,11 @@
 use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::tactics::type_check_tactic;
 use super::type_check::type_check_sort;
-use super::unification::{cic_unification, solve_unification};
+use super::unification::cic_so_unification;
 use crate::misc::Union::{self};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
-use crate::type_theory::cic::cic::CicTerm::{Meta, Product};
+use crate::type_theory::cic::cic::CicTerm::{Application, Product};
 use crate::type_theory::cic::cic_utils::{
     make_multiarg_fun_type, substitute, substitute_meta,
 };
@@ -15,19 +15,20 @@ use crate::type_theory::cic::elaboration::{
 use crate::type_theory::cic::type_check::{
     type_check_inductive, type_check_match,
 };
-use crate::type_theory::cic::unification::cic_so_unification;
+use crate::type_theory::cic::unification::{
+    cic_apply_unifier, cic_collect_unifications, cic_solve_unifications,
+};
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    type_check_axiom, type_check_fo_universal, type_check_function,
-    type_check_global, type_check_let, type_check_theorem, type_check_variable,
-    u_type_check_abstraction, u_type_check_application,
+    i_type_check_abstraction, i_type_check_application, type_check_axiom,
+    type_check_fo_universal, type_check_function, type_check_global,
+    type_check_let, type_check_variable, u_type_check_theorem,
 };
 use crate::type_theory::commons::unification::Substitution;
-use crate::type_theory::environment::{Constraint, Environment};
+use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
     Interactive, Kernel, Reducer, Refiner, TypeInference, TypeTheory,
 };
-use std::collections::HashMap;
 use tracing::debug;
 
 pub static FIRST_INDEX: i32 = 0;
@@ -101,13 +102,17 @@ impl TypeTheory for Cic {
         term1: &CicTerm,
         term2: &CicTerm,
     ) -> Result<(), String> {
-        common_unification_check(term1, term2)
+        // tbh im not really sure these specific functions should use unification instead of syntactic equality
+        let _ = cic_so_unification(term1, term2)?;
+        Ok(())
     }
     fn base_type_equality(
         type1: &CicTerm,
         type2: &CicTerm,
     ) -> Result<(), String> {
-        common_unification_check(type1, type2)
+        // tbh im not really sure these specific functions should use unification instead of syntactic equality
+        let _ = cic_so_unification(type1, type2)?;
+        Ok(())
     }
 
     fn elaborate_expression(exp: &Expression) -> Result<CicTerm, String> {
@@ -129,7 +134,7 @@ impl Kernel for Cic {
                 type_check_variable::<Cic>(environment, var_name)
             }
             CicTerm::Abstraction(var_name, var_type, body) => {
-                u_type_check_abstraction::<Cic, _>(
+                i_type_check_abstraction::<Cic, _>(
                     environment,
                     var_name,
                     var_type,
@@ -151,7 +156,7 @@ impl Kernel for Cic {
                     body,
                 )
             }
-            CicTerm::Application(left, right) => u_type_check_application(
+            CicTerm::Application(left, right) => i_type_check_application(
                 environment,
                 left,
                 right,
@@ -162,6 +167,9 @@ impl Kernel for Cic {
                         (**codomain).to_owned(),
                     )),
                     _ => None,
+                },
+                |l, r| {
+                    Application(Box::new(l.to_owned()), Box::new(r.to_owned()))
                 },
                 Cic::substitute,
             ),
@@ -239,7 +247,7 @@ impl Kernel for Cic {
                 )
             }
             CicStm::Theorem(theorem_name, formula, proof) => {
-                type_check_theorem::<Cic>(
+                u_type_check_theorem::<Cic>(
                     environment,
                     theorem_name,
                     formula,
@@ -276,46 +284,42 @@ impl TypeInference for Cic {
 }
 
 impl Refiner for Cic {
-    fn solve_unification(
-        constraints: Vec<Constraint<Cic>>,
-    ) -> Result<HashMap<i32, CicTerm>, String> {
-        solve_unification(constraints)
+    fn solve_unifications(
+        constraints: Vec<(CicTerm, CicTerm)>,
+        environment: &mut Environment<Cic>,
+    ) -> Result<Substitution<CicTerm>, String>
+    where
+        Self: Sized,
+    {
+        cic_solve_unifications(constraints, environment)
     }
 
-    fn meta_index(meta: &CicTerm) -> Option<i32> {
-        match meta {
-            Meta(index) => Some(index.to_owned()),
-            _ => None,
-        }
+    fn term_collect_unifications(
+        exp: &CicTerm,
+        environment: &mut Environment<Cic>,
+    ) -> Result<Vec<(CicTerm, CicTerm)>, String> {
+        cic_collect_unifications(exp, environment)
     }
 
-    fn term_solve_metas(
+    fn type_collect_unifications(
         exp: &CicTerm,
-        substitution: &HashMap<i32, CicTerm>,
-    ) -> CicTerm {
-        let mut solved_exp = exp.to_owned();
-        for index in substitution.keys() {
-            solved_exp = substitute_meta(
-                &solved_exp,
-                index,
-                substitution.get(index).unwrap(),
-            )
-        }
-        solved_exp
+        environment: &mut Environment<Cic>,
+    ) -> Result<Vec<(CicTerm, CicTerm)>, String> {
+        cic_collect_unifications(exp, environment)
     }
-    fn type_solve_metas(
+
+    fn term_apply_unifier(
         exp: &CicTerm,
-        substitution: &HashMap<i32, CicTerm>,
+        substitution: &Substitution<CicTerm>,
     ) -> CicTerm {
-        let mut solved_exp = exp.to_owned();
-        for index in substitution.keys() {
-            solved_exp = substitute_meta(
-                &solved_exp,
-                index,
-                substitution.get(index).unwrap(),
-            )
-        }
-        solved_exp
+        cic_apply_unifier(exp, substitution)
+    }
+
+    fn type_apply_unifier(
+        exp: &CicTerm,
+        substitution: &Substitution<CicTerm>,
+    ) -> CicTerm {
+        cic_apply_unifier(exp, substitution)
     }
 
     fn terms_unify(
@@ -323,11 +327,11 @@ impl Refiner for Cic {
         term1: &CicTerm,
         term2: &CicTerm,
     ) -> bool {
-        match cic_unification(environment, term1, term2) {
-            Ok(res) => res,
-            //TODO: better handling
-            Err(message) => false,
-        }
+        cic_solve_unifications(
+            vec![(term1.to_owned(), term2.to_owned())],
+            environment,
+        )
+        .is_ok()
     }
 
     fn types_unify(
@@ -335,11 +339,11 @@ impl Refiner for Cic {
         type1: &CicTerm,
         type2: &CicTerm,
     ) -> bool {
-        match cic_unification(environment, type1, type2) {
-            Ok(res) => res,
-            //TODO: better handling
-            Err(message) => false,
-        }
+        cic_solve_unifications(
+            vec![(type1.to_owned(), type2.to_owned())],
+            environment,
+        )
+        .is_ok()
     }
 }
 
@@ -396,21 +400,5 @@ impl Interactive for Cic {
         partial_proof: &CicTerm,
     ) -> Result<(CicTerm, Vec<CicTerm>), String> {
         type_check_tactic(environment, tactic, target, partial_proof)
-    }
-}
-
-fn common_unification_check(
-    term1: &CicTerm,
-    term2: &CicTerm,
-) -> Result<(), String> {
-    if solve_unification(vec![Constraint::TypeEq(
-        term1.to_owned(),
-        term2.to_owned(),
-    )])
-    .is_ok()
-    {
-        Ok(())
-    } else {
-        Err(format!("{:?} and {:?} do not unifiy", term1, term2))
     }
 }
