@@ -1,0 +1,27 @@
+import "nat"
+
+
+!theory_block cic
+inductive List (T:TYPE) : TYPE {
+  | nil : List T
+  | cons : T -> List T -> List T
+}
+!end_block
+
+fun rec fold (A: TYPE) (B: TYPE) (combine: B -> A -> A) (l: List B) (seed: A) : A {
+  match l with
+  | nil A => seed,
+  | cons A h ll => fold A B combine ll (combine h seed),
+}
+
+fun rec map (A: TYPE) (B: TYPE) (mapper: A -> B) (l: List A) : List B {
+  match l with
+  | nil A => nil B,
+  | cons A h ll => cons B (mapper h) (map A B mapper ll),
+}
+
+fun rec len (l: List ?) : Nat {
+  match l with
+  | nil ? => z,
+  | cons ? _ ll => s (len ll),
+}
