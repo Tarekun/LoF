@@ -16,29 +16,29 @@ fun not (b: Bool) : Bool {
   | false => true,
 }
 
-fun and (l: Bool) (r: Bool) : Bool {
+fun and (l: Bool, r: Bool) : Bool {
   match l with
   | true => r,
   | false => false,
 }
 
-fun or (l: Bool) (r: Bool) : Bool {
+fun or (l: Bool, r: Bool) : Bool {
   match l with
   | true => true,
   | false => r,
 }
 
-fun impl (l: Bool) (r: Bool) : Bool {
+fun impl (l: Bool, r: Bool) : Bool {
   match l with
   | true => r,
   | false => true,
 }
 
-fun if (T: TYPE) (exp: Bool) (ifTrue: Unit -> T) (ifFalse: Unit -> T) : T {
+fun if (T: TYPE, exp: Bool, ifTrue: Unit -> T, ifFalse: Unit -> T) : T {
   match exp with
-  | true => ifTrue it,
-  | false => ifFalse it,
+  | true => ifTrue(it),
+  | false => ifFalse(it),
 }
 
 # temporary expression used to test if the infer operator works
-if ? true (\lambda i: Unit. false) (\lambda i: Unit. true)
+if(?, true, (\lambda i: Unit. false), (\lambda i: Unit. true))

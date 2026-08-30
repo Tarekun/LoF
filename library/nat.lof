@@ -4,22 +4,22 @@
 # include "logic"
 # include "bool"
 
-!theory_block cic 
+!theory_block cic
 
 inductive Nat: TYPE {
-  | z: Nat 
+  | z: Nat
   | s: Nat -> Nat
 }
 
 # definition a la matita
 #inductive leMat (n: Nat) : Nat -> PROP :=
 #  | len: le n n
-#  | les: ∀m: Nat. le n m -> le n (s m)
+#  | les: ∀m: Nat. le(n, m) -> le(n, s(m))
 #;
 # definition a la coq
 inductive le : Nat -> Nat -> PROP {
-  | lez: ∀n: Nat. le z n
-  | les: ∀n:Nat. (∀m:Nat. (le n m) -> le (s n) (s m))
+  | lez: ∀n: Nat. le(z, n)
+  | les: ∀n:Nat. ∀m:Nat. le(n, m) -> le(s(n), s(m))
 }
 
 !end_block
@@ -28,70 +28,70 @@ inductive le : Nat -> Nat -> PROP {
 fun pred (n: Nat) : Nat {
   match n with
   | z => z,
-  | s nn => nn,
+  | s(nn) => nn,
 }
 
-fun rec plus (n:Nat) (m:Nat) : Nat {
-  match n with 
+fun rec plus (n:Nat, m:Nat) : Nat {
+  match n with
   | z => m,
-  | s nn => s (plus nn m),
+  | s(nn) => s(plus(nn, m)),
 }
-sugar "_0 + _1" := "plus _0 _1"
+sugar "_0 + _1" := "plus(_0, _1)"
 
 #note the case 0 - m always returns 0
 #in case m != 0 the function should be undefined
-fun rec minus (n: Nat) (m: Nat) : Nat {
-  match n with 
+fun rec minus (n: Nat, m: Nat) : Nat {
+  match n with
   | z => z ,
-  | s nn => (
-    match m with 
+  | s(nn) => (
+    match m with
     | z => n ,
-    | s mm => minus nn mm,
+    | s(mm) => minus(nn, mm),
   ),
 }
-sugar "_0 - _1" := "minus _0 _1"
+sugar "_0 - _1" := "minus(_0, _1)"
 
-fun rec times (n: Nat) (m: Nat) : Nat {
-  match n with 
+fun rec times (n: Nat, m: Nat) : Nat {
+  match n with
   | z => z,
-  | s nn => plus (times nn m) m,
+  | s(nn) => plus(times(nn, m), m),
 }
-sugar "_0 * _1" := "times _0 _1"
+sugar "_0 * _1" := "times(_0, _1)"
 
 # n/m
-fun rec divwithacc (n: Nat) (m: Nat) (acc: Nat) : Nat {
-  match n with 
+fun rec divwithacc (n: Nat, m: Nat, acc: Nat) : Nat {
+  match n with
   | z => acc,
-  | s nn => divwithacc (minus n m) m (s acc),
+  | s(nn) => divwithacc(minus(n, m), m, s(acc)),
 }
-fun div (n: Nat) (m: Nat) : Nat {
-  divwithacc n m z 
+fun div (n: Nat, m: Nat) : Nat {
+  divwithacc(n, m, z)
 }
 
-fun rec pow (b: Nat) (e: Nat) : Nat {
-  match e with 
-  | z => s z,
-  | s ee => times (pow b ee) b,
+fun rec pow (b: Nat, e: Nat) : Nat {
+  match e with
+  | z => s(z),
+  | s(ee) => times(pow(b, ee), b),
 }
 
 #fun isZero (n: Nat) : Bool {
-#  match n with 
+#  match n with
 #  | z => true,
-#  | s nn => false,
+#  | s(nn) => false,
 #}
 #fun isOne (n: Nat) : Bool {
-#  match n with 
+#  match n with
 #  | z => false,
-#  | s nn => (
-#    if Bool (isZero nn) (λx:Unit. true) (λx:Unit. false)
+#  | s(nn) => (
+#    if(Bool, isZero(nn), (λx:Unit. true), (λx:Unit. false))
 #  ),
 #}
-#fun rec isLe (n: Nat) (m: Nat) : Bool {
-#  match n with 
-#  | z => isZero m,
-#  | s nn => (
-#    match m with 
+#fun rec isLe (n: Nat, m: Nat) : Bool {
+#  match n with
+#  | z => isZero(m),
+#  | s(nn) => (
+#    match m with
 #    | z => false,
-#    | s mm => isLe nn mm,
+#    | s(mm) => isLe(nn, mm),
 #  ),
 #}
