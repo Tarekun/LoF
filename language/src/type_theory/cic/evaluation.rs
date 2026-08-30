@@ -140,7 +140,7 @@ pub fn evaluate_inductive(
             constructors.to_owned(),
         ),
     );
-    environment.add_something_store(name, constr_set);
+    environment.add_constructor_store(name, constr_set);
 
     Ok(())
 }

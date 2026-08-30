@@ -35,7 +35,7 @@ pub struct Environment<T: TypeTheory> {
     pub deltas: HashMap<String, Vec<T::Term>>,
     /// pred_name, arg_types
     pub predicates: HashMap<String, Vec<T::Type>>,
-    pub something_store: HashMap<String, Vec<(String, T::Type)>>,
+    pub constructor_store: HashMap<String, Vec<(String, T::Type)>>,
     /// [exp1 = exp2]
     constraints: Vec<Constraint<T>>,
     next_index: i32,
@@ -51,7 +51,7 @@ where
             deltas: self.deltas.clone(),
             predicates: self.predicates.clone(),
             constraints: self.constraints.clone(),
-            something_store: self.something_store.clone(),
+            constructor_store: self.constructor_store.clone(),
             next_index: self.next_index,
         }
     }
@@ -249,18 +249,19 @@ impl<T: TypeTheory> Environment<T> {
     }
 }
 
-// something store
+// constructor store
 impl<T: TypeTheory> Environment<T> {
-    pub fn add_something_store(
+    pub fn add_constructor_store(
         &mut self,
         name: &str,
         typee: Vec<(String, T::Type)>,
     ) {
-        self.something_store.insert(name.to_string(), typee.clone());
+        self.constructor_store
+            .insert(name.to_string(), typee.clone());
     }
 
     pub fn get_constructors_for(&self, name: &str) -> Option<HashSet<String>> {
-        match self.something_store.get(name) {
+        match self.constructor_store.get(name) {
             None => None,
             Some(list) => {
                 let res: HashSet<String> = list
@@ -302,7 +303,7 @@ impl<T: TypeTheory> Environment<T> {
             context: context_map,
             deltas: deltas_map,
             predicates: predicates_map,
-            something_store: HashMap::new(),
+            constructor_store: HashMap::new(),
             constraints: vec![],
             next_index: 0,
         }
