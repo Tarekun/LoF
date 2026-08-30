@@ -173,3 +173,7 @@ pub fn fol_type_check_fun(
 }
 //
 //########################### STATEMENTS TYPE CHECKING
+
+#[cfg(test)]
+#[path = "../../tests/type_theory/fol/type_check.rs"]
+mod tests;

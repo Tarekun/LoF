@@ -554,3 +554,7 @@ pub fn type_check_inductive(
     );
     Ok(Variable("Unit".to_string(), GLOBAL_INDEX))
 }
+
+#[cfg(test)]
+#[path = "../../tests/type_theory/cic/type_check.rs"]
+mod tests;

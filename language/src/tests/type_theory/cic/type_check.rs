@@ -1,92 +1,93 @@
-#[cfg(test)]
-mod tests {
-    use crate::type_theory::{cic::{
-        cic::{
-            Cic, CicStm::{Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, GLOBAL_INDEX, PLACEHOLDER_DBI
-        }, evaluation::evaluate_inductive, type_check::{inductive_eliminator, type_check_inductive}
-    }, environment::Environment};
-    use crate::type_theory::interface::Kernel;
-    use crate::type_theory::interface::TypeTheory;
+use crate::type_theory::{cic::{
+    cic::{
+        Cic, CicStm::{Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, GLOBAL_INDEX, PLACEHOLDER_DBI
+    }, evaluation::evaluate_inductive, type_check::{inductive_eliminator, type_check_inductive}
+}, environment::Environment};
+use crate::type_theory::interface::Kernel;
+use crate::type_theory::interface::TypeTheory;
 
-    fn var(name: &str) -> CicTerm {
-        Variable(name.to_string(), PLACEHOLDER_DBI)
+fn var(name: &str) -> CicTerm {
+    Variable(name.to_string(), PLACEHOLDER_DBI)
+}
+fn vardbi(name: &str, dbi: i32) -> CicTerm {
+    Variable(name.to_string(), dbi)
+}
+fn app(fun_name: &str, mut args: Vec<CicTerm>) -> CicTerm {
+    if args.len() == 0 {
+        var(fun_name)
+    } else {
+        let last_arg = args.pop().unwrap();
+        let partially_applied = app(fun_name, args);
+        Application(
+            Box::new(partially_applied),
+            Box::new(last_arg.clone()),
+        )
     }
-    fn vardbi(name: &str, dbi: i32) -> CicTerm {
-        Variable(name.to_string(), dbi)
-    }
-    fn app(fun_name: &str, mut args: Vec<CicTerm>) -> CicTerm {
-        if args.len() == 0 {
-            var(fun_name)
-        } else {
-            let last_arg = args.pop().unwrap();
-            let partially_applied = app(fun_name, args);
-            Application(
-                Box::new(partially_applied),
-                Box::new(last_arg.clone()),
-            )
-        }
-    }
-    fn packed_env() -> Environment<Cic>{
-        let mut test_env = Cic::default_environment();
-        let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let list = Variable("List".to_string(), GLOBAL_INDEX);
-        let type_var = Variable("T".to_string(), GLOBAL_INDEX);
+}
+fn packed_env() -> Environment<Cic>{
+    let mut test_env = Cic::default_environment();
+    let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
+    let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+    let list = Variable("List".to_string(), GLOBAL_INDEX);
+    let type_var = Variable("T".to_string(), GLOBAL_INDEX);
 
-        let _ = evaluate_inductive(
-            &mut test_env,
-            "List",
-            &vec![("T".to_string(), Sort("TYPE".to_string()))],
-            &Sort("TYPE".to_string()),
-            &vec![
-                ("nil".to_string(), Application(
-                    Box::new(list.clone()), 
-                    Box::new(type_var.clone())
-                )),
-                ("cons".to_string(), Product(
-                    "e".to_string(), 
-                    Box::new(type_var.clone()), 
-                    Box::new(Product(
-                        "l".to_string(), 
-                        Box::new(Application(
-                            Box::new(list.clone()), 
-                            Box::new(type_var.clone())
-                        )), 
-                        Box::new(Application(
-                            Box::new(list.clone()), 
-                            Box::new(type_var.clone())
-                        ))
+    let _ = evaluate_inductive(
+        &mut test_env,
+        "List",
+        &vec![("T".to_string(), Sort("TYPE".to_string()))],
+        &Sort("TYPE".to_string()),
+        &vec![
+            ("nil".to_string(), Application(
+                Box::new(list.clone()), 
+                Box::new(type_var.clone())
+            )),
+            ("cons".to_string(), Product(
+                "e".to_string(), 
+                Box::new(type_var.clone()), 
+                Box::new(Product(
+                    "l".to_string(), 
+                    Box::new(Application(
+                        Box::new(list.clone()), 
+                        Box::new(type_var.clone())
+                    )), 
+                    Box::new(Application(
+                        Box::new(list.clone()), 
+                        Box::new(type_var.clone())
                     ))
                 ))
-            ],
-        );
-        let _ = evaluate_inductive(
-            &mut test_env,
-            "Bool",
-            &vec![],
-            &Sort("TYPE".to_string()),
-            &vec![
-                ("true".to_string(), boolean.clone()),
-                ("false".to_string(), boolean.clone()),
-            ],
-        );
-        let _ = evaluate_inductive(
-            &mut test_env,
-            "Nat",
-            &vec![],
-            &Sort("TYPE".to_string()),
-            &vec![
-                ("0".to_string(), nat.clone()),
-                ("s".to_string(), Product(
-                    "_".to_string(),
-                    Box::new(nat.clone()),
-                    Box::new(nat.clone()),
-                ))
-            ],
-        );
+            ))
+        ],
+    );
+    let _ = evaluate_inductive(
+        &mut test_env,
+        "Bool",
+        &vec![],
+        &Sort("TYPE".to_string()),
+        &vec![
+            ("true".to_string(), boolean.clone()),
+            ("false".to_string(), boolean.clone()),
+        ],
+    );
+    let _ = evaluate_inductive(
+        &mut test_env,
+        "Nat",
+        &vec![],
+        &Sort("TYPE".to_string()),
+        &vec![
+            ("0".to_string(), nat.clone()),
+            ("s".to_string(), Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone()),
+            ))
+        ],
+    );
 
-        return test_env;
-    }
+    return test_env;
+}
+
+mod sorts_and_variables {
+    use super::*;
 
     #[test]
     fn test_type_check_sort_n_vars() {
@@ -168,6 +169,10 @@ mod tests {
             "Type checker accepts unbound variable"
         );
     }
+}
+
+mod abstraction {
+    use super::*;
 
     #[test]
     fn test_type_check_abstraction() {
@@ -244,6 +249,69 @@ mod tests {
     }
 
     #[test]
+    fn test_abstraction_inference() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let mut test_env = Cic::default_environment();
+        test_env
+            .add_to_context("Nat", &Sort("TYPE".to_string()));
+        test_env.add_to_context(
+            "s", 
+            &Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone())
+            )
+        );
+        // id : ? -> ?
+        test_env.add_to_context(
+            "id", 
+            &Product(
+                "x".to_string(),
+                Box::new(Meta(1)),
+                Box::new(Meta(1))
+            )
+        );
+
+        assert_eq!(
+            Cic::type_check_term(
+                // λ n:?. s n
+                &Abstraction(
+                    "n".to_string(), 
+                    Box::new(Meta(0)), 
+                    Box::new(Application(
+                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)), 
+                        Box::new(Variable("n".to_string(), 0))
+                    ))
+                ), 
+                &mut test_env
+            ),
+            Ok(Product("n".to_string(), Box::new(nat.clone()), Box::new(nat.clone()))),
+            "Type checking cant inference the type of argument applied to a function Nat->Nat"
+        );
+
+        assert_eq!(
+            Cic::type_check_term(
+                // λ n:Nat. id n
+                &Abstraction(
+                    "n".to_string(), 
+                    Box::new(nat.clone()), 
+                    Box::new(Application(
+                        Box::new(Variable("id".to_string(), GLOBAL_INDEX)), 
+                        Box::new(Variable("n".to_string(), 0))
+                    ))
+                ), 
+                &mut test_env
+            ),
+            Ok(Product("n".to_string(), Box::new(nat.clone()), Box::new(nat.clone()))),
+            "Type checking cant inference the output type of a function Nat->Nat"
+        );
+    }
+}
+
+mod product {
+    use super::*;
+
+    #[test]
     fn test_type_check_product() {
         let mut test_env = Cic::default_environment();
         // polymorphic type constructor
@@ -302,6 +370,10 @@ mod tests {
             "Type checker refuses polymorphic types with more complex bodies"
         );
     }
+}
+
+mod application {
+    use super::*;
 
     #[test]
     fn test_type_check_application() {
@@ -451,6 +523,76 @@ mod tests {
     }
 
     #[test]
+    fn test_application_inference() {
+        let list = Variable("List".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let mut test_env = Cic::default_environment();
+        test_env
+            .add_to_context("Nat", &Sort("TYPE".to_string()));
+
+        test_env.add_to_context(
+            "List", 
+            &Product(
+                "T".to_string(),
+                Box::new(Sort("TYPE".to_string())),
+                Box::new(Sort("TYPE".to_string()))
+            )
+        );
+        test_env.add_to_context(
+            "cons", 
+            &Product(
+                "T".to_string(),
+                Box::new(Sort("TYPE".to_string())),
+                Box::new(Product(
+                    "e".to_string(),
+                    Box::new(Variable("T".to_string(), 0)),
+                    Box::new(Product(
+                        "l".to_string(),
+                        Box::new(Application(
+                            Box::new(list.clone()),
+                            Box::new(Variable("T".to_string(), 0)),
+                        )),
+                        Box::new(Application(
+                            Box::new(list.clone()),
+                            Box::new(Variable("T".to_string(), 0)),
+                        ))
+                    ))
+                ))
+            )
+        );
+        test_env.add_to_context("elem", &nat.clone());
+        test_env.add_to_context("li", &Application(
+            Box::new(list.clone()),
+            Box::new(nat.clone()),
+        ));
+
+        assert_eq!(
+            Cic::type_check_term(
+                &Application(
+                    Box::new(Application(
+                        Box::new(Application(
+                            Box::new(Variable("cons".to_string(), GLOBAL_INDEX)), 
+                            Box::new(Meta(10))
+                        )),
+                        Box::new(Variable("elem".to_string(), GLOBAL_INDEX))
+                    )), 
+                    Box::new(Variable("li".to_string(), GLOBAL_INDEX))
+                ),
+                &mut test_env
+            ),
+            Ok(Application(
+                Box::new(list.clone()),
+                Box::new(nat.clone()),
+            )),
+            "vediamo un po"
+        );    
+    }
+}
+
+mod let_expr {
+    use super::*;
+
+    #[test]
     fn test_type_check_let() {
         let mut test_env = Cic::default_environment();
         let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
@@ -518,6 +660,10 @@ mod tests {
             "Let type checker accepts definition with ill-typed scope"
         );
     }
+}
+
+mod pattern_match {
+    use super::*;
 
     #[test]
     fn test_list_match() {
@@ -556,7 +702,7 @@ mod tests {
                 ))
             ],
         );
-        
+    
         test_env.add_to_context(
             "test_list",
             &Application(
@@ -1011,6 +1157,10 @@ mod tests {
         //     "Match type checking accepts natural matching that covers all constructor but one not exhaustively"
         // );
     }
+}
+
+mod inductive {
+    use super::*;
 
     #[test]
     fn test_type_check_inductive() {
@@ -1232,7 +1382,7 @@ mod tests {
             TYPE,
             "Inductive type wasnt constructed properly"
         );
-        
+    
         let zero_type = test_env.get_from_context("o");
         assert!(
             zero_type.is_some(), 
@@ -1244,7 +1394,7 @@ mod tests {
             Variable("Nat".to_string(), GLOBAL_INDEX),
             "Zero constructor type wasnt constructed properly"
         );
-        
+    
         let succ_type = test_env.get_from_context("s");
         assert!(
             succ_type.is_some(), 
@@ -1323,105 +1473,6 @@ mod tests {
             )
             .is_err(),
             "Inductive type checking isnt working with dependent inductive types"
-        );
-    }
-
-    #[test]
-    fn test_type_check_fun() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let mut test_env = packed_env();
-
-        assert!(
-            Cic::type_check_stm(
-                &Fun(
-                    "f".to_string(),
-                    vec![("t".to_string(), Sort("TYPE".to_string()))],
-                    Box::new(Sort("TYPE".to_string())),
-                    Box::new(Variable("t".to_string(), 0)),
-                    false
-                ),
-                &mut test_env,
-            )
-            .is_ok(),
-            "Type checking refuses identity function"
-        );
-
-        let args = vec![
-            ("n".to_string(), nat.clone()),
-            ("m".to_string(), nat.clone()),
-        ];
-        let zerobranch = (
-            //patter
-            Variable("0".to_string(), GLOBAL_INDEX),
-            //body
-            Variable("m".to_string(), GLOBAL_INDEX),
-        );
-        let succbranch = (
-            //patter
-            Application(
-                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                Box::new(Variable("nn".to_string(), GLOBAL_INDEX)),
-            ),
-            //body
-            Application(
-                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                Box::new(Application(
-                    Box::new(Application(
-                        Box::new(Variable("add".to_string(), GLOBAL_INDEX)),
-                        Box::new(Variable("nn".to_string(), GLOBAL_INDEX)),
-                    )),
-                    Box::new(Variable("m".to_string(), GLOBAL_INDEX)),
-                )),
-            ),
-        );
-        assert!(
-            Cic::type_check_stm(
-                &Fun(
-                    "add".to_string(),
-                    args.clone(),
-                    Box::new(Sort("Nat".to_string())),
-                    Box::new(Match(
-                        Box::new(Variable("n".to_string(), 0)),
-                        vec![zerobranch.clone(), succbranch.clone()]
-                    )),
-                    false
-                ),
-                &mut test_env,
-            )
-            .is_err(),
-            "Type checking accepts recursive function not marked as recursive"
-        );
-        let res = Cic::type_check_stm(
-            &Fun(
-                "add".to_string(),
-                args.clone(),
-                Box::new(nat.clone()),
-                Box::new(Match(
-                    Box::new(Variable("n".to_string(), 0)),
-                    vec![zerobranch, succbranch],
-                )),
-                true
-            ),
-            &mut test_env,
-        );
-        assert!(
-            res.is_ok(),
-            "Type checking refuses recursive functions:\n{:?}",
-            res.err()
-        );
-
-        assert!(
-            Cic::type_check_stm(
-                &Fun(
-                    "f".to_string(),
-                    vec![], 
-                    Box::new(nat.clone()),
-                    Box::new(Sort("TYPE".to_string())),
-                    false
-                ),
-                &mut test_env,
-            ).is_err(),
-            "Type checking accept function with a inconsistent declared and result type",
         );
     }
 
@@ -1853,7 +1904,7 @@ mod tests {
                     ))
                 ))
             ),
-            
+        
             "Length-indexed vector inductive eliminator not properly constructed"
         );
     }
@@ -1884,131 +1935,107 @@ mod tests {
             "Oh no, Curry's paradox is accepted"
         );
     }
+}
 
-
-    #[test]
-    fn test_abstraction_inference() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let mut test_env = Cic::default_environment();
-        test_env
-            .add_to_context("Nat", &Sort("TYPE".to_string()));
-        test_env.add_to_context(
-            "s", 
-            &Product(
-                "_".to_string(),
-                Box::new(nat.clone()),
-                Box::new(nat.clone())
-            )
-        );
-        // id : ? -> ?
-        test_env.add_to_context(
-            "id", 
-            &Product(
-                "x".to_string(),
-                Box::new(Meta(1)),
-                Box::new(Meta(1))
-            )
-        );
-
-        assert_eq!(
-            Cic::type_check_term(
-                // λ n:?. s n
-                &Abstraction(
-                    "n".to_string(), 
-                    Box::new(Meta(0)), 
-                    Box::new(Application(
-                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)), 
-                        Box::new(Variable("n".to_string(), 0))
-                    ))
-                ), 
-                &mut test_env
-            ),
-            Ok(Product("n".to_string(), Box::new(nat.clone()), Box::new(nat.clone()))),
-            "Type checking cant inference the type of argument applied to a function Nat->Nat"
-        );
-
-        assert_eq!(
-            Cic::type_check_term(
-                // λ n:Nat. id n
-                &Abstraction(
-                    "n".to_string(), 
-                    Box::new(nat.clone()), 
-                    Box::new(Application(
-                        Box::new(Variable("id".to_string(), GLOBAL_INDEX)), 
-                        Box::new(Variable("n".to_string(), 0))
-                    ))
-                ), 
-                &mut test_env
-            ),
-            Ok(Product("n".to_string(), Box::new(nat.clone()), Box::new(nat.clone()))),
-            "Type checking cant inference the output type of a function Nat->Nat"
-        );
-    }
+mod fun_stm {
+    use super::*;
 
     #[test]
-    fn test_application_inference() {
-        let list = Variable("List".to_string(), GLOBAL_INDEX);
+    fn test_type_check_fun() {
         let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let mut test_env = Cic::default_environment();
-        test_env
-            .add_to_context("Nat", &Sort("TYPE".to_string()));
+        let mut test_env = packed_env();
 
-        test_env.add_to_context(
-            "List", 
-            &Product(
-                "T".to_string(),
-                Box::new(Sort("TYPE".to_string())),
-                Box::new(Sort("TYPE".to_string()))
-            )
-        );
-        test_env.add_to_context(
-            "cons", 
-            &Product(
-                "T".to_string(),
-                Box::new(Sort("TYPE".to_string())),
-                Box::new(Product(
-                    "e".to_string(),
-                    Box::new(Variable("T".to_string(), 0)),
-                    Box::new(Product(
-                        "l".to_string(),
-                        Box::new(Application(
-                            Box::new(list.clone()),
-                            Box::new(Variable("T".to_string(), 0)),
-                        )),
-                        Box::new(Application(
-                            Box::new(list.clone()),
-                            Box::new(Variable("T".to_string(), 0)),
-                        ))
-                    ))
-                ))
-            )
-        );
-        test_env.add_to_context("elem", &nat.clone());
-        test_env.add_to_context("li", &Application(
-            Box::new(list.clone()),
-            Box::new(nat.clone()),
-        ));
-    
-        assert_eq!(
-            Cic::type_check_term(
-                &Application(
-                    Box::new(Application(
-                        Box::new(Application(
-                            Box::new(Variable("cons".to_string(), GLOBAL_INDEX)), 
-                            Box::new(Meta(10))
-                        )),
-                        Box::new(Variable("elem".to_string(), GLOBAL_INDEX))
-                    )), 
-                    Box::new(Variable("li".to_string(), GLOBAL_INDEX))
+        assert!(
+            Cic::type_check_stm(
+                &Fun(
+                    "f".to_string(),
+                    vec![("t".to_string(), Sort("TYPE".to_string()))],
+                    Box::new(Sort("TYPE".to_string())),
+                    Box::new(Variable("t".to_string(), 0)),
+                    false
                 ),
-                &mut test_env
-            ),
-            Ok(Application(
-                Box::new(list.clone()),
-                Box::new(nat.clone()),
-            )),
-            "vediamo un po"
-        );    
-    }
+                &mut test_env,
+            )
+            .is_ok(),
+            "Type checking refuses identity function"
+        );
 
+        let args = vec![
+            ("n".to_string(), nat.clone()),
+            ("m".to_string(), nat.clone()),
+        ];
+        let zerobranch = (
+            //patter
+            Variable("0".to_string(), GLOBAL_INDEX),
+            //body
+            Variable("m".to_string(), GLOBAL_INDEX),
+        );
+        let succbranch = (
+            //patter
+            Application(
+                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("nn".to_string(), GLOBAL_INDEX)),
+            ),
+            //body
+            Application(
+                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+                Box::new(Application(
+                    Box::new(Application(
+                        Box::new(Variable("add".to_string(), GLOBAL_INDEX)),
+                        Box::new(Variable("nn".to_string(), GLOBAL_INDEX)),
+                    )),
+                    Box::new(Variable("m".to_string(), GLOBAL_INDEX)),
+                )),
+            ),
+        );
+        assert!(
+            Cic::type_check_stm(
+                &Fun(
+                    "add".to_string(),
+                    args.clone(),
+                    Box::new(Sort("Nat".to_string())),
+                    Box::new(Match(
+                        Box::new(Variable("n".to_string(), 0)),
+                        vec![zerobranch.clone(), succbranch.clone()]
+                    )),
+                    false
+                ),
+                &mut test_env,
+            )
+            .is_err(),
+            "Type checking accepts recursive function not marked as recursive"
+        );
+        let res = Cic::type_check_stm(
+            &Fun(
+                "add".to_string(),
+                args.clone(),
+                Box::new(nat.clone()),
+                Box::new(Match(
+                    Box::new(Variable("n".to_string(), 0)),
+                    vec![zerobranch, succbranch],
+                )),
+                true
+            ),
+            &mut test_env,
+        );
+        assert!(
+            res.is_ok(),
+            "Type checking refuses recursive functions:\n{:?}",
+            res.err()
+        );
+
+        assert!(
+            Cic::type_check_stm(
+                &Fun(
+                    "f".to_string(),
+                    vec![], 
+                    Box::new(nat.clone()),
+                    Box::new(Sort("TYPE".to_string())),
+                    false
+                ),
+                &mut test_env,
+            ).is_err(),
+            "Type checking accept function with a inconsistent declared and result type",
+        );
+    }
 }
