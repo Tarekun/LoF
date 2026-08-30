@@ -4,7 +4,7 @@ use super::cic::{Cic, CicStm, CicTerm};
 use super::cic_utils::make_multiarg_fun_type;
 use crate::error::LofError;
 use crate::type_theory::cic::cic_utils::{
-    application_args, get_applied_function,
+    application_args, get_applied_function, substitute,
 };
 use crate::type_theory::cic::type_check::inductive_eliminator;
 use crate::type_theory::commons::evaluation::{
@@ -57,7 +57,11 @@ fn reduce_match(
     let normalized_term = Cic::normalize_term(environment, matched_term);
     for (pattern, body) in branches {
         if matches_pattern(&normalized_term, pattern) {
-            return body.clone();
+            return substitute_pattern_variables(
+                &normalized_term,
+                pattern,
+                body,
+            );
         }
     }
 
@@ -158,6 +162,40 @@ fn matches_pattern(term: &CicTerm, pattern: &CicTerm) -> bool {
 
     // TODO i think this should match the types as well but im not sure
     return (used == constructor) && (actual_args.len() == formal_args.len());
+}
+
+/// Given the matched `term` and the `pattern`, substitutes every pattern
+/// variable the corresponding expression from `term` inside `body`
+fn substitute_pattern_variables(
+    term: &CicTerm,
+    pattern: &CicTerm,
+    body: &CicTerm,
+) -> CicTerm {
+    let actual_args = application_args(term);
+    let formal_args = application_args(pattern);
+
+    formal_args.iter().zip(actual_args.iter()).fold(
+        body.clone(),
+        |bound_body, (formal_arg, actual_arg)| {
+            substitute_pattern_arg(formal_arg, actual_arg, &bound_body)
+        },
+    )
+}
+
+/// Substitutes a single `formal_arg` from a pattern with the corresponding `actual_arg`
+fn substitute_pattern_arg(
+    formal_arg: &CicTerm,
+    actual_arg: &CicTerm,
+    body: &CicTerm,
+) -> CicTerm {
+    match formal_arg {
+        Variable(var_name, _) => substitute(body, var_name, actual_arg),
+        Application(_, _) => {
+            substitute_pattern_variables(actual_arg, formal_arg, body)
+        }
+        // metavariables (`?`) and other patterns bind nothing
+        _ => body.clone(),
+    }
 }
 //########################### HELPER FUNCTIONS
 
@@ -392,6 +430,44 @@ mod unit_tests {
             ),
             false_term,
             "Match term doesnt δ-reduce if matching an application pattern"
+        );
+    }
+
+    #[test]
+    fn test_match_reduction_binds_pattern_variables() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let succ = Variable("s".to_string(), GLOBAL_INDEX);
+        let zero = Variable("z".to_string(), GLOBAL_INDEX);
+        let mut test_env = Cic::default_environment();
+        // pattern `s(n)` whose body just returns the bound variable `n`
+        let succ_pattern = Application(
+            Box::new(succ.clone()),
+            Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+        );
+        let body_returning_bound_var = Variable("n".to_string(), GLOBAL_INDEX);
+
+        test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
+        test_env.add_to_context("z", &nat.clone());
+        test_env.add_to_context(
+            "s",
+            &Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone()),
+            ),
+        );
+
+        assert_eq!(
+            reduce_match(
+                &mut test_env,
+                &Application(Box::new(succ), Box::new(zero.clone())),
+                &vec![(zero.clone(), zero.clone()), (
+                    succ_pattern,
+                    body_returning_bound_var
+                )]
+            ),
+            zero,
+            "Match reduction doesnt substitute the constructor argument for the pattern's bound variable in the branch body"
         );
     }
 }

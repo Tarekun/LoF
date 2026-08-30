@@ -1,0 +1,66 @@
+# Regression test: pattern variables bound by a `match` branch (eg `nn` in
+# `s(nn)`, or `h`/`ll` in `cons(_, h, ll)`) must be substituted with the
+# actual matched subterm inside the branch body when the match is reduced.
+# Every one of the equalities below only type checks if that substitution
+# actually happens - before the fix, evaluating any of these panicked with
+# "No pattern matched the term nn|G ..." because the branch body kept
+# referring to the unbound pattern variable instead of the concrete value.
+
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+
+fun rec plus (n:Nat, m:Nat) : Nat {
+  match n with
+  | z => m,
+  | s(nn) => s(plus(nn, m)),
+}
+
+fun rec times (n: Nat, m: Nat) : Nat {
+  match n with
+  | z => z,
+  | s(nn) => plus(times(nn, m), m),
+}
+
+# requires substituting `nn` with `s(z)` in the recursive call
+theorem one_plus_one : Eq(Nat, plus(s(z), s(z)), s(s(z))) := (refl(Nat, s(s(z))))
+
+# requires substituting `nn` across two nested recursive calls
+theorem two_plus_two : Eq(Nat, plus(s(s(z)), s(s(z))), s(s(s(s(z))))) :=
+  (refl(Nat, s(s(s(s(z))))))
+
+# times relies on plus's substitution and adds its own recursive substitution
+theorem two_times_two : Eq(Nat, times(s(s(z)), s(s(z))), s(s(s(s(z))))) :=
+  (refl(Nat, s(s(s(s(z))))))
+
+inductive List (T:TYPE) : TYPE {
+  | nil : List(T)
+  | cons : T -> List(T) -> List(T)
+}
+
+fun rec len (l: List(?)) : Nat {
+  match l with
+  | nil(?) => z,
+  | cons(?, _, ll) => s(len(ll)),
+}
+
+fun rec fold (A: TYPE, combine: A -> A -> A, l: List(A), seed: A) : A {
+  match l with
+  | nil(A) => seed,
+  | cons(A, h, ll) => fold(A, combine, ll, combine(h, seed)),
+}
+
+# requires substituting the tail `ll` of the list across two recursive calls
+theorem len_two_elem_list :
+  Eq(Nat, len(cons(Nat, z, cons(Nat, z, nil(Nat)))), s(s(z))) :=
+  (refl(Nat, s(s(z))))
+
+# requires substituting both the head `h` and tail `ll` at each step
+theorem fold_sums_two_elements :
+  Eq(Nat, fold(Nat, plus, cons(Nat, s(z), cons(Nat, s(z), nil(Nat))), z), s(s(z))) :=
+  (refl(Nat, s(s(z))))
