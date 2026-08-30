@@ -30,7 +30,8 @@ mod unit_tests {
 
         let parser = LofParser::new(Config::default());
 
-        let _ = parser.parse_notation("sugar \"_0 + _1\" := \"comb _0 _1\"");
+        let _ =
+            parser.parse_notation("sugar \"_0 + _1\" := \"comb(_0, _1)\"");
         assert!(
             notation_contains(
                 &parser,
@@ -53,7 +54,7 @@ mod unit_tests {
         );
 
         let _ = parser.parse_notation(
-            "sugar \"_0     *   _1\"    :=   \n\r\t \"comb _0 _1\"",
+            "sugar \"_0     *   _1\"    :=   \n\r\t \"comb(_0, _1)\"",
         );
         assert!(
             notation_contains(
@@ -134,7 +135,7 @@ mod unit_tests {
     fn test_function() {
         let parser = LofParser::new(Config::default());
         assert_eq!(
-            parser.parse_statement("fun f (n: Nat): Nat { s n }"),
+            parser.parse_statement("fun f (n: Nat): Nat { s(n) }"),
             Ok((
                 "",
                 Fun(
@@ -151,7 +152,7 @@ mod unit_tests {
             "Function parser doesnt construct the statement properly"
         );
         assert_eq!(
-            parser.parse_statement("fun rec f (n: Nat): Nat { f n }"),
+            parser.parse_statement("fun rec f (n: Nat): Nat { f(n) }"),
             Ok((
                 "",
                 Fun(
@@ -183,7 +184,7 @@ mod unit_tests {
             "Function parser cant cope with functions with no arguments"
         );
         assert_eq!(
-            parser.parse_statement("fun f (l: List Nat): List Nat { l }"),
+            parser.parse_statement("fun f (l: List(Nat)): List(Nat) { l }"),
             Ok((
                 "",
                 Fun(
@@ -208,6 +209,31 @@ mod unit_tests {
         assert!(
             parser.parse_statement("fun f(n:Nat):Nat{n}").is_ok(),
             "Function parser cant cope with dense notation"
+        );
+        assert_eq!(
+            parser.parse_statement(
+                "fun f (n: Nat, m: Nat): Nat { plus(n, m) }"
+            ),
+            Ok((
+                "",
+                Fun(
+                    "f".to_string(),
+                    vec![
+                        ("n".to_string(), VarUse("Nat".to_string())),
+                        ("m".to_string(), VarUse("Nat".to_string()))
+                    ],
+                    Box::new(VarUse("Nat".to_string())),
+                    Box::new(Application(
+                        Box::new(VarUse("plus".to_string())),
+                        vec![
+                            VarUse("n".to_string()),
+                            VarUse("m".to_string())
+                        ]
+                    )),
+                    false
+                )
+            )),
+            "Function parser doesnt support comma-separated parameter lists"
         );
         assert!(
             parser.parse_statement(
@@ -360,7 +386,7 @@ mod unit_tests {
         );
         assert_eq!(
             parser.parse_statement(
-                "inductive T : TYPE { | c: (list nat) -> T | g: nat -> nat -> T}"
+                "inductive T : TYPE { | c: list(nat) -> T | g: nat -> nat -> T}"
             )
             .unwrap(),
             (
@@ -400,7 +426,7 @@ mod unit_tests {
 
         assert!(
             parser.parse_statement(
-                "inductive list (T: TYPE) : TYPE { |nil: (list T) |cons: T -> (list T) }"
+                "inductive list (T: TYPE) : TYPE { |nil: list(T) |cons: T -> list(T) }"
             )
             .is_ok(),
             "Inductive parser doesnt support polymorphic types"
@@ -414,7 +440,7 @@ mod unit_tests {
         );
         assert!(
             parser.parse_statement(
-                "inductive eq (T:TYPE) (x:T) : T -> PROP { |refl: (((eq T) x) x)}"
+                "inductive eq (T:TYPE, x:T) : T -> PROP { |refl: eq(T, x, x)}"
             )
             .is_ok(),
             "Inductive parser doesnt support Leibniz equality definition"
@@ -461,7 +487,7 @@ mod unit_tests {
         let parser = LofParser::new(Config::new(TypeSystem::Cic));
 
         assert_eq!(
-            parser.parse_statement("auto \\forall x:T. P x;"),
+            parser.parse_statement("auto \\forall x:T. P(x);"),
             Ok((
                 "",
                 Auto(TypeProduct(
@@ -476,11 +502,11 @@ mod unit_tests {
             "Parser cant process auto commands"
         );
         assert!(
-            parser.parse_statement("auto\\forall x:T. P x;").is_err(),
+            parser.parse_statement("auto\\forall x:T. P(x);").is_err(),
             "Auto parser doesnt split keyword from formula"
         );
         assert!(
-            parser.parse_statement("auto \t\n\r   \\forall   x\t :\r\r T.\n\r P    x  \r;\n\t\t").is_ok(),
+            parser.parse_statement("auto \t\n\r   \\forall   x\t :\r\r T.\n\r P  \t (  x  )  \r;\n\t\t").is_ok(),
             "Auto parser cant cope with whitespaces"
         );
         assert!(
@@ -494,7 +520,7 @@ mod unit_tests {
         let parser = LofParser::new(Config::new(TypeSystem::Cic));
 
         assert_eq!(
-            parser.parse_statement("solve P x"),
+            parser.parse_statement("solve P(x)"),
             Ok((
                 "",
                 Solve(vec![Application(
@@ -505,7 +531,7 @@ mod unit_tests {
             "Variable solving parser isnt producing the proper value"
         );
         assert_eq!(
-            parser.parse_statement("solve P x, Q y"),
+            parser.parse_statement("solve P(x), Q(y)"),
             Ok((
                 "",
                 Solve(vec![Application(
@@ -525,7 +551,7 @@ mod unit_tests {
         assert!(
             parser
                 .parse_statement(
-                    "solve   \t\r  P  \t\r x    \t\t ,  \t\n\r  Q    y    "
+                    "solve   \t\r  P  \t\r ( x )    \t\t ,  \t\n\r  Q  \t ( \n y  )   "
                 )
                 .is_ok(),
             "Variable solving parser cant cope with whitespaces"
@@ -566,7 +592,9 @@ mod unit_tests {
             "Horn clause parser cant cope with dense notation"
         );
         assert!(
-            parser.parse_statement("hclause P x y <- Q x, R y;").is_ok(),
+            parser
+                .parse_statement("hclause P(x, y) <- Q(x), R(y);")
+                .is_ok(),
             "Horn clause parser cant cope with generalized predicates"
         );
     }

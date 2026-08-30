@@ -12,7 +12,7 @@ use nom::{
     character::complete::char,
     combinator::{map, opt},
     error::{Error, ErrorKind},
-    multi::{many0, many1},
+    multi::{many0, many1, separated_list1},
     sequence::{delimited, preceded, tuple},
     IResult,
 };
@@ -138,6 +138,10 @@ impl LofParser {
         input: &'a str,
     ) -> IResult<&'a str, Expression> {
         alt((
+            // application should show up before parse_var, otherwise a
+            // function name followed by '(' would be parsed as a bare
+            // variable and leave the rest of the argument unparsed
+            |input| self.parse_app(input),
             |input| self.parse_var(input),
             |input| self.parse_meta(input),
             |input| self.parse_parens(input),
@@ -146,9 +150,13 @@ impl LofParser {
     fn parse_app<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
         let (input, left) =
             preceded(ws0, |input| self.applicable_expression(input))(input)?;
-        let (input, args) = many1(preceded(ws1, |input| {
-            self.argument_expression(input)
-        }))(input)?;
+        let (input, args) = delimited(
+            preceded(ws0, char('(')),
+            separated_list1(preceded(ws0, char(',')), |input| {
+                self.argument_expression(input)
+            }),
+            preceded(ws0, preceded(opt(char(',')), preceded(ws0, char(')')))),
+        )(input)?;
 
         Ok((input, Application(Box::new(left), args)))
     }
@@ -411,11 +419,11 @@ mod unit_tests {
             "Pattern match branch isnt properly constructed"
         );
         assert!(
-            parser.parse_match_branch("| BinTree l r => x ,").is_ok(),
+            parser.parse_match_branch("| BinTree(l, r) => x ,").is_ok(),
             "Parser cant read pattern matching branches with variables"
         );
         assert!(
-            parser.parse_match_branch("| cons ? h l => l,").is_ok(),
+            parser.parse_match_branch("| cons(?, h, l) => l,").is_ok(),
             "Parser cant read pattern matching branches with inferator"
         );
         assert!(
@@ -427,7 +435,8 @@ mod unit_tests {
     #[test]
     fn test_pattern_on_custom() {
         let parser = LofParser::new(Config::default());
-        let _ = parser.parse_notation("sugar \"_h :: _l\" := \"cons ? _h _l\"");
+        let _ =
+            parser.parse_notation("sugar \"_h :: _l\" := \"cons(?, _h, _l)\"");
 
         assert!(
             parser.parse_match_branch("| h :: l => l,").is_ok(),

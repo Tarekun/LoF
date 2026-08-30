@@ -15,7 +15,7 @@ mod unit_tests {
     fn test_notation() {
         let parser = LofParser::new(Config::default());
 
-        let _ = parser.parse_notation("sugar \"_0 + _1\" := \"add _0 _1\"");
+        let _ = parser.parse_notation("sugar \"_0 + _1\" := \"add(_0, _1)\"");
         assert_eq!(
             parser.parse_expression("n + m"),
             Ok((
@@ -58,7 +58,7 @@ mod unit_tests {
         //     )),
         //     "Composed applications don't parse properly"
         // );
-        let _ = parser.parse_notation("sugar \"_0 ++ _1\" := \"add _1 _0\"");
+        let _ = parser.parse_notation("sugar \"_0 ++ _1\" := \"add(_1, _0)\"");
         assert_eq!(
             parser.parse_expression("n ++ m"),
             Ok((
@@ -71,7 +71,8 @@ mod unit_tests {
             "Custom notation parser cant track arguments properly"
         );
 
-        let _ = parser.parse_notation("sugar \"_h :: _l\" := \"cons ? _h _l\"");
+        let _ =
+            parser.parse_notation("sugar \"_h :: _l\" := \"cons(?, _h, _l)\"");
         assert_eq!(
             parser.parse_expression("h :: l"),
             Ok((
@@ -210,7 +211,7 @@ mod unit_tests {
     fn test_application() {
         let parser = LofParser::new(Config::default());
         assert_eq!(
-            parser.parse_expression("f x").unwrap(),
+            parser.parse_expression("f(x)").unwrap(),
             (
                 "",
                 Application(
@@ -222,7 +223,7 @@ mod unit_tests {
         );
 
         assert_eq!(
-            parser.parse_expression("f x y z").unwrap(),
+            parser.parse_expression("f(x, y, z)").unwrap(),
             (
                 "",
                 Application(
@@ -234,11 +235,11 @@ mod unit_tests {
                     ]
                 )
             ),
-            "Parser should implement left-associative application"
+            "Parser should implement n-ary application"
         );
 
         assert_eq!(
-            parser.parse_expression("f (x y) z").unwrap(),
+            parser.parse_expression("f(x(y), z)").unwrap(),
             (
                 "",
                 Application(
@@ -252,7 +253,16 @@ mod unit_tests {
                     ]
                 )
             ),
-            "Application parser messes up associativity with parenthesis"
+            "Application parser doesnt support nested applications as arguments"
+        );
+
+        assert!(
+            parser.parse_expression("f (x, y)").is_ok(),
+            "Application parser doesnt allow whitespace before the argument list"
+        );
+        assert!(
+            parser.parse_expression("f(x, y,)").is_ok(),
+            "Application parser doesnt support optional trailing comma"
         );
     }
 
@@ -461,7 +471,7 @@ mod unit_tests {
         let parser = LofParser::new(Config::default());
 
         assert_eq!(
-            parser.parse_expression("f # apply f to x\n x"),
+            parser.parse_expression("f # apply f to x\n (x)"),
             Ok((
                 "",
                 Application(
@@ -469,11 +479,11 @@ mod unit_tests {
                     vec![VarUse("x".to_string())]
                 )
             )),
-            "Comment between function and argument should be treated as whitespace"
+            "Comment between function and argument list should be treated as whitespace"
         );
 
         assert_eq!(
-            parser.parse_expression("f x # second arg\n y"),
+            parser.parse_expression("f(x, # second arg\n y)"),
             Ok((
                 "",
                 Application(
@@ -525,7 +535,7 @@ mod unit_tests {
 
         assert!(
             parser
-                .parse_statement("fun f (x: Nat) : Nat {\n  # increment\n  s x\n}")
+                .parse_statement("fun f (x: Nat) : Nat {\n  # increment\n  s(x)\n}")
                 .is_ok(),
             "Comment inside function body should be treated as whitespace"
         );
@@ -555,7 +565,7 @@ mod unit_tests {
         );
 
         assert_eq!(
-            parser.parse_expression("cons ? z l"),
+            parser.parse_expression("cons(?, z, l)"),
             Ok((
                 "",
                 Application(
