@@ -246,9 +246,13 @@ pub fn cic_collect_unifications(
     environment: &mut Environment<Cic>,
 ) -> Result<Vec<(CicTerm, CicTerm)>, LofError> {
     match term {
-        Abstraction(_, var_type, body) => {
+        Abstraction(var_name, var_type, body) => {
             let type_cons = cic_collect_unifications(var_type, environment)?;
-            let body_cons = cic_collect_unifications(body, environment)?;
+            let body_cons = environment.with_local_assumption(
+                var_name,
+                var_type,
+                |local_env| cic_collect_unifications(body, local_env),
+            )?;
 
             Ok([type_cons, body_cons].concat())
         }
@@ -267,10 +271,13 @@ pub fn cic_collect_unifications(
             ]
             .concat())
         }
-        Product(_, domain, codomain) => {
+        Product(var_name, domain, codomain) => {
             let domain_cons = cic_collect_unifications(domain, environment)?;
-            let codomain_cons =
-                cic_collect_unifications(codomain, environment)?;
+            let codomain_cons = environment.with_local_assumption(
+                var_name,
+                domain,
+                |local_env| cic_collect_unifications(codomain, local_env),
+            )?;
 
             Ok([domain_cons, codomain_cons].concat())
         }
