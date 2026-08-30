@@ -22,7 +22,6 @@ use crate::{
         interface::{Kernel, Refiner},
     },
 };
-use tracing::error;
 
 //########################### EXPRESSIONS TYPE CHECKING
 //
@@ -67,9 +66,16 @@ fn type_constr_vars(
                     Meta(_) => {
                         // TODO im not sure this call will ever fail here, is this needed?
                         let _ = cic_so_unification(domain, &variables[0])?;
+                        // tie the constructor's own type-parameter name to
+                        // the metavariable standing in for it, so later
+                        // pattern variables' types (eg the element/tail of
+                        // a `cons(?, h, t)` pattern) refer to it instead of
+                        // a dangling, never-instantiated type parameter
+                        let reduced_codomain =
+                            substitute(&codomain, type_var, &variables[0]);
                         solver(
                             environment,
-                            codomain,
+                            &reduced_codomain,
                             variables[1..].to_vec(),
                         )
                     }
@@ -142,10 +148,17 @@ fn type_check_pattern(
                         let _ = Cic::type_check_type(domain, environment);
                         // make sure ? can be unified with domain (eg no occurs check failure)
                         let _ = cic_so_unification(domain, &arguments[0])?;
-                        // let reduced_codomain = substitute_meta(&codomain, &idx, domain);
+                        // the constructor's own type-parameter name (eg `T`
+                        // in `Tree(T)`) must be tied to the metavariable
+                        // standing in for it, just like the Variable case
+                        // does with the named pattern variable - otherwise
+                        // the remaining/result type keeps referring to a
+                        // dangling `T` that's never connected to the actual
+                        // (possibly already-concrete) type being matched
+                        let reduced_codomain =
+                            substitute(&codomain, var_name, &arguments[0]);
                         solver(
-                            &codomain,
-                            // &reduced_codomain,
+                            &reduced_codomain,
                             // TODO dont reclone this vector
                             arguments[1..].to_vec(),
                             environment,
@@ -341,21 +354,23 @@ pub fn inductive_eliminator(
             arg_types: Vec<CicTerm>,
             type_name: &str,
         ) -> (Vec<(String, CicTerm)>, Vec<(String, CicTerm)>) {
-            let mut are_recursive = false;
+            // each argument is classified independently: a constructor is
+            // free to interleave recursive and non-recursive arguments in
+            // any order (eg a labeled tree's `node: Tree(T) -> T -> Tree(T)
+            // -> Tree(T)`). The two buckets get reassembled downstream in a
+            // canonical [non_recursive..., recursive...] order regardless
+            // of the arguments' original order, so no ordering assumption
+            // is needed here - only that every argument ends up in exactly
+            // one bucket.
             let mut recursive = vec![];
             let mut non_recursive = vec![];
 
             for (index, arg_type) in arg_types.into_iter().enumerate() {
                 //TODO: switch to reference check instead of instance
                 if is_instance_of(&arg_type, type_name) {
-                    are_recursive = true;
-                    recursive.push(((format!("r_{}", index)), arg_type));
-                } else if are_recursive {
-                    // TODO this could be an error case, should cover it?
-                    error!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-                    error!("THE UNEXPECTED ERROR HAPPEND");
+                    recursive.push((format!("r_{}", index), arg_type));
                 } else {
-                    non_recursive.push(((format!("nr_{}", index)), arg_type));
+                    non_recursive.push((format!("nr_{}", index), arg_type));
                 }
             }
 

@@ -671,7 +671,13 @@ mod pattern_match {
         let list = Variable("List".to_string(), GLOBAL_INDEX);
         let nil = Variable("nil".to_string(), GLOBAL_INDEX);
         let cons = Variable("cons".to_string(), GLOBAL_INDEX);
-        let type_var = Variable("T".to_string(), 0);
+        // a constructor's type is elaborated independently of its
+        // inductive type's own parameter binder (see `elaborate_inductive`,
+        // which elaborates each constructor type on its own), so a
+        // reference to the type parameter within it (eg "T" in
+        // `cons: T -> List(T) -> List(T)`) is indexed as global/free, not
+        // as a properly bound variable
+        let type_var = Variable("T".to_string(), GLOBAL_INDEX);
         let sort = Sort("TYPE".to_string());
         let mut test_env = Cic::default_environment();
 
@@ -745,34 +751,42 @@ mod pattern_match {
             .is_ok(),
             "match type checking doesnt work with type dependent types"
         );
-        // assert!(
-        //     Cic::type_check_term(
-        //         &Match(
-        //             Box::new(Variable("test_list".to_string(), GLOBAL_INDEX)),
-        //             vec![
-        //                 (
-        //                     vec![
-        //                         nil.clone(), 
-        //                         Meta(0),
-        //                     ],
-        //                     Variable("test_list".to_string(), GLOBAL_INDEX)
-        //                 ),
-        //                 (
-        //                     vec![
-        //                         cons.clone(),
-        //                         Meta(0),
-        //                         Variable("n".to_string(), 0),
-        //                         Variable("l".to_string(), 1),
-        //                     ],
-        //                     Variable("test_list".to_string(), GLOBAL_INDEX)
-        //                 ),
-        //             ]
-        //         ),
-        //         &mut test_env
-        //     )
-        //     .is_ok(),
-        //     "match type checking doesnt support unification in pattern"
-        // );
+        // the wildcard `?` (Meta) standing in for the list's type parameter
+        // must still let the pattern's result type be tied to the actual
+        // (already concrete) scrutinee type, `List(Nat)` - not left
+        // referring to the constructor's own, never-instantiated `T`
+        assert!(
+            Cic::type_check_term(
+                &Match(
+                    Box::new(Variable("test_list".to_string(), GLOBAL_INDEX)),
+                    vec![
+                        (
+                            Application(
+                                Box::new(nil.clone()),
+                                Box::new(Meta(0)),
+                            ),
+                            Variable("test_list".to_string(), GLOBAL_INDEX)
+                        ),
+                        (
+                            Application(
+                                Box::new(Application(
+                                    Box::new(Application(
+                                        Box::new(cons.clone()),
+                                        Box::new(Meta(1)),
+                                    )),
+                                    Box::new(Variable("n".to_string(), 0))
+                                )),
+                                Box::new(Variable("l".to_string(), 1)),
+                            ),
+                            Variable("test_list".to_string(), GLOBAL_INDEX)
+                        ),
+                    ]
+                ),
+                &mut test_env
+            )
+            .is_ok(),
+            "match type checking doesnt support unification (metavariables) in pattern"
+        );
     }
 
     #[test]
@@ -1906,6 +1920,67 @@ mod inductive {
             ),
         
             "Length-indexed vector inductive eliminator not properly constructed"
+        );
+    }
+
+    #[test]
+    fn test_inductive_eliminator_interleaved_arguments() {
+        use crate::type_theory::cic::cic_utils::get_arg_types;
+
+        // Tree(T): TYPE { leaf: Tree(T), node: Tree(T) -> T -> Tree(T) -> Tree(T) }
+        // `node` interleaves a recursive argument (Tree(T)), a
+        // non-recursive one (T), and another recursive one (Tree(T)).
+        // Before the fix, `split_recursive_arguments` assumed all
+        // non-recursive arguments come before all recursive ones and
+        // silently dropped the "T" argument (logging an error) instead of
+        // including it in the eliminator's case for `node`.
+        let tree = Variable("Tree".to_string(), GLOBAL_INDEX);
+        let t_param = Variable("T".to_string(), 0);
+        let tree_t =
+            Application(Box::new(tree.clone()), Box::new(t_param.clone()));
+
+        let node_type = Product(
+            "_".to_string(),
+            Box::new(tree_t.clone()),
+            Box::new(Product(
+                "_".to_string(),
+                Box::new(t_param.clone()),
+                Box::new(Product(
+                    "_".to_string(),
+                    Box::new(tree_t.clone()),
+                    Box::new(tree_t.clone()),
+                )),
+            )),
+        );
+
+        let eliminator = inductive_eliminator(
+            "Tree".to_string(),
+            vec![("T".to_string(), Sort("TYPE".to_string()))],
+            Sort("TYPE".to_string()),
+            vec![("leaf".to_string(), tree_t.clone()), ("node".to_string(), node_type)],
+        );
+
+        // top-level arguments: T, er_Tree, c_0 (leaf case), c_1 (node case), t
+        let top_level_args = get_arg_types(&eliminator);
+        assert_eq!(
+            top_level_args.len(),
+            5,
+            "Unexpected top-level shape for the Tree eliminator: {:?}",
+            top_level_args
+        );
+        let node_case_type = &top_level_args[3];
+
+        // the node case must account for all 3 of node's original
+        // arguments (1 non-recursive + 2 recursive) plus one induction
+        // hypothesis per recursive argument = 5 total, not 4 (which is what
+        // silently dropping the "T" argument would produce)
+        let node_case_args = get_arg_types(node_case_type);
+        assert_eq!(
+            node_case_args.len(),
+            5,
+            "The interleaved non-recursive argument of `node` must not be \
+            silently dropped from its eliminator case: {:?}",
+            node_case_args
         );
     }
 

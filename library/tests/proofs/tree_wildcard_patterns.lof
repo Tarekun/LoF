@@ -1,0 +1,64 @@
+# Regression test for two compounding bugs around `?`-wildcard patterns and
+# interleaved constructor arguments, both surfaced by a labeled binary tree
+# - a perfectly reasonable data structure, but one whose `node` constructor
+# interleaves recursive (`Tree(T)`) and non-recursive (`T`) arguments, unlike
+# `Nat`/`List`/`Bool` in the rest of the standard library.
+#
+# 1. `type_check_pattern`/`type_constr_vars` never substituted a `?`
+#    (metavariable) pattern argument for the constructor's own type
+#    parameter into the rest of its type, unlike a named pattern variable.
+#    So `sum`'s `match t with | leaf(?) => ..., | node(?, l, x, r) => ...,`
+#    computed the whole match's type as `Tree(T)` (still referencing the
+#    constructor's own, never-instantiated "T") instead of `Tree(Nat)` (the
+#    scrutinee's actual, already-concrete type), and was rejected with
+#    "Pattern doesnt produce expected type: expected Tree Nat produced Tree T".
+#
+# 2. Separately, building `Tree`'s induction eliminator crashed a "should
+#    never happen" error-log path: `split_recursive_arguments` assumed a
+#    constructor's non-recursive arguments all come before its recursive
+#    ones, and simply dropped any non-recursive argument (like `node`'s `T`
+#    element) that showed up after a recursive one had already been seen.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+fun rec plus (n:Nat, m:Nat) : Nat {
+  match n with
+  | z => m,
+  | s(nn) => s(plus(nn, m)),
+}
+
+inductive Tree (T: TYPE) : TYPE {
+  | leaf : Tree(T)
+  | node : Tree(T) -> T -> Tree(T) -> Tree(T)
+}
+
+fun rec size (T: TYPE, t: Tree(T)) : Nat {
+  match t with
+  | leaf(T) => z,
+  | node(T, l, x, r) => s(plus(size(T, l), size(T, r))),
+}
+
+# `sum` is *not* generic: its parameter is the concrete type `Tree(Nat)`,
+# and its patterns use `?` as a wildcard for the tree's own type parameter
+fun rec sum (t: Tree(Nat)) : Nat {
+  match t with
+  | leaf(?) => z,
+  | node(?, l, x, r) => plus(plus(sum(l), x), sum(r)),
+}
+
+theorem size_leaf : Eq(Nat, size(Nat, leaf(Nat)), z) := (refl(Nat, z))
+
+theorem size_small_tree :
+  Eq(Nat, size(Nat, node(Nat, leaf(Nat), z, node(Nat, leaf(Nat), s(z), leaf(Nat)))), s(s(z))) :=
+  (refl(Nat, s(s(z))))
+
+theorem sum_small_tree :
+  Eq(Nat, sum(node(Nat, leaf(Nat), s(z), node(Nat, leaf(Nat), s(s(z)), leaf(Nat)))), s(s(s(z)))) :=
+  (refl(Nat, s(s(s(z)))))
