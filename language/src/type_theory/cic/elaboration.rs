@@ -8,6 +8,7 @@ use super::cic::{
     },
 };
 use super::cic_utils::index_variables;
+use crate::error::LofError;
 use crate::misc::simple_map;
 use crate::misc::Union;
 use crate::misc::Union::{L, R};
@@ -195,7 +196,7 @@ fn elaborate_match(
 //########################### EXPRESSIONS ELABORATION
 //
 //########################### STATEMENTS ELABORATION
-pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, String> {
+pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, LofError> {
     match ast {
         Statement::Comment() => Ok(Schedule::new()),
         Statement::FileRoot(file_path, asts) => {
@@ -234,7 +235,7 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, String> {
         // Statement::Auto(formula) => {
         //     Ok(Schedule::singleton_stm(elaborate_auto(formula)?))
         // } //
-        _ => Err(format!("Language construct {:?} not supported in CIC", ast)),
+        _ => Err(LofError::unsupported_construct("CIC", ast)),
     }
 }
 //
@@ -242,7 +243,7 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, String> {
 fn elaborate_file_root(
     file_path: &String,
     asts: &Vec<LofAst>,
-) -> Result<Schedule<Cic>, String> {
+) -> Result<Schedule<Cic>, LofError> {
     elaborate_ast_vector::<Cic>(file_path, asts)
 }
 //
@@ -250,7 +251,7 @@ fn elaborate_file_root(
 fn elaborate_dir_root(
     dir_path: &String,
     asts: &Vec<LofAst>,
-) -> Result<Schedule<Cic>, String> {
+) -> Result<Schedule<Cic>, LofError> {
     let mut schedule = Schedule::new();
     for sub_ast in asts {
         match sub_ast {
@@ -262,7 +263,7 @@ fn elaborate_dir_root(
                 schedule.extend(&content);
             }
             _ => {
-                return Err(format!("AST nodes of directory node can only be FileRoot, not {:?}", sub_ast));
+                return Err(LofError::invalid_ast_node("FileRoot", sub_ast));
             }
         }
     }
@@ -275,7 +276,7 @@ fn elaborate_global(
     var_name: &String,
     var_type: &Option<Expression>,
     body: &Expression,
-) -> Result<CicStm, String> {
+) -> Result<CicStm, LofError> {
     //TODO im pretty sure this should increase the dbi in its scope
     //but i have no reference to the scope here
     let opt_type = match var_type {
@@ -298,7 +299,7 @@ fn elaborate_fun(
     out_type: &Expression,
     body: &Expression,
     is_rec: &bool,
-) -> Result<CicStm, String> {
+) -> Result<CicStm, LofError> {
     let elaborated_args = map_typed_variables(&args);
     let elaborated_out_type = elaborate_expression(&out_type);
     let elaborated_body = elaborate_expression(&body);
@@ -318,7 +319,7 @@ fn elaborate_inductive(
     parameters: &Vec<(String, Expression)>,
     ariety: &Expression,
     constructors: &Vec<(String, Expression)>,
-) -> Result<CicStm, String> {
+) -> Result<CicStm, LofError> {
     let parameter_terms: Vec<(String, CicTerm)> =
         //TODO i assume inductive definitions are only top-level avaible but who knows
         map_typed_variables(&parameters);
@@ -343,7 +344,7 @@ fn elaborate_inductive(
 fn elaborate_axiom(
     axiom_name: &String,
     formula: &Expression,
-) -> Result<CicStm, String> {
+) -> Result<CicStm, LofError> {
     let elaborated_formula = elaborate_expression(&formula);
     Ok(Axiom(axiom_name.to_string(), Box::new(elaborated_formula)))
 }
@@ -353,7 +354,7 @@ fn elaborate_theorem(
     theorem_name: &String,
     formula: &Expression,
     proof: &Union<Expression, Vec<Tactic<Expression>>>,
-) -> Result<CicStm, String> {
+) -> Result<CicStm, LofError> {
     let elaborated_formula = elaborate_expression(&formula);
     let elaborated_proof = match proof {
         L(proof_term) => {
@@ -381,12 +382,12 @@ fn elaborate_theorem(
 }
 //
 //
-fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Cic>, String> {
+fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Cic>, LofError> {
     elaborate_ast_vector::<Cic>(&"".to_string(), nodes)
 }
 //
 //
-// fn elaborate_auto(formula: &Expression) -> Result<CicStm, String> {
+// fn elaborate_auto(formula: &Expression) -> Result<CicStm, LofError> {
 //     Ok(Auto(elaborate_expression(formula)))
 // }
 //

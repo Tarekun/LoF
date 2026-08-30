@@ -2,6 +2,7 @@ use super::cic::CicStm::{Axiom, Fun, Global, Theorem};
 use super::cic::CicTerm::{Abstraction, Application, Let, Match, Variable};
 use super::cic::{Cic, CicStm, CicTerm};
 use super::cic_utils::make_multiarg_fun_type;
+use crate::error::LofError;
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function,
 };
@@ -71,7 +72,7 @@ fn reduce_match(
 pub fn evaluate_statement(
     environment: &mut Environment<Cic>,
     stm: &CicStm,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     match stm {
         Axiom(axiom_name, formula) => {
             evaluate_axiom::<Cic>(environment, axiom_name, formula)
@@ -120,7 +121,7 @@ pub fn evaluate_inductive(
     params: &Vec<(String, CicTerm)>,
     ariety: &CicTerm,
     constructors: &Vec<(String, CicTerm)>,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     let ind_type = make_multiarg_fun_type(params, ariety);
     environment.add_to_context(name, &ind_type);
 

@@ -1,3 +1,4 @@
+use crate::error::LofError;
 use std::{
     collections::{HashMap, VecDeque},
     fmt::{self, Debug},
@@ -44,7 +45,7 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
         body: &T,
         occurs: &O,
         is_variable: &Iv,
-    ) -> Result<(), String>
+    ) -> Result<(), LofError>
     where
         O: Fn(&T, &str) -> bool,
         Iv: Fn(&T) -> Option<String>,
@@ -66,9 +67,10 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
                     (other_variable, previous_subst.to_owned())
                 }
                 else if *previous_subst != *body {
-                    return Err(format!(
-                        "Unification failed: found conflicting substitution for variable {}: term {:?} and term {:?}",
-                        var_name, previous_subst, body
+                    return Err(LofError::conflicting_substitution(
+                        var_name,
+                        previous_subst,
+                        body,
                     ));
                 } else {
                     // trying to add the same substitution again, nothing to do
@@ -80,10 +82,7 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
 
         // occurs check
         if occurs(&body, &var_name) {
-            return Err(format!(
-                "Substitution body {:?} contains a reference to variable {:?}",
-                body, var_name
-            ));
+            return Err(LofError::occurs_check_in_term(var_name, &body));
         }
 
         self.mappings.insert(var_name, body);
@@ -151,7 +150,7 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
 ///
 /// # Returns
 ///
-/// * `Result<Substitution<T>, String>` - The MGU if unification succeeds or an error message if unification fails.
+/// * `Result<Substitution<T>, LofError>` - The MGU if unification succeeds or an error message if unification fails.
 pub fn unify<T: PartialEq, Iv, Se, E, O>(
     exp1: &T,
     exp2: &T,
@@ -159,7 +158,7 @@ pub fn unify<T: PartialEq, Iv, Se, E, O>(
     structurally_equal: Se,
     explode: E,
     occurs: O,
-) -> Result<Substitution<T>, String>
+) -> Result<Substitution<T>, LofError>
 where
     T: Debug + Clone,
     Iv: Fn(&T) -> Option<String>,
@@ -195,7 +194,7 @@ where
 ///
 /// # Returns
 ///
-/// * `Result<Substitution<T>, String>` - The MGU if unification succeeds or an error message if unification fails.
+/// * `Result<Substitution<T>, LofError>` - The MGU if unification succeeds or an error message if unification fails.
 pub fn unify_with_base<T: PartialEq, Iv, Se, E, O>(
     exp1: &T,
     exp2: &T,
@@ -204,7 +203,7 @@ pub fn unify_with_base<T: PartialEq, Iv, Se, E, O>(
     structurally_equal: Se,
     explode: E,
     occurs: O,
-) -> Result<Substitution<T>, String>
+) -> Result<Substitution<T>, LofError>
 where
     T: Debug + Clone,
     Iv: Fn(&T) -> Option<String>,
@@ -232,7 +231,7 @@ pub fn ucs<T: PartialEq, Iv, Se, E, O>(
     structurally_equal: Se,
     explode: E,
     occurs: O,
-) -> Result<Substitution<T>, String>
+) -> Result<Substitution<T>, LofError>
 where
     T: Debug + Clone,
     Iv: Fn(&T) -> Option<String>,
@@ -270,10 +269,10 @@ where
             let sub1 = explode(&exp1);
             let sub2 = explode(&exp2);
             if sub1.len() != sub2.len() {
-                return Err(format!(
+                return Err(LofError::custom(format!(
                     "Unification failed on unexpected behaviour: expressions {:?} and {:?} seemingly structurally equal, but exploded in vectors of different lengths {:?} and {:?}",
                     exp1, exp2, sub1, sub2
-                ));
+                )));
             }
 
             for (s, t) in sub1.into_iter().zip(sub2.into_iter()) {
@@ -288,10 +287,7 @@ where
                 occurs,
             )
         } else {
-            Err(format!(
-                "Unification failed: {:?} and {:?} do not unify",
-                exp1, exp2
-            ))
+            Err(LofError::unification_failure(&exp1, &exp2))
         }
     }
     // no more constraints to solve, return the mgu built

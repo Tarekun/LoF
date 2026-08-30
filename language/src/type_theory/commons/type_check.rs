@@ -1,4 +1,5 @@
 use crate::{
+    error::LofError,
     misc::Union::{self, L, R},
     parser::api::Tactic,
     type_theory::{
@@ -17,10 +18,10 @@ use crate::{
 pub fn type_check_variable<T: TypeTheory>(
     environment: &mut Environment<T>,
     var_name: &str,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     match environment.get_variable_type(var_name) {
         Some(var_type) => Ok(var_type),
-        None => Err(format!("Unbound variable: {}", var_name)),
+        None => Err(LofError::unbound_variable(var_name)),
     }
 }
 
@@ -37,7 +38,7 @@ pub fn type_check_abstraction<
     var_type: &T::Type,
     body: &T::Term,
     constructor: C,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(var_type, environment)?;
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_term(body, local_env)?;
@@ -62,7 +63,7 @@ pub fn i_type_check_abstraction<
     var_type: &T::Type,
     body: &T::Term,
     constructor: C,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(var_type, environment)?;
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_term(body, local_env)?;
@@ -90,7 +91,7 @@ pub fn type_check_application<
     left: &T::Term,
     right: &T::Term,
     unpack_fun_type: F,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let arg_type = T::type_check_term(right, environment)?;
     let function_type = T::type_check_term(left, environment)?;
 
@@ -98,17 +99,17 @@ pub fn type_check_application<
         if T::base_type_equality(&domain, &arg_type).is_ok() {
             Ok(codomain)
         } else {
-            Err(format!(
-                "Function and argument have uncompatible types: function expects a {:?} but the argument has type {:?}", 
-                domain,
-                arg_type
+            Err(LofError::type_mismatch(
+                "function application",
+                &domain,
+                &arg_type,
             ))
         }
     } else {
-        Err(format!(
+        Err(LofError::custom(format!(
             "Attempted application on non functional term of type: {:?}",
             function_type
-        ))
+        )))
     }
 }
 
@@ -128,7 +129,7 @@ pub fn i_type_check_application<
     unpack_fun_type: F,
     repack_application: R,
     substitute_type: S,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let _arg_type = T::type_check_term(right, environment)?;
     let function_type = T::type_check_term(left, environment)?;
 
@@ -145,10 +146,10 @@ pub fn i_type_check_application<
         let codomain = T::type_apply_unifier(&codomain, &substitution);
         Ok(codomain)
     } else {
-        Err(format!(
+        Err(LofError::custom(format!(
             "Attempted application on non functional term of type: {:?}",
             function_type
-        ))
+        )))
     }
 }
 
@@ -161,7 +162,7 @@ pub fn type_check_fo_universal<T: TypeTheory + Kernel>(
     var_name: &str,
     var_type: &T::Type,
     predicate: &T::Type,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(var_type, environment)?;
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_type(predicate, local_env)?;
@@ -177,7 +178,7 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
     var_type: &Option<T::Type>,
     body: &T::Term,
     scope: &T::Term,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let body_type = T::type_check_term(body, environment)?;
     let var_type = if var_type.is_none() {
         body_type.to_owned()
@@ -194,11 +195,10 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
             |local_env| T::type_check_term(scope, local_env),
         )?)
     } else {
-        Err(format!(
-            "Error in variable {} definition: declared type {:?} and assigned {:?} do not match",
-            var_name,
-            var_type,
-            var_type
+        Err(LofError::type_mismatch(
+            format!("let binding `{}`", var_name),
+            &var_type,
+            &body_type,
         ))
     }
 }
@@ -213,7 +213,7 @@ pub fn type_check_global<T: TypeTheory + Kernel>(
     var_name: &str,
     opt_type: &Option<T::Type>,
     body: &T::Term,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let body_type = T::type_check_term(body, environment)?;
     let var_type = if opt_type.is_none() {
         body_type.to_owned()
@@ -227,11 +227,10 @@ pub fn type_check_global<T: TypeTheory + Kernel>(
             evaluate_global::<T>(environment, var_name, &Some(var_type), body);
         Ok(body_type)
     } else {
-        Err(format!(
-            "Error in variable {} definition: declared type {:?} and assigned {:?} do not unify",
-            var_name,
-            var_type,
-            var_type
+        Err(LofError::type_mismatch(
+            format!("global `{}`", var_name),
+            &var_type,
+            &body_type,
         ))
     }
 }
@@ -250,7 +249,7 @@ pub fn type_check_function<
     is_rec: &bool,
     constructor: C,
     eta_wrap: E,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let fun_type = constructor(args.to_owned(), out_type.to_owned());
     let _ = T::type_check_type(&fun_type, environment);
     let mut assumptions = args.to_owned();
@@ -264,9 +263,10 @@ pub fn type_check_function<
             T::type_check_term(&body, local_env)
         })?;
     if T::base_type_equality(out_type, &body_type).is_err() {
-        return Err(format!(
-            "In {} definition, function type {:?} and body result {:?} are inconsistent",
-            fun_name, out_type, body_type
+        return Err(LofError::type_mismatch(
+            format!("function `{}`", fun_name),
+            out_type,
+            &body_type,
         ));
     }
 
@@ -290,7 +290,7 @@ pub fn type_check_axiom<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     axiom_name: &str,
     predicate: &T::Type,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(predicate, environment)?;
     let _ = evaluate_axiom::<T>(environment, axiom_name, predicate);
 
@@ -306,7 +306,7 @@ pub fn eq_type_check_theorem<T: TypeTheory + Kernel + Interactive>(
     theorem_name: &str,
     formula: &T::Type,
     proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     type_check_theorem_base(
         environment,
         theorem_name,
@@ -326,36 +326,39 @@ pub fn u_type_check_theorem<T: TypeTheory + Kernel + Interactive + Refiner>(
     theorem_name: &str,
     formula: &T::Type,
     proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     type_check_theorem_base(
         &mut environment.clone(),
         theorem_name,
         formula,
         proof,
-        |proof_type, formula| T::types_unify(environment, proof_type, formula),
+        |proof_type, formula| {
+            T::types_unify(environment, proof_type, formula).is_ok()
+        },
     )
 }
 /// Base implementation for generic type checking of theorem proofs, parametric
 /// on `are_compatible` for types (equality, unification).
 /// Includes `theorem_name` in the context for future usage
-fn type_check_theorem_base<T: TypeTheory + Kernel + Interactive, P>(
+fn type_check_theorem_base<
+    T: TypeTheory + Kernel + Interactive,
+    P: FnMut(&T::Type, &T::Type) -> bool,
+>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
     proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
     mut are_compatible: P,
-) -> Result<T::Type, String>
-where
-    P: FnMut(&T::Type, &T::Type) -> bool,
-{
+) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(formula, environment)?;
     match proof {
         L(proof_term) => {
             let proof_type = T::type_check_term(proof_term, environment)?;
             if !are_compatible(&proof_type, formula) {
-                return Err(format!(
-                    "Proof term's type doesn't unify with the theorem statement. Expected {:?} but found {:?}",
-                    formula, proof_type
+                return Err(LofError::type_mismatch(
+                    "proof checking of proven statement and target",
+                    formula,
+                    &proof_type,
                 ));
             }
             // include theorem_name into the context for following script
@@ -393,7 +396,7 @@ where
 pub fn type_check_auto<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     formula: &T::Type,
-) -> Result<T::Type, String> {
+) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(formula, environment)?;
     Ok(formula.to_owned())
 }
@@ -402,13 +405,13 @@ fn type_check_interactive_proof<T: TypeTheory + Interactive>(
     environment: &mut Environment<T>,
     interactive_proof: &[Tactic<T::Exp>],
     target: &T::Type,
-) -> Result<T::Term, String> {
+) -> Result<T::Term, LofError> {
     fn solver<T: TypeTheory + Interactive>(
         environment: &mut Environment<T>,
         interactive_proof: &[Tactic<T::Exp>],
         mut subgoals: Vec<T::Type>,
         partial_proof: T::Term,
-    ) -> Result<T::Term, String> {
+    ) -> Result<T::Term, LofError> {
         // TODO: make sure the proof closes with a qed.
         if subgoals.is_empty() {
             return Ok(partial_proof.to_owned());

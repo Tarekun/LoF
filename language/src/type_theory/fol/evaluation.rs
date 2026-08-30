@@ -6,6 +6,7 @@ use super::fol::{
     FolTerm::{self, Abstraction, Application, Let, Variable},
 };
 use super::fol_utils::make_multiarg_fun_type;
+use crate::error::LofError;
 use crate::type_theory::commons::evaluation::{
     evaluate_auto, evaluate_fun, evaluate_solve, reduce_application, reduce_let,
 };
@@ -66,7 +67,7 @@ fn fol_reduce_application(
 pub fn evaluate_statement(
     environment: &mut Environment<Fol>,
     stm: &FolStm,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     match stm {
         Axiom(axiom_name, formula) => {
             evaluate_axiom::<Fol>(environment, axiom_name, formula)

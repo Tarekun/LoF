@@ -1,4 +1,5 @@
 use crate::{
+    error::LofError,
     misc::{simple_map, simple_map_indexed},
     type_theory::{
         cic::{
@@ -28,7 +29,7 @@ use tracing::error;
 pub fn type_check_sort(
     environment: &mut Environment<Cic>,
     sort_name: &str,
-) -> Result<CicTerm, String> {
+) -> Result<CicTerm, LofError> {
     //TODO check that the type is a sort itself?
     type_check_variable::<Cic>(environment, sort_name)
 }
@@ -41,12 +42,12 @@ fn type_constr_vars(
     environment: &mut Environment<Cic>,
     pattern: &CicTerm,
     constr_type: &CicTerm,
-) -> Result<Vec<(String, CicTerm)>, String> {
+) -> Result<Vec<(String, CicTerm)>, LofError> {
     fn solver(
         environment: &mut Environment<Cic>,
         constr_type: &CicTerm,
         variables: Vec<CicTerm>,
-    ) -> Result<Vec<(String, CicTerm)>, String> {
+    ) -> Result<Vec<(String, CicTerm)>, LofError> {
         match variables.len() {
             0 => Ok(vec![]),
             1.. => match constr_type {
@@ -92,13 +93,12 @@ fn type_constr_vars(
                         nested_vars.extend(remaining_vars);
                         Ok(nested_vars)
                     }
-                    _ => Err(format!(
-                        "Found illegal term in place of variable {:?}",
-                        variables[0]
-                    )),
+                    _ => Err(LofError::type_check_error(&variables[0])),
                 },
-                _ => Err(format!(
-                    "Mismatch in number of variables for constructor"
+                _ => Err(LofError::arity_mismatch(
+                    "constructor pattern",
+                    0,
+                    variables.len(),
                 )),
             },
         }
@@ -114,12 +114,12 @@ fn type_check_pattern(
     environment: &mut Environment<Cic>,
     pattern: &CicTerm,
     constr_type: &CicTerm,
-) -> Result<CicTerm, String> {
+) -> Result<CicTerm, LofError> {
     fn solver(
         constr_type: &CicTerm,
         arguments: Vec<CicTerm>,
         environment: &mut Environment<Cic>,
-    ) -> Result<CicTerm, String> {
+    ) -> Result<CicTerm, LofError> {
         match arguments.len() {
             0 => Ok(constr_type.clone()),
             1.. => match constr_type  {
@@ -164,12 +164,7 @@ fn type_check_pattern(
                             environment,
                         )?;
 
-                        if !Cic::terms_unify(environment, &nested_result_type, domain) {
-                            return Err(format!(
-                                "Nested pattern {:?} produces type {:?} but expected {:?}",
-                                arguments[0], nested_result_type, domain
-                            ));
-                        }
+                        Cic::terms_unify(environment, &nested_result_type, domain)?;
                         let reduced_codomain =
                             substitute(&codomain, var_name, &arguments[0]);
                         solver(
@@ -178,15 +173,13 @@ fn type_check_pattern(
                             environment,
                         )
                     }
-                    _ => Err(format!(
-                        "Found illegal term in place of variable {:?}",
-                        arguments[0],
-                    )),
+                    _ => Err(LofError::type_check_error(&arguments[0])),
                 },
-                _ => Err("Mismatch in number of arguments for constructor"
-                    .to_string()),
-    
-                
+                _ => Err(LofError::arity_mismatch(
+                    "constructor pattern",
+                    0,
+                    arguments.len(),
+                )),
             },
         }
     }
@@ -204,7 +197,7 @@ pub fn type_check_match(
     environment: &mut Environment<Cic>,
     matched_term: &CicTerm,
     branches: &Vec<(CicTerm, CicTerm)>,
-) -> Result<CicTerm, String> {
+) -> Result<CicTerm, LofError> {
     let matching_type = Cic::type_check_term(matched_term, environment)?;
     let mut return_type = None;
 
@@ -212,20 +205,20 @@ pub fn type_check_match(
     let matching_type_name = if let Variable(name, _) = ind_type_constructor {
         name
     } else {
-        return Err(format!(
+        return Err(LofError::type_check_error(&format!(
             "Unable to reconstruct which inductive type is being matched {:?}",
             ind_type_constructor
-        ));
+        )));
     };
     let mut expected_constrs = if let Some(constrs) = environment.get_constructors_for(
         &matching_type_name
     ) {
         constrs
     } else {
-        return Err(format!(
+        return Err(LofError::type_check_error(&format!(
             "Inductive type named {:?} has no constructors registered",
             matching_type_name
-        ));
+        )));
     };
 
     for (pattern, body) in branches {
@@ -234,24 +227,18 @@ pub fn type_check_match(
         let (constr_type, constr_name) = if let Variable(constr_name, _) = &constructor {
             (Cic::type_check_term(&constructor, environment)?, constr_name.to_string())
         } else {
-            return Err(format!(
+            return Err(LofError::type_check_error(&format!(
                 "Pattern should start with constructor variable application, found {:?}",
                 constructor
-            ));
+            )));
         };
         let result_type = type_check_pattern(
             environment,
             pattern,
             &constr_type,
         )?;
-        if !Cic::terms_unify(environment, &result_type, &matching_type) {
-            return Err(format!(
-                "Pattern doesnt produce expected type: expected {:?} produced {:?}",
-                matching_type,
-                result_type
-            ));
-        }
 
+        Cic::terms_unify(environment, &result_type, &matching_type)?;
         if expected_constrs.contains(&constr_name) {
             expected_constrs.remove(&constr_name);
         }
@@ -265,24 +252,22 @@ pub fn type_check_match(
             })?;
         if return_type.is_none() {
             return_type = Some(body_type);
-        } else if !Cic::terms_unify(
-            environment,
-            &return_type.clone().unwrap(),
-            &body_type,
-        ) {
-            return Err(format!(
-                "Match branches have different types: found {:?} with previous {:?}",
-                body_type,
-                return_type.unwrap()
-            ));
+        } else {
+            Cic::terms_unify(
+                environment,
+                &return_type.clone().unwrap(),
+                &body_type,
+            )?;
         }
     }
 
     if !expected_constrs.is_empty() {
-        return Err(format!(
-            "Not all constructors have been covered, missing: {:?}",
-            expected_constrs,
-        ))
+        return Err(LofError::type_check_error(
+            &format!(
+                "Not all constructors have been covered, missing: {:?}",
+                expected_constrs
+            ),
+        ));
     }
 
     Ok(return_type.unwrap())
@@ -513,7 +498,7 @@ pub fn type_check_inductive(
     params: &Vec<(String, CicTerm)>,
     ariety: &CicTerm,
     constructors: &Vec<(String, CicTerm)>,
-) -> Result<CicTerm, String> {
+) -> Result<CicTerm, LofError> {
     //TODO check positivity
     let inductive_type = make_multiarg_fun_type(params, ariety);
     let _ = Cic::type_check_type(&inductive_type, environment)?;
@@ -534,14 +519,14 @@ pub fn type_check_inductive(
                 let _ = Cic::type_check_type(constr_type, local_env)?;
                 for arg_type in get_arg_types(&constr_type) {
                     if !check_positivity(&arg_type, &type_name) {
-                        return Err(format!("Inductive constructor {} has recursive argument with negative polarity", constr_name));
+                        return Err(LofError::custom(format!("Inductive constructor {} has recursive argument with negative polarity", constr_name)));
                     }
                 }
                 
                 constr_bindings.push((constr_name.clone(), constr_type.clone()));
             }
 
-            Ok::<(), String>(())
+            Ok::<(), LofError>(())
         },
     )?;
 
