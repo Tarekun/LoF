@@ -129,11 +129,12 @@ pub fn i_type_check_application<
     repack_application: R,
     substitute_type: S,
 ) -> Result<T::Type, String> {
-    let arg_type = T::type_check_term(right, environment)?;
+    let _arg_type = T::type_check_term(right, environment)?;
     let function_type = T::type_check_term(left, environment)?;
 
-    if let Some((var_name, domain, codomain)) = unpack_fun_type(&function_type)
+    if let Some((var_name, _domain, codomain)) = unpack_fun_type(&function_type)
     {
+        // note: at this stage `constraints` already contains the check _arg_type ≐ _domain
         let constraints = T::term_collect_unifications(
             &repack_application(left, right),
             environment,

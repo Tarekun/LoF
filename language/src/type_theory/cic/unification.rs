@@ -350,19 +350,6 @@ mod unit_tests {
             ),
             ("metavariable_0".to_string(), nat.clone()),
         ]);
-        // let expected = {
-        //     let mut map = HashMap::new();
-        //     map.insert(
-        //         1,
-        //         Product(
-        //             "_".to_string(),
-        //             Box::new(nat.clone()),
-        //             Box::new(nat.clone()),
-        //         ),
-        //     );
-        //     map.insert(0, nat.clone());
-        //     map
-        // };
         assert_eq!(
                 cic_solve_unifications(constraints, &mut Cic::default_environment()).unwrap(),
                 expected,
@@ -372,9 +359,7 @@ mod unit_tests {
 
     #[test]
     fn test_match_unification() {
-        // let mut env = Cic::default_environment();
         let t = Variable("true".to_string(), GLOBAL_INDEX);
-        // env.add_substitution("b", &t);
         let expected =
             Substitution::from([("metavariable_1".to_string(), t.clone())]);
         let constraints = vec![(

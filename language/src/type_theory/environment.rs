@@ -1,30 +1,6 @@
 use crate::type_theory::interface::TypeTheory;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{self, Debug};
-
-// pub enum Constraint<T: TypeTheory> {
-//     TypeEq(T::Type, T::Type),
-//     // TermEq(T::Term, T::Term),
-// }
-// impl<T: TypeTheory> Clone for Constraint<T>
-// where
-//     T::Term: Clone,
-//     T::Type: Clone,
-// {
-//     fn clone(&self) -> Self {
-//         match self {
-//             TypeEq(l, r) => TypeEq(l.to_owned(), r.to_owned()),
-//             // TermEq(l, r) => TermEq(l.to_owned(), r.to_owned()),
-//         }
-//     }
-// }
-// impl<T: TypeTheory> Debug for Constraint<T> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match self {
-//             TypeEq(l, r) => write!(f, "{:?} = {:?}", l, r),
-//         }
-//     }
-// }
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub struct Environment<T: TypeTheory> {
@@ -34,10 +10,8 @@ pub struct Environment<T: TypeTheory> {
     pub deltas: HashMap<String, Vec<T::Term>>,
     /// pred_name, arg_types
     pub predicates: HashMap<String, Vec<T::Type>>,
+    /// type_name, constructors_vec
     pub constructor_store: HashMap<String, Vec<(String, T::Type)>>,
-    // [exp1 = exp2]
-    // constraints: Vec<Constraint<T>>,
-    // next_index: i32,
 }
 impl<T: TypeTheory> Clone for Environment<T>
 where
@@ -344,30 +318,7 @@ impl<T: TypeTheory> Environment<T> {
 
         result
     }
-
-    // /// Runs a callable under a local environment which is a rollbackable copy
-    // /// of `self` that can be mutated without staining the original environment.
-    // /// Keeps meta variable constraints produced
-    // pub fn with_rollback_keep_meta<F: FnOnce(&mut Self) -> R, R>(
-    //     &mut self,
-    //     callable: F,
-    // ) -> R {
-    //     let mut cloned = self.clone();
-    //     let result = callable(&mut cloned);
-    //     self.constraints = cloned.constraints;
-
-    //     result
-    // }
 }
-
-// impl<T: TypeTheory> Environment<T> {
-//     pub fn add_type_constraint(&mut self, left: &T::Type, right: &T::Type) {
-//         self.constraints.push(TypeEq(left.clone(), right.clone()));
-//     }
-//     pub fn get_constraints(&self) -> Vec<Constraint<T>> {
-//         self.constraints.clone()
-//     }
-// }
 
 #[cfg(test)]
 mod unit_tests {
