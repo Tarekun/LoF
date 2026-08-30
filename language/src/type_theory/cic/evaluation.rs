@@ -150,6 +150,7 @@ pub fn evaluate_inductive(
 /// Given a `term` and a `pattern`, returns `true` if the term matches the
 /// pattern, `false` otherwise
 fn matches_pattern(term: &CicTerm, pattern: &CicTerm) -> bool {
+    println!("term to match {:?}, pattern {:?}", term, pattern);
     let used = get_applied_function(term);
     let constructor = get_applied_function(pattern);
     let actual_args = application_args(term);

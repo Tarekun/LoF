@@ -1,13 +1,11 @@
 use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::tactics::type_check_tactic;
 use super::type_check::type_check_sort;
-use super::unification::{
-    cic_so_unification, cic_unification, solve_unification,
-};
+use super::unification::cic_so_unification;
 use crate::misc::Union::{self};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
-use crate::type_theory::cic::cic::CicTerm::{Application, Meta, Product};
+use crate::type_theory::cic::cic::CicTerm::{Application, Product};
 use crate::type_theory::cic::cic_utils::{
     make_multiarg_fun_type, substitute, substitute_meta,
 };
@@ -27,11 +25,10 @@ use crate::type_theory::commons::type_check::{
     type_check_let, type_check_variable, u_type_check_theorem,
 };
 use crate::type_theory::commons::unification::Substitution;
-use crate::type_theory::environment::{Constraint, Environment};
+use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
     Interactive, Kernel, Reducer, Refiner, TypeInference, TypeTheory,
 };
-use std::collections::HashMap;
 use tracing::debug;
 
 pub static FIRST_INDEX: i32 = 0;
@@ -296,77 +293,33 @@ impl Refiner for Cic {
     {
         cic_solve_unifications(constraints, environment)
     }
+
     fn term_collect_unifications(
         exp: &CicTerm,
         environment: &mut Environment<Cic>,
     ) -> Result<Vec<(CicTerm, CicTerm)>, String> {
         cic_collect_unifications(exp, environment)
     }
+
     fn type_collect_unifications(
         exp: &CicTerm,
         environment: &mut Environment<Cic>,
     ) -> Result<Vec<(CicTerm, CicTerm)>, String> {
         cic_collect_unifications(exp, environment)
     }
+
     fn term_apply_unifier(
         exp: &CicTerm,
         substitution: &Substitution<CicTerm>,
     ) -> CicTerm {
         cic_apply_unifier(exp, substitution)
     }
+
     fn type_apply_unifier(
         exp: &CicTerm,
         substitution: &Substitution<CicTerm>,
     ) -> CicTerm {
         cic_apply_unifier(exp, substitution)
-    }
-    fn needs_refinement(exp: &CicTerm) -> bool {
-        true
-    }
-
-    ///////////////////////////////////////////////////////////
-
-    ///////////////////////////////////////////////////////////
-    fn solve_unification(
-        constraints: Vec<Constraint<Cic>>,
-    ) -> Result<HashMap<i32, CicTerm>, String> {
-        solve_unification(constraints)
-    }
-
-    fn meta_index(meta: &CicTerm) -> Option<i32> {
-        match meta {
-            Meta(index) => Some(index.to_owned()),
-            _ => None,
-        }
-    }
-
-    fn term_solve_metas(
-        exp: &CicTerm,
-        substitution: &HashMap<i32, CicTerm>,
-    ) -> CicTerm {
-        let mut solved_exp = exp.to_owned();
-        for index in substitution.keys() {
-            solved_exp = substitute_meta(
-                &solved_exp,
-                index,
-                substitution.get(index).unwrap(),
-            )
-        }
-        solved_exp
-    }
-    fn type_solve_metas(
-        exp: &CicTerm,
-        substitution: &HashMap<i32, CicTerm>,
-    ) -> CicTerm {
-        let mut solved_exp = exp.to_owned();
-        for index in substitution.keys() {
-            solved_exp = substitute_meta(
-                &solved_exp,
-                index,
-                substitution.get(index).unwrap(),
-            )
-        }
-        solved_exp
     }
 
     fn terms_unify(
@@ -374,7 +327,11 @@ impl Refiner for Cic {
         term1: &CicTerm,
         term2: &CicTerm,
     ) -> bool {
-        cic_unification(environment, term1, term2).is_ok()
+        cic_solve_unifications(
+            vec![(term1.to_owned(), term2.to_owned())],
+            environment,
+        )
+        .is_ok()
     }
 
     fn types_unify(
@@ -382,7 +339,11 @@ impl Refiner for Cic {
         type1: &CicTerm,
         type2: &CicTerm,
     ) -> bool {
-        cic_unification(environment, type1, type2).is_ok()
+        cic_solve_unifications(
+            vec![(type1.to_owned(), type2.to_owned())],
+            environment,
+        )
+        .is_ok()
     }
 }
 

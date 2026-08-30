@@ -66,8 +66,6 @@ pub fn i_type_check_abstraction<
     let _ = T::type_check_type(var_type, environment)?;
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_term(body, local_env)?;
-        // let meta_index = T::meta_index(var_type);
-
         let type_cons = T::type_collect_unifications(var_type, local_env)?;
         let body_cons = T::term_collect_unifications(body, local_env)?;
         let constraints = [type_cons, body_cons].concat();
@@ -75,20 +73,6 @@ pub fn i_type_check_abstraction<
 
         let var_type = T::type_apply_unifier(var_type, &substitution);
         let body_type = T::type_apply_unifier(&body_type, &substitution);
-
-        // let (var_type, body_type) = if meta_index.is_some() {
-        //     let substitution =
-        //         T::solve_unification(local_env.get_constraints())?;
-
-        //     let simplified_arg_type =
-        //         T::type_solve_metas(var_type, &substitution);
-        //     let simplified_body_type =
-        //         T::type_solve_metas(&body_type, &substitution);
-
-        //     (simplified_arg_type, simplified_body_type)
-        // } else {
-        //     (var_type.to_owned(), body_type)
-        // };
 
         Ok(constructor(var_name.to_string(), var_type, body_type))
     })
@@ -150,41 +134,15 @@ pub fn i_type_check_application<
 
     if let Some((var_name, domain, codomain)) = unpack_fun_type(&function_type)
     {
-        // let fun_cons = T::term_collect_unifications(left, environment)?;
-        // let arg_cons = T::term_collect_unifications(right, environment)?;
         let constraints = T::term_collect_unifications(
             &repack_application(left, right),
             environment,
         )?;
-        println!("##################################");
-        println!("{:?}", constraints);
-        // [fun_cons, vec![(domain, arg_type)], arg_cons].concat();
         let substitution = T::solve_unifications(constraints, environment)?;
-        println!("POOST");
 
         let codomain = substitute_type(&codomain, &var_name, right);
         let codomain = T::type_apply_unifier(&codomain, &substitution);
-        println!("{:?}", codomain);
         Ok(codomain)
-
-        // // solve unification domain = arg_type
-        // environment.add_type_constraint(&domain, &arg_type);
-        // let unifier = T::solve_unification(environment.get_constraints())?;
-        // let domain = T::type_solve_metas(&domain, &unifier);
-        // let arg_type = T::type_solve_metas(&arg_type, &unifier);
-
-        // if T::base_type_equality(&domain, &arg_type).is_ok() {
-        //     // type dependent reduction
-        //     let codomain = substitute_type(&codomain, &var_name, right);
-        //     let codomain = T::type_solve_metas(&codomain, &unifier);
-        //     Ok(codomain)
-        // } else {
-        //     Err(format!(
-        //         "Function and argument have uncompatible types: function expects a {:?} but the argument has type {:?}",
-        //         domain,
-        //         arg_type
-        //     ))
-        // }
     } else {
         Err(format!(
             "Attempted application on non functional term of type: {:?}",
@@ -244,61 +202,6 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
     }
 }
 
-// pub fn type_check_application<T: TypeTheory>(
-//     environment: &mut Environment<T>,
-//     left: T::Term,
-//     right: T::Term,
-// ) -> Result<T::Type, String> {
-//     fn type_check_nested_app<T: TypeTheory>(
-//         local_env: &mut Environment<T>,
-//         term: T::Term,
-//     ) -> Result<T::Type, String> {
-//         match term {
-//             // idncutive case:
-//             Application(left, right) => {
-//                 let function_type =
-//                     type_check_nested_app(local_env, *left.clone())?;
-//                 let arg_type = T::type_check_term(*right.clone(), local_env)?;
-
-//                 match function_type.clone() {
-//                     T::Term::Function(var_name, domain, codomain) => {
-//                         if T::base_type_equality(&domain, &arg_type) {
-//                             local_env.add_variable_definition(&var_name, &right, &arg_type);
-//                             // δ-reduce the body type in case its dependent on var_name
-//                             match delta_reduce(local_env, *codomain.clone()) {
-//                                 Ok(body) => Ok(body),
-//                                 _ => Ok(*codomain)
-//                             }
-//                         } else {
-//                             Err(format!(
-//                                 "Function and argument have uncompatible types: function expects a {:?} but the argument has type {:?}",
-//                                 *domain,
-//                                 arg_type
-//                             ))
-//                         }
-//                     }
-//                     _ => Err(format!(
-//                         "Attempted application on non functional term '{:?}' of type: {:?}",
-//                         left,
-//                         function_type
-//                     )),
-//                 }
-//             }
-//             // base case: type check the fuction (leftmost term)
-//             _ => {
-//                 let term_type = T::type_check_term(term, local_env)?;
-//                 Ok(term_type)
-//             }
-//         }
-//     }
-
-//     environment.with_rollback(|local_env| {
-//         type_check_nested_app(
-//             local_env,
-//             Application(Box::new(left), Box::new(right)),
-//         )
-//     })
-// }
 //########################### EXPRESSIONS TYPE CHECKING
 //
 //########################### STATEMENTS TYPE CHECKING
