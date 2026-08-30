@@ -145,7 +145,8 @@ fn type_check_nary(
         ));
     }
     for i in 0..formal_types.len() {
-        if Sup::base_type_equality(&formal_types[i], &actual_types[i]).is_ok() {
+        if Sup::base_type_equality(&formal_types[i], &actual_types[i]).is_err()
+        {
             return Err(format!(
                 "Missmatched types, {} expects a {:?}, but {:?} was found",
                 applied, formal_types[i], actual_types[i]
@@ -156,3 +157,7 @@ fn type_check_nary(
     Ok(())
 }
 //########################### HELPER FUNCTIONS
+
+#[cfg(test)]
+#[path = "../../tests/type_theory/sup/type_check.rs"]
+mod tests;
