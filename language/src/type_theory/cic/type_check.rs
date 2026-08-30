@@ -208,30 +208,52 @@ pub fn type_check_match(
     let matching_type = Cic::type_check_term(matched_term, environment)?;
     let mut return_type = None;
 
+    let ind_type_constructor = get_applied_function(&matching_type);
+    let matching_type_name = if let Variable(name, _) = ind_type_constructor {
+        name
+    } else {
+        return Err(format!(
+            "Unable to reconstruct which inductive type is being matched {:?}",
+            ind_type_constructor
+        ));
+    };
+    let mut expected_constrs = if let Some(constrs) = environment.get_constructors_for(
+        &matching_type_name
+    ) {
+        constrs
+    } else {
+        return Err(format!(
+            "Inductive type named {:?} has no constructors registered",
+            matching_type_name
+        ));
+    };
+
     for (pattern, body) in branches {
         //pattern type checking
         let constructor = get_applied_function(pattern);
-        let constr_type = if let Variable(_, _) = constructor {
-            Cic::type_check_term(&constructor, environment)
+        let (constr_type, constr_name) = if let Variable(constr_name, _) = &constructor {
+            (Cic::type_check_term(&constructor, environment)?, constr_name.to_string())
         } else {
-            Err(format!(
+            return Err(format!(
                 "Pattern should start with constructor variable application, found {:?}",
                 constructor
-            ))
-        }?;
+            ));
+        };
         let result_type = type_check_pattern(
             environment,
             pattern,
             &constr_type,
         )?;
         if !Cic::terms_unify(environment, &result_type, &matching_type) {
-            return Err(
-                format!(
-                    "Pattern doesnt produce expected type: expected {:?} produced {:?}",
-                    matching_type,
-                    result_type
-                )
-            );
+            return Err(format!(
+                "Pattern doesnt produce expected type: expected {:?} produced {:?}",
+                matching_type,
+                result_type
+            ));
+        }
+
+        if expected_constrs.contains(&constr_name) {
+            expected_constrs.remove(&constr_name);
         }
 
         //body type checking
@@ -248,14 +270,19 @@ pub fn type_check_match(
             &return_type.clone().unwrap(),
             &body_type,
         ) {
-            return Err(
-                format!(
-                    "Match branches have different types: found {:?} with previous {:?}",
-                    body_type,
-                    return_type.unwrap()
-                )
-            );
+            return Err(format!(
+                "Match branches have different types: found {:?} with previous {:?}",
+                body_type,
+                return_type.unwrap()
+            ));
         }
+    }
+
+    if !expected_constrs.is_empty() {
+        return Err(format!(
+            "Not all constructors have been covered, missing: {:?}",
+            expected_constrs,
+        ))
     }
 
     Ok(return_type.unwrap())

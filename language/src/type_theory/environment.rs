@@ -35,6 +35,7 @@ pub struct Environment<T: TypeTheory> {
     pub deltas: HashMap<String, Vec<T::Term>>,
     /// pred_name, arg_types
     pub predicates: HashMap<String, Vec<T::Type>>,
+    pub constructor_store: HashMap<String, Vec<(String, T::Type)>>,
     /// [exp1 = exp2]
     constraints: Vec<Constraint<T>>,
     next_index: i32,
@@ -50,95 +51,44 @@ where
             deltas: self.deltas.clone(),
             predicates: self.predicates.clone(),
             constraints: self.constraints.clone(),
+            constructor_store: self.constructor_store.clone(),
             next_index: self.next_index,
         }
     }
 }
 
-//TODO check if this cloning is really necessary or there's better ways
+// context handling
 impl<T: TypeTheory> Environment<T> {
-    pub fn with_defaults(
-        axioms: Vec<(&str, &T::Type)>,
-        deltas: Vec<(&str, &T::Term, &Option<T::Type>)>,
-        predicates: Vec<(&str, &Vec<T::Type>)>,
-    ) -> Self {
-        let mut context_map = HashMap::new();
-        let mut deltas_map = HashMap::new();
-        let mut predicates_map = HashMap::new();
-
-        for (name, term) in axioms {
-            context_map.insert(name.to_string(), vec![term.clone()]);
-        }
-        for (name, term, typee) in deltas {
-            deltas_map.insert(name.to_string(), vec![term.clone()]);
-            if let Some(typee) = typee.as_ref() {
-                context_map.insert(name.to_string(), vec![typee.clone()]);
-            }
-        }
-        for (name, arg_types) in predicates {
-            predicates_map.insert(name.to_string(), arg_types.clone());
-        }
-
-        Self {
-            context: context_map,
-            deltas: deltas_map,
-            predicates: predicates_map,
-            constraints: vec![],
-            next_index: 0,
-        }
-    }
-
     fn context_stack(&mut self, name: &str) -> &mut Vec<T::Type> {
         self.context
             .entry(name.to_string())
             .or_insert_with(Vec::new)
     }
-    fn substitution_stack(&mut self, name: &str) -> &mut Vec<T::Term> {
-        self.deltas.entry(name.to_string()).or_insert_with(Vec::new)
-    }
 
-    //######################### ENV MANIPULATION
-    //
     /// Insert a new typed variable into the context
     pub fn add_to_context(&mut self, name: &str, typee: &T::Type) {
         let context_stack = self.context_stack(name);
         context_stack.push(typee.to_owned());
     }
 
-    pub fn add_substitution(&mut self, name: &str, term: &T::Term) {
-        let definition_stack = self.substitution_stack(name);
-        definition_stack.push(term.clone());
+    /// Read the type of a variable. Returns the `Some(type)` if the name is found,
+    /// `None` otherwise
+    pub fn get_from_context(&self, name: &str) -> Option<(String, T::Type)> {
+        self.context.get(name).and_then(|context_stack| {
+            context_stack
+                .last()
+                .map(|type_| (name.to_string(), type_.clone()))
+        })
     }
 
-    pub fn add_substitution_with_type(
-        &mut self,
-        name: &str,
-        term: &T::Term,
-        typee: &T::Type,
-    ) {
-        let definition_stack = self.substitution_stack(name);
-        definition_stack.push(term.clone());
-        self.add_to_context(name, typee);
-    }
-
-    // pub fn add_term_constraint(&mut self, left: &T::Term, right: &T::Term) {
-    //     self.constraints.push(TermEq(left.clone(), right.clone()));
-    // }
-    pub fn add_type_constraint(&mut self, left: &T::Type, right: &T::Type) {
-        self.constraints.push(TypeEq(left.clone(), right.clone()));
-    }
-
-    pub fn add_predicate(&mut self, name: &str, arg_types: &Vec<T::Type>) {
-        self.predicates
-            .insert(name.to_string(), arg_types.to_owned());
-    }
-
-    fn remove_substitution(&mut self, name: &str) {
-        let definition_stack = self.substitution_stack(name);
-        definition_stack.pop();
-        if definition_stack.len() == 0 {
-            self.deltas.remove(name);
-        }
+    /// Returns all var_name : VarType bindings in the context
+    pub fn get_context(&self) -> HashMap<String, T::Type> {
+        self.context
+            .iter()
+            .filter_map(|(name, stack)| {
+                stack.last().map(|ty| (name.to_string(), ty.to_owned()))
+            })
+            .collect()
     }
 
     /// Remove a variable from the context
@@ -150,16 +100,6 @@ impl<T: TypeTheory> Environment<T> {
         }
     }
 
-    /// Returns a fresh meta variable index
-    pub fn fresh_meta(&mut self) -> i32 {
-        self.next_index += 1;
-        return self.next_index - 1;
-    }
-    //
-    //######################### ENV MANIPULATION
-
-    //######################### LOCAL ENV UTILS
-    //
     /// Add a local variable to the context, execute a closure, and then remove the variable
     pub fn with_local_assumption<F: FnOnce(&mut Self) -> R, R>(
         &mut self,
@@ -190,6 +130,47 @@ impl<T: TypeTheory> Environment<T> {
 
             result
         }
+    }
+}
+
+// variables with reducable bodies
+impl<T: TypeTheory> Environment<T> {
+    fn substitution_stack(&mut self, name: &str) -> &mut Vec<T::Term> {
+        self.deltas.entry(name.to_string()).or_insert_with(Vec::new)
+    }
+
+    pub fn add_substitution(&mut self, name: &str, term: &T::Term) {
+        let definition_stack = self.substitution_stack(name);
+        definition_stack.push(term.clone());
+    }
+
+    pub fn add_substitution_with_type(
+        &mut self,
+        name: &str,
+        term: &T::Term,
+        typee: &T::Type,
+    ) {
+        let definition_stack = self.substitution_stack(name);
+        definition_stack.push(term.clone());
+        self.add_to_context(name, typee);
+    }
+
+    pub fn get_from_deltas(&self, name: &str) -> Option<(String, T::Term)> {
+        self.deltas.get(name).and_then(|definition_stack| {
+            definition_stack
+                .last()
+                .map(|type_| (name.to_string(), type_.clone()))
+        })
+    }
+
+    /// Returns all var_name := body subsitution in the environment
+    pub fn get_deltas(&self) -> HashMap<String, T::Term> {
+        self.deltas
+            .iter()
+            .filter_map(|(name, stack)| {
+                stack.last().map(|term| (name.to_string(), term.to_owned()))
+            })
+            .collect()
     }
 
     /// Add a local variable substitution (ie definition) to the deltas, execute a closure,
@@ -245,10 +226,122 @@ impl<T: TypeTheory> Environment<T> {
         }
     }
 
+    fn remove_substitution(&mut self, name: &str) {
+        let definition_stack = self.substitution_stack(name);
+        definition_stack.pop();
+        if definition_stack.len() == 0 {
+            self.deltas.remove(name);
+        }
+    }
+}
+
+// predicates
+impl<T: TypeTheory> Environment<T> {
+    pub fn add_predicate(&mut self, name: &str, arg_types: &Vec<T::Type>) {
+        self.predicates
+            .insert(name.to_string(), arg_types.to_owned());
+    }
+
+    pub fn get_predicate(&self, type_name: &str) -> Option<Vec<T::Type>> {
+        self.predicates
+            .get(type_name)
+            .map(|arg_types| arg_types.to_owned())
+    }
+}
+
+// constructor store
+impl<T: TypeTheory> Environment<T> {
+    pub fn add_constructor_store(
+        &mut self,
+        name: &str,
+        typee: Vec<(String, T::Type)>,
+    ) {
+        self.constructor_store
+            .insert(name.to_string(), typee.clone());
+    }
+
+    pub fn get_constructors_for(&self, name: &str) -> Option<HashSet<String>> {
+        match self.constructor_store.get(name) {
+            None => None,
+            Some(list) => {
+                let res: HashSet<String> = list
+                    .into_iter()
+                    .map(|(constr_name, _)| constr_name.to_owned())
+                    .collect();
+
+                Some(res)
+            }
+        }
+    }
+}
+
+// other utilities
+impl<T: TypeTheory> Environment<T> {
+    pub fn with_defaults(
+        axioms: Vec<(&str, &T::Type)>,
+        deltas: Vec<(&str, &T::Term, &Option<T::Type>)>,
+        predicates: Vec<(&str, &Vec<T::Type>)>,
+    ) -> Self {
+        let mut context_map = HashMap::new();
+        let mut deltas_map = HashMap::new();
+        let mut predicates_map = HashMap::new();
+
+        for (name, term) in axioms {
+            context_map.insert(name.to_string(), vec![term.clone()]);
+        }
+        for (name, term, typee) in deltas {
+            deltas_map.insert(name.to_string(), vec![term.clone()]);
+            if let Some(typee) = typee.as_ref() {
+                context_map.insert(name.to_string(), vec![typee.clone()]);
+            }
+        }
+        for (name, arg_types) in predicates {
+            predicates_map.insert(name.to_string(), arg_types.clone());
+        }
+
+        Self {
+            context: context_map,
+            deltas: deltas_map,
+            predicates: predicates_map,
+            constructor_store: HashMap::new(),
+            constraints: vec![],
+            next_index: 0,
+        }
+    }
+
+    /// Returns true if `var_name` is present in the context (bound)
+    /// false otherwise (fresh)
+    pub fn is_var_bound(&self, var_name: &str) -> bool {
+        match self.get_from_context(var_name) {
+            Some(_) => true,
+            None => match self.get_from_deltas(var_name) {
+                Some(_) => true,
+                None => false,
+            },
+        }
+    }
+
+    /// Lookup the type of a variable. If x:T is present in the context or was
+    /// registered as a typed substitution x:T=t it returns `Some(T)`,
+    /// None otherwise
+    pub fn get_variable_type(&self, var_name: &str) -> Option<T::Type> {
+        match self.get_from_context(var_name) {
+            Some((_, var_type)) => Some(var_type.clone()),
+            None => None,
+        }
+    }
+
+    // TODO this needs to be checked, its used only in the saturation algorithm
+    // and i think it needs something like get_predicates instead
+    /// Returns the set of constant symbols contained in the context
+    pub fn get_constants(&self) -> HashSet<String> {
+        self.get_context().into_keys().collect()
+    }
+
     /// Runs a callable under a local environment which is a rollbackable copy
     /// of `self` that can be mutated without staining the original environment
     pub fn with_rollback<F: FnOnce(&mut Self) -> R, R>(
-        &mut self,
+        &self,
         callable: F,
     ) -> R {
         let mut cloned = self.clone();
@@ -270,80 +363,15 @@ impl<T: TypeTheory> Environment<T> {
 
         result
     }
-    //
-    //######################### LOCAL ENV UTILS
+}
 
-    //######################### VARIABLE LOOKUPS
-    //
-    pub fn get_from_context(&self, name: &str) -> Option<(String, T::Type)> {
-        self.context.get(name).and_then(|context_stack| {
-            context_stack
-                .last()
-                .map(|type_| (name.to_string(), type_.clone()))
-        })
+impl<T: TypeTheory> Environment<T> {
+    pub fn add_type_constraint(&mut self, left: &T::Type, right: &T::Type) {
+        self.constraints.push(TypeEq(left.clone(), right.clone()));
     }
-
-    pub fn get_from_deltas(&self, name: &str) -> Option<(String, T::Term)> {
-        self.deltas.get(name).and_then(|definition_stack| {
-            definition_stack
-                .last()
-                .map(|type_| (name.to_string(), type_.clone()))
-        })
-    }
-
-    pub fn get_predicate(&self, type_name: &str) -> Option<Vec<T::Type>> {
-        self.predicates
-            .get(type_name)
-            .map(|arg_types| arg_types.to_owned())
-    }
-
     pub fn get_constraints(&self) -> Vec<Constraint<T>> {
         self.constraints.clone()
     }
-
-    pub fn is_var_bound(&self, var_name: &str) -> bool {
-        match self.get_from_context(var_name) {
-            Some(_) => true,
-            None => match self.get_from_deltas(var_name) {
-                Some(_) => true,
-                None => false,
-            },
-        }
-    }
-
-    pub fn get_variable_type(&self, var_name: &str) -> Option<T::Type> {
-        match self.get_from_context(var_name) {
-            Some((_, var_type)) => Some(var_type.clone()),
-            None => None,
-        }
-    }
-
-    /// Returns all var_name : VarType bindings in the context
-    pub fn get_context(&self) -> HashMap<String, T::Type> {
-        self.context
-            .iter()
-            .filter_map(|(name, stack)| {
-                stack.last().map(|ty| (name.to_string(), ty.to_owned()))
-            })
-            .collect()
-    }
-
-    /// Returns all var_name := body subsitution in the environment
-    pub fn get_deltas(&self) -> HashMap<String, T::Term> {
-        self.deltas
-            .iter()
-            .filter_map(|(name, stack)| {
-                stack.last().map(|term| (name.to_string(), term.to_owned()))
-            })
-            .collect()
-    }
-
-    /// Returns the set of constant symbols contained in the context
-    pub fn get_constants(&self) -> HashSet<String> {
-        self.get_context().into_keys().collect()
-    }
-    //
-    //######################### VARIABLE LOOKUPS
 }
 
 #[cfg(test)]

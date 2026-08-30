@@ -121,13 +121,16 @@ pub fn evaluate_inductive(
     ariety: &CicTerm,
     constructors: &Vec<(String, CicTerm)>,
 ) -> Result<(), String> {
-    //TODO make a record of the full constructor list for match type checking
     let ind_type = make_multiarg_fun_type(params, ariety);
     environment.add_to_context(name, &ind_type);
+
+    let mut constr_set = vec![];
     for (constr_name, constr_type) in constructors {
         let constr_type = make_multiarg_fun_type(&params, constr_type);
         environment.add_to_context(constr_name, &constr_type);
+        constr_set.push((constr_name.to_string(), constr_type));
     }
+
     environment.add_to_context(
         &format!("e_{}", name),
         &inductive_eliminator(
@@ -137,6 +140,8 @@ pub fn evaluate_inductive(
             constructors.to_owned(),
         ),
     );
+    environment.add_constructor_store(name, constr_set);
+
     Ok(())
 }
 //########################### STATEMENTS EXECUTION
