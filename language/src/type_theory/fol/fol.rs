@@ -1,6 +1,7 @@
 use super::elaboration::{elaborate_expression, elaborate_statement};
 use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::type_check::{type_check_arrow, type_check_forall};
+use crate::error::LofError;
 use crate::misc::Union::{self, L, R};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
@@ -96,28 +97,28 @@ impl TypeTheory for Fol {
     fn base_term_equality(
         term1: &Self::Term,
         term2: &Self::Term,
-    ) -> Result<(), String> {
+    ) -> Result<(), LofError> {
         if *term1 == *term2 {
             Ok(())
         } else {
-            Err(format!("{:?} and {:?} are not equal", term1, term2))
+            Err(LofError::type_mismatch("equality check", term1, term2))
         }
     }
     fn base_type_equality(
         type1: &Self::Type,
         type2: &Self::Type,
-    ) -> Result<(), String> {
+    ) -> Result<(), LofError> {
         if *type1 == *type2 {
             Ok(())
         } else {
-            Err(format!("{:?} and {:?} are not equal", type1, type2))
+            Err(LofError::type_mismatch("equality check", type1, type2))
         }
     }
 
-    fn elaborate_expression(exp: &Expression) -> Result<Self::Exp, String> {
+    fn elaborate_expression(exp: &Expression) -> Result<Self::Exp, LofError> {
         elaborate_expression(exp)
     }
-    fn elaborate_statement(stm: &Statement) -> Result<Schedule<Fol>, String> {
+    fn elaborate_statement(stm: &Statement) -> Result<Schedule<Fol>, LofError> {
         elaborate_statement(stm)
     }
 }
@@ -126,7 +127,7 @@ impl Kernel for Fol {
     fn type_check_expression(
         exp: &Union<FolTerm, FolFormula>,
         environment: &mut Environment<Fol>,
-    ) -> Result<Self::Type, String> {
+    ) -> Result<Self::Type, LofError> {
         match exp {
             L(term) => Fol::type_check_term(term, environment),
             R(typee) => Fol::type_check_type(typee, environment),
@@ -136,7 +137,7 @@ impl Kernel for Fol {
     fn type_check_term(
         term: &FolTerm,
         environment: &mut Environment<Fol>,
-    ) -> Result<FolFormula, String> {
+    ) -> Result<FolFormula, LofError> {
         match term {
             Variable(var_name) => {
                 type_check_variable::<Fol>(environment, var_name)
@@ -174,7 +175,7 @@ impl Kernel for Fol {
     fn type_check_type(
         typee: &FolFormula,
         environment: &mut Environment<Fol>,
-    ) -> Result<FolFormula, String> {
+    ) -> Result<FolFormula, LofError> {
         match typee {
             Predicate(type_name, args) => {
                 type_check_predicate(environment, type_name, args)
@@ -193,8 +194,9 @@ impl Kernel for Fol {
                 type_check_disjunction(environment, sub_formulas)
             }
             _ => {
-                Err("TODO: Existential type checking not yet supported"
-                    .to_string())
+                Err(LofError::unsupported(
+                    "TODO: Existential type checking not yet supported",
+                ))
             }
         }
     }
@@ -203,7 +205,7 @@ impl Kernel for Fol {
     fn type_check_stm(
         stm: &Self::Stm,
         environment: &mut Environment<Fol>,
-    ) -> Result<Self::Type, String> {
+    ) -> Result<Self::Type, LofError> {
         match stm {
             Axiom(axiom_name, predicate) => {
                 type_check_axiom::<Fol>(environment, axiom_name, predicate)
@@ -273,7 +275,7 @@ impl Reducer for Fol {
     fn evaluate_statement(
         environment: &mut Environment<Fol>,
         stm: &FolStm,
-    ) -> Result<(), String> {
+    ) -> Result<(), LofError> {
         evaluate_statement(environment, stm)
     }
 }
@@ -294,7 +296,7 @@ impl Interactive for Fol {
         tactic: &Tactic<Self::Exp>,
         target: &Self::Type,
         partial_proof: &Self::Term,
-    ) -> Result<(Self::Term, Vec<Self::Type>), String> {
-        Err("not implemented".to_string())
+    ) -> Result<(Self::Term, Vec<Self::Type>), LofError> {
+        Err(LofError::unsupported("FOL tactic checking is not implemented"))
     }
 }

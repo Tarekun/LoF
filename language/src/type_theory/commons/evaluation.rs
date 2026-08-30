@@ -1,5 +1,6 @@
 use crate::{
     config::global_config,
+    error::LofError,
     misc::Union,
     parser::api::Tactic,
     type_theory::{
@@ -102,7 +103,7 @@ pub fn evaluate_global<T: TypeTheory + Kernel>(
     var_name: &str,
     var_type: &Option<T::Type>,
     body: &T::Term,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     let var_type: &T::Type = match var_type {
         Some(type_term) => type_term,
         None => {
@@ -132,7 +133,7 @@ pub fn evaluate_fun<
     _is_rec: &bool,
     fun_type_constructor: C,
     eta_wrap: E,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     let fun_type = fun_type_constructor(args, out_type);
     let body = eta_expand::<T, _>(args, body, eta_wrap);
     environment.add_substitution_with_type(fun_name, &body, &fun_type);
@@ -144,7 +145,7 @@ pub fn evaluate_axiom<T: TypeTheory>(
     environment: &mut Environment<T>,
     axiom_name: &str,
     formula: &T::Type,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     environment.add_to_context(axiom_name, formula);
     Ok(())
 }
@@ -156,7 +157,7 @@ pub fn evaluate_theorem<T: TypeTheory, E>(
     theorem_name: &str,
     formula: &T::Type,
     _proof: &Union<T::Term, Vec<Tactic<E>>>,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     environment.add_to_context(&theorem_name, &formula);
     Ok(())
 }
@@ -165,8 +166,8 @@ pub fn evaluate_theorem<T: TypeTheory, E>(
 /// and running SUP saturation algorithm with the clausified set of formulas
 pub fn evaluate_auto<
     T: TypeTheory + Kernel,
-    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
-    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, String>,
+    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, LofError>,
+    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, LofError>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
@@ -174,8 +175,8 @@ pub fn evaluate_auto<
     clausify: C,
     term_to_sup: S,
     complement: G,
-) -> Result<(), String> {
-    match &saturation_interface(
+) -> Result<(), LofError> {
+    match saturation_interface(
         environment,
         &vec![target.to_owned()],
         clausify,
@@ -189,9 +190,9 @@ pub fn evaluate_auto<
             );
             Ok(())
         }
-        Err(msg) => {
-            println!("ATP algorithm failed: {msg}");
-            return Err(msg.to_string());
+        Err(err) => {
+            println!("ATP algorithm failed: {err}");
+            Err(err)
         }
     }
 }
@@ -201,8 +202,8 @@ pub fn evaluate_auto<
 /// Unlike evaluate_auto, this calls saturate directly to recover the Substitution.
 pub fn evaluate_solve<
     T: TypeTheory + Kernel,
-    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
-    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, String>,
+    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, LofError>,
+    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, LofError>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
@@ -210,8 +211,8 @@ pub fn evaluate_solve<
     clausify: C,
     term_to_sup: S,
     complement: G,
-) -> Result<(), String> {
-    match &saturation_interface(
+) -> Result<(), LofError> {
+    match saturation_interface(
         environment,
         goals,
         clausify,
@@ -223,17 +224,17 @@ pub fn evaluate_solve<
             println!("solve succeeded:\n{:?}", substitution);
             Ok(())
         }
-        Err(msg) => {
-            println!("solve failed: {msg}");
-            Err(msg.to_string())
+        Err(err) => {
+            println!("solve failed: {err}");
+            Err(err)
         }
     }
 }
 
 fn saturation_interface<
     T: TypeTheory + Kernel,
-    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, String>,
-    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, String>,
+    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, LofError>,
+    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, LofError>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
@@ -241,7 +242,7 @@ fn saturation_interface<
     clausify: C,
     term_to_sup: S,
     complement: G,
-) -> Result<Substitution<SupTerm>, String> {
+) -> Result<Substitution<SupTerm>, LofError> {
     let mut saturation_set = vec![];
     let constants = environment.get_constants();
     let config = global_config();

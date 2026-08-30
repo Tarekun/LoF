@@ -2,7 +2,9 @@ use super::sup::{
     SupFormula::{self, Equality, ForAll, Not},
     SupTerm::{self, Variable},
 };
-use crate::{config::GivingClause, type_theory::interface::Automatic};
+use crate::{
+    config::GivingClause, error::LofError, type_theory::interface::Automatic,
+};
 use crate::{
     config::SelectionFunction::{self, All, Maximal},
     type_theory::sup::sup::Sup,
@@ -61,7 +63,7 @@ pub fn drop_maximal_literals(clause: &mut Vec<SupFormula>) -> Vec<SupFormula> {
 /// Function signature for strategies that pick the next given clause to process
 /// from the unprocessed set.
 pub type GivingClauseSignature =
-    fn(&mut Vec<SupFormula>) -> Result<SupFormula, String>;
+    fn(&mut Vec<SupFormula>) -> Result<SupFormula, LofError>;
 
 pub fn get_giving_clause_fn(strategy: GivingClause) -> GivingClauseSignature {
     match strategy {
@@ -98,20 +100,20 @@ fn clause_weight(φ: &SupFormula) -> usize {
 /// Picks the next clause FIFO (first in, first out).
 pub fn pick_clause(
     clauses: &mut Vec<SupFormula>,
-) -> Result<SupFormula, String> {
+) -> Result<SupFormula, LofError> {
     Ok(clauses.remove(0))
 }
 
 /// Picks the lightest (shortest / shallowest) clause from the unprocessed set.
 pub fn pick_clause_weighted(
     clauses: &mut Vec<SupFormula>,
-) -> Result<SupFormula, String> {
+) -> Result<SupFormula, LofError> {
     let min_idx = clauses
         .iter()
         .enumerate()
         .min_by_key(|(_, c)| clause_weight(c))
         .map(|(i, _)| i)
-        .ok_or_else(|| "No clauses to pick".to_string())?;
+        .ok_or_else(|| LofError::custom("No clauses to pick"))?;
     Ok(clauses.remove(min_idx))
 }
 

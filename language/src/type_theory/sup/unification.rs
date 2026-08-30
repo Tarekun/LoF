@@ -1,3 +1,4 @@
+use crate::error::LofError;
 use crate::type_theory::commons::unification::{unify_with_base, Substitution};
 use crate::type_theory::sup::sup_utils::substitute_term;
 use crate::type_theory::sup::{
@@ -34,14 +35,14 @@ fn occurs(term: &SupTerm, var_name: &str) -> bool {
 pub fn terms_unify(
     term1: &SupTerm,
     term2: &SupTerm,
-) -> Result<Substitution<SupTerm>, String> {
+) -> Result<Substitution<SupTerm>, LofError> {
     terms_unify_with_base(term1, term2, &mut Substitution::empty())
 }
 fn terms_unify_with_base(
     term1: &SupTerm,
     term2: &SupTerm,
     mgu: &mut Substitution<SupTerm>,
-) -> Result<Substitution<SupTerm>, String> {
+) -> Result<Substitution<SupTerm>, LofError> {
     let mgu = unify_with_base(
         term1,
         term2,
@@ -64,17 +65,14 @@ fn terms_unify_with_base(
 pub fn formulas_unify(
     phi: &SupFormula,
     psi: &SupFormula,
-) -> Result<Substitution<SupTerm>, String> {
+) -> Result<Substitution<SupTerm>, LofError> {
     //TODO im pretty sure this can be implemented with commons unification over the SupFormula grammar
     fn solver(
         phi: &SupFormula,
         psi: &SupFormula,
         mgu: &mut Substitution<SupTerm>,
-    ) -> Result<Substitution<SupTerm>, String> {
-        let error = Err(format!(
-            "Formulas {:?} and {:?} could not be unified",
-            phi, psi
-        ));
+    ) -> Result<Substitution<SupTerm>, LofError> {
+        let error = Err(LofError::unification_failure(phi, psi));
         match (phi, psi) {
             (Atom(p1, args1), Atom(p2, args2)) => {
                 if p1 != p2 || args1.len() != args2.len() {

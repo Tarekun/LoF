@@ -1,3 +1,4 @@
+use crate::error::LofError;
 use crate::misc::Union::{self, L, R};
 use crate::parser::api::{Expression, LofAst, Statement, Tactic};
 use crate::runtime::program::{
@@ -37,7 +38,7 @@ pub trait TypeTheory {
     fn base_term_equality(
         term1: &Self::Term,
         term2: &Self::Term,
-    ) -> Result<(), String>;
+    ) -> Result<(), LofError>;
 
     /// Computes default system equality. Returns Ok(()) if the check is
     /// successfull, an error message otherwise.
@@ -45,16 +46,16 @@ pub trait TypeTheory {
     fn base_type_equality(
         type1: &Self::Type,
         type2: &Self::Type,
-    ) -> Result<(), String>;
+    ) -> Result<(), LofError>;
 
-    fn elaborate_expression(exp: &Expression) -> Result<Self::Exp, String>;
-    fn elaborate_statement(stm: &Statement) -> Result<Schedule<Self>, String>
+    fn elaborate_expression(exp: &Expression) -> Result<Self::Exp, LofError>;
+    fn elaborate_statement(stm: &Statement) -> Result<Schedule<Self>, LofError>
     where
         Self: Sized;
 
     fn elaborate_node(
         node: &LofAst,
-    ) -> Result<Union<Self::Exp, Self::Stm>, String>
+    ) -> Result<Union<Self::Exp, Self::Stm>, LofError>
     where
         Self: Sized,
     {
@@ -68,14 +69,16 @@ pub trait TypeTheory {
                     .to_owned();
                 match first_stm {
                     OfStm(stm) => Ok(R(stm)),
-                    OfExp(_) => Err("TODO".to_string()),
+                    OfExp(_) => Err(LofError::custom(
+                        "elaborate_node: TODO nested statements have no schedule concept yet",
+                    )),
                 }
             }
         }
     }
 
     /// Elaborate a full AST into a program.
-    fn elaborate_ast(ast: &LofAst) -> Result<Schedule<Self>, String>
+    fn elaborate_ast(ast: &LofAst) -> Result<Schedule<Self>, LofError>
     where
         Self: Sized,
     {
@@ -102,7 +105,7 @@ pub trait Kernel: TypeTheory {
     fn type_check_term(
         term: &Self::Term,
         environment: &mut Environment<Self>,
-    ) -> Result<Self::Type, String>
+    ) -> Result<Self::Type, LofError>
     where
         Self: Sized;
 
@@ -110,7 +113,7 @@ pub trait Kernel: TypeTheory {
     fn type_check_type(
         typee: &Self::Type,
         environment: &mut Environment<Self>,
-    ) -> Result<Self::Type, String>
+    ) -> Result<Self::Type, LofError>
     where
         Self: Sized;
 
@@ -118,7 +121,7 @@ pub trait Kernel: TypeTheory {
     fn type_check_expression(
         exp: &Self::Exp,
         environment: &mut Environment<Self>,
-    ) -> Result<Self::Type, String>
+    ) -> Result<Self::Type, LofError>
     where
         Self: Sized;
 
@@ -126,7 +129,7 @@ pub trait Kernel: TypeTheory {
     fn type_check_stm(
         term: &Self::Stm,
         environment: &mut Environment<Self>,
-    ) -> Result<Self::Type, String>
+    ) -> Result<Self::Type, LofError>
     where
         Self: Sized;
 }
@@ -135,7 +138,7 @@ pub trait TypeInference: TypeTheory {
     fn type_unify(
         type1: &Self::Type,
         type2: &Self::Type,
-    ) -> Result<Substitution<Self::Type>, String>;
+    ) -> Result<Substitution<Self::Type>, LofError>;
 
     fn apply_so_substitution(
         typ: &Self::Type,
@@ -149,7 +152,7 @@ pub trait Refiner: TypeTheory {
     fn term_collect_unifications(
         term: &Self::Term,
         environment: &mut Environment<Self>,
-    ) -> Result<Vec<(Self::Exp, Self::Exp)>, String>
+    ) -> Result<Vec<(Self::Exp, Self::Exp)>, LofError>
     where
         Self: Sized;
 
@@ -157,7 +160,7 @@ pub trait Refiner: TypeTheory {
     fn type_collect_unifications(
         typee: &Self::Type,
         environment: &mut Environment<Self>,
-    ) -> Result<Vec<(Self::Exp, Self::Exp)>, String>
+    ) -> Result<Vec<(Self::Exp, Self::Exp)>, LofError>
     where
         Self: Sized;
 
@@ -166,7 +169,7 @@ pub trait Refiner: TypeTheory {
     fn solve_unifications(
         constraints: Vec<(Self::Exp, Self::Exp)>,
         environment: &mut Environment<Self>,
-    ) -> Result<Substitution<Self::Exp>, String>
+    ) -> Result<Substitution<Self::Exp>, LofError>
     where
         Self: Sized;
 
@@ -188,7 +191,7 @@ pub trait Refiner: TypeTheory {
         environment: &mut Environment<Self>,
         term1: &Self::Term,
         term2: &Self::Term,
-    ) -> bool
+    ) -> Result<(), LofError>
     where
         Self: Sized;
 
@@ -198,7 +201,7 @@ pub trait Refiner: TypeTheory {
         environment: &mut Environment<Self>,
         type1: &Self::Type,
         type2: &Self::Type,
-    ) -> bool
+    ) -> Result<(), LofError>
     where
         Self: Sized;
 }
@@ -233,7 +236,7 @@ pub trait Reducer: TypeTheory {
     fn evaluate_statement(
         environment: &mut Environment<Self>,
         stm: &Self::Stm,
-    ) -> Result<(), String>
+    ) -> Result<(), LofError>
     where
         Self: Sized;
 }
@@ -252,7 +255,7 @@ pub trait Interactive: TypeTheory {
         tactic: &Tactic<Self::Exp>,
         target: &Self::Type,
         partial_proof: &Self::Term,
-    ) -> Result<(Self::Term, Vec<Self::Type>), String>
+    ) -> Result<(Self::Term, Vec<Self::Type>), LofError>
     where
         Self: Sized;
 }
@@ -274,5 +277,5 @@ pub trait Automatic: TypeTheory {
         saturation_set: &Vec<Self::Type>,
         selection_fn: &SelectionFunctionSignature,
         giving_clause_fn: &GivingClauseSignature,
-    ) -> Result<Substitution<Self::Term>, String>;
+    ) -> Result<Substitution<Self::Term>, LofError>;
 }

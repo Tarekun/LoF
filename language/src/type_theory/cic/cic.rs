@@ -2,6 +2,7 @@ use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::tactics::type_check_tactic;
 use super::type_check::type_check_sort;
 use super::unification::cic_so_unification;
+use crate::error::LofError;
 use crate::misc::Union::{self};
 use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
@@ -101,7 +102,7 @@ impl TypeTheory for Cic {
     fn base_term_equality(
         term1: &CicTerm,
         term2: &CicTerm,
-    ) -> Result<(), String> {
+    ) -> Result<(), LofError> {
         // tbh im not really sure these specific functions should use unification instead of syntactic equality
         let _ = cic_so_unification(term1, term2)?;
         Ok(())
@@ -109,16 +110,16 @@ impl TypeTheory for Cic {
     fn base_type_equality(
         type1: &CicTerm,
         type2: &CicTerm,
-    ) -> Result<(), String> {
+    ) -> Result<(), LofError> {
         // tbh im not really sure these specific functions should use unification instead of syntactic equality
         let _ = cic_so_unification(type1, type2)?;
         Ok(())
     }
 
-    fn elaborate_expression(exp: &Expression) -> Result<CicTerm, String> {
+    fn elaborate_expression(exp: &Expression) -> Result<CicTerm, LofError> {
         Ok(elaborate_expression(exp))
     }
-    fn elaborate_statement(stm: &Statement) -> Result<Schedule<Cic>, String> {
+    fn elaborate_statement(stm: &Statement) -> Result<Schedule<Cic>, LofError> {
         elaborate_statement(stm)
     }
 }
@@ -127,7 +128,7 @@ impl Kernel for Cic {
     fn type_check_expression(
         term: &CicTerm,
         environment: &mut Environment<Cic>,
-    ) -> Result<CicTerm, String> {
+    ) -> Result<CicTerm, LofError> {
         match term {
             CicTerm::Sort(sort_name) => type_check_sort(environment, sort_name),
             CicTerm::Variable(var_name, _) => {
@@ -190,7 +191,7 @@ impl Kernel for Cic {
     fn type_check_term(
         term: &CicTerm,
         environment: &mut Environment<Cic>,
-    ) -> Result<CicTerm, String> {
+    ) -> Result<CicTerm, LofError> {
         debug!("Term-type checking of {:?}", term);
         Cic::type_check_expression(term, environment)
     }
@@ -198,19 +199,21 @@ impl Kernel for Cic {
     fn type_check_type(
         typee: &CicTerm,
         environment: &mut Environment<Cic>,
-    ) -> Result<CicTerm, String> {
+    ) -> Result<CicTerm, LofError> {
         debug!("Type-type checking of {:?}", typee);
         let type_sort = Cic::type_check_expression(typee, environment)?;
         match type_sort {
             CicTerm::Sort(_) => Ok(type_sort),
-            _ => Err(format!("Expected a sort, found: {:?}", typee)),
+            _ => {
+                Err(LofError::type_mismatch("type checking", &"a sort", typee))
+            }
         }
     }
 
     fn type_check_stm(
         stm: &CicStm,
         environment: &mut Environment<Cic>,
-    ) -> Result<CicTerm, String> {
+    ) -> Result<CicTerm, LofError> {
         debug!("Type-type checking of {:?}", stm);
         match stm {
             CicStm::Global(var_name, opt_type, body) => {
@@ -264,7 +267,7 @@ impl TypeInference for Cic {
     fn type_unify(
         type1: &CicTerm,
         type2: &CicTerm,
-    ) -> Result<Substitution<CicTerm>, String> {
+    ) -> Result<Substitution<CicTerm>, LofError> {
         cic_so_unification(type1, type2)
     }
     fn apply_so_substitution(
@@ -287,7 +290,7 @@ impl Refiner for Cic {
     fn solve_unifications(
         constraints: Vec<(CicTerm, CicTerm)>,
         environment: &mut Environment<Cic>,
-    ) -> Result<Substitution<CicTerm>, String>
+    ) -> Result<Substitution<CicTerm>, LofError>
     where
         Self: Sized,
     {
@@ -297,14 +300,14 @@ impl Refiner for Cic {
     fn term_collect_unifications(
         exp: &CicTerm,
         environment: &mut Environment<Cic>,
-    ) -> Result<Vec<(CicTerm, CicTerm)>, String> {
+    ) -> Result<Vec<(CicTerm, CicTerm)>, LofError> {
         cic_collect_unifications(exp, environment)
     }
 
     fn type_collect_unifications(
         exp: &CicTerm,
         environment: &mut Environment<Cic>,
-    ) -> Result<Vec<(CicTerm, CicTerm)>, String> {
+    ) -> Result<Vec<(CicTerm, CicTerm)>, LofError> {
         cic_collect_unifications(exp, environment)
     }
 
@@ -326,24 +329,24 @@ impl Refiner for Cic {
         environment: &mut Environment<Cic>,
         term1: &CicTerm,
         term2: &CicTerm,
-    ) -> bool {
+    ) -> Result<(), LofError> {
         cic_solve_unifications(
             vec![(term1.to_owned(), term2.to_owned())],
             environment,
-        )
-        .is_ok()
+        )?;
+        Ok(())
     }
 
     fn types_unify(
         environment: &mut Environment<Cic>,
         type1: &CicTerm,
         type2: &CicTerm,
-    ) -> bool {
+    ) -> Result<(), LofError> {
         cic_solve_unifications(
             vec![(type1.to_owned(), type2.to_owned())],
             environment,
-        )
-        .is_ok()
+        )?;
+        Ok(())
     }
 }
 
@@ -379,7 +382,7 @@ impl Reducer for Cic {
     fn evaluate_statement(
         environment: &mut Environment<Cic>,
         stm: &Self::Stm,
-    ) -> Result<(), String> {
+    ) -> Result<(), LofError> {
         debug!("Evaluating statement: {:?}", stm);
         evaluate_statement(environment, stm)
     }
@@ -398,7 +401,7 @@ impl Interactive for Cic {
         tactic: &Tactic<CicTerm>,
         target: &CicTerm,
         partial_proof: &CicTerm,
-    ) -> Result<(CicTerm, Vec<CicTerm>), String> {
+    ) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
         type_check_tactic(environment, tactic, target, partial_proof)
     }
 }

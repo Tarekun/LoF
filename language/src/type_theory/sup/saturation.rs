@@ -1,6 +1,7 @@
 use super::sup::SupFormula::{self, Clause};
 use super::sup::SupTerm::Variable;
 use super::sup_utils::subsumes;
+use crate::error::LofError;
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::sup::freedom::{
     GivingClauseSignature, SelectionFunctionSignature,
@@ -109,7 +110,7 @@ pub fn saturate(
     clauses: &Vec<SupFormula>,
     selection_fn: &SelectionFunctionSignature,
     giving_clause_fn: GivingClauseSignature,
-) -> Result<Substitution<SupTerm>, String> {
+) -> Result<Substitution<SupTerm>, LofError> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
     let mut solving_mgu = Substitution::empty();
@@ -133,9 +134,9 @@ pub fn saturate(
 
     loop {
         if unprocessed.is_empty() {
-            return Err(
-                "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along".to_string()
-            );
+            return Err(LofError::custom(
+                "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along",
+            ));
         }
 
         let clause = giving_clause_fn(&mut unprocessed)?;

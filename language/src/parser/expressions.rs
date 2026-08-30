@@ -5,16 +5,17 @@ use super::api::{
     },
     LofParser,
 };
+use super::api::PResult;
 use super::commons::{ws0, ws1};
+use crate::error::LofError;
 use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::char,
     combinator::{map, opt},
-    error::{Error, ErrorKind},
+    error::ErrorKind,
     multi::{many0, many1},
     sequence::{delimited, preceded, tuple},
-    IResult,
 };
 use std::collections::HashMap;
 
@@ -23,7 +24,7 @@ impl LofParser {
     pub fn parse_parens<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         delimited(
             preceded(ws0, char('(')),
             |input| self.parse_expression(input),
@@ -32,7 +33,7 @@ impl LofParser {
     }
     //
     //
-    fn parse_var<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
+    fn parse_var<'a>(&self, input: &'a str) -> PResult<'a, Expression> {
         map(
             |input| self.parse_identifier(input),
             |s: &str| VarUse(s.to_string()),
@@ -40,7 +41,7 @@ impl LofParser {
     }
     //
     //
-    fn parse_abs<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
+    fn parse_abs<'a>(&self, input: &'a str) -> PResult<'a, Expression> {
         let (input, _) =
             preceded(ws0, alt((tag("λ"), tag("\\lambda "))))(input)?;
 
@@ -79,7 +80,7 @@ impl LofParser {
     fn parse_type_abs<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         let (input, _) = preceded(
             ws0,
             alt((tag("Π"), tag("∀"), tag("\\forall"))),
@@ -108,7 +109,7 @@ impl LofParser {
     fn parse_arrow_type<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         let (input, domain) = alt((
             |input| self.parse_parens(input),
             |input| self.parse_app(input),
@@ -124,7 +125,7 @@ impl LofParser {
     fn applicable_expression<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         alt((
             |input| self.parse_var(input),
             |input| self.parse_abs(input),
@@ -136,14 +137,14 @@ impl LofParser {
     fn argument_expression<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         alt((
             |input| self.parse_var(input),
             |input| self.parse_meta(input),
             |input| self.parse_parens(input),
         ))(input)
     }
-    fn parse_app<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
+    fn parse_app<'a>(&self, input: &'a str) -> PResult<'a, Expression> {
         let (input, left) =
             preceded(ws0, |input| self.applicable_expression(input))(input)?;
         let (input, args) = many1(preceded(ws1, |input| {
@@ -157,7 +158,7 @@ impl LofParser {
     fn parse_pattern<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         let (input, construction) = alt((
             |input| self.parse_app(input),
             |input| self.parse_custom(input),
@@ -171,7 +172,7 @@ impl LofParser {
     fn parse_match_branch<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, (Expression, Expression)> {
+    ) -> PResult<'a, (Expression, Expression)> {
         let (input, _) = preceded(ws0, char('|'))(input)?;
         let (input, pattern) = self.parse_pattern(input)?;
         let (input, _) = preceded(ws0, tag("=>"))(input)?;
@@ -184,7 +185,7 @@ impl LofParser {
     fn parse_pattern_match<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         let (input, _) = preceded(ws0, tag("match"))(input)?;
         let (input, term) =
             preceded(ws1, |input| self.parse_expression(input))(input)?;
@@ -195,13 +196,13 @@ impl LofParser {
         Ok((input, Match(Box::new(term), branches)))
     }
 
-    fn parse_meta<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
+    fn parse_meta<'a>(&self, input: &'a str) -> PResult<'a, Expression> {
         let (input, _) = preceded(ws0, char('?'))(input)?;
 
         Ok((input, Inferator()))
     }
 
-    fn let_def<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
+    fn let_def<'a>(&self, input: &'a str) -> PResult<'a, Expression> {
         let (input, _) = preceded(ws0, tag("let"))(input)?;
         let (input, (var_name, opt_type)) = preceded(ws1, |input| {
             self.parse_optionally_typed_identifier(input)
@@ -224,7 +225,7 @@ impl LofParser {
         ))
     }
 
-    fn parse_pipe<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
+    fn parse_pipe<'a>(&self, input: &'a str) -> PResult<'a, Expression> {
         // TODO should i avoid returning here if there's no '|' ?
         // so this doesnt conflict with other parsers
         let (input, first_type) =
@@ -244,7 +245,7 @@ impl LofParser {
         Ok((input, Pipe(all_types)))
     }
 
-    fn parse_tuple<'a>(&self, input: &'a str) -> IResult<&'a str, Expression> {
+    fn parse_tuple<'a>(&self, input: &'a str) -> PResult<'a, Expression> {
         let (input, _) = preceded(ws0, char('('))(input)?;
 
         let (input, first_expr) = self.parse_expression(input)?;
@@ -268,7 +269,7 @@ impl LofParser {
     pub fn parse_custom<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         for (_, notation) in self.custom_notations.borrow().iter() {
             let mut remaining = input;
             let mut arguments: HashMap<&str, Expression> = HashMap::new();
@@ -308,14 +309,14 @@ impl LofParser {
         }
 
         // TODO return a better error here
-        let error = nom::Err::Error(Error::new(input, ErrorKind::Tag));
+        let error = nom::Err::Error(LofError::parse_error(input, ErrorKind::Tag));
         return Err(error);
     }
 
     fn non_custom_expression<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         alt((
             |input| self.parse_meta(input),
             |input| self.parse_abs(input),
@@ -337,7 +338,7 @@ impl LofParser {
     pub fn local_expression<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         alt((
             |input| self.let_def(input),
             |input| self.parse_expression(input),
@@ -347,7 +348,7 @@ impl LofParser {
     pub fn parse_type_expression<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         alt((
             |input| self.parse_arrow_type(input),
             |input| self.parse_parens(input),
@@ -363,7 +364,7 @@ impl LofParser {
     pub fn parse_expression<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Expression> {
+    ) -> PResult<'a, Expression> {
         alt((
             |input| self.parse_meta(input),
             |input| self.parse_abs(input),

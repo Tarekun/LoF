@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::error::LofError;
 use crate::misc::Union::{L, R};
 use crate::parser::api::LofAst;
 use crate::parser::api::LofParser;
@@ -19,7 +20,7 @@ pub enum EntryPoint {
     Interactive,
 }
 
-pub fn parse_only(config: &Config, workspace: &str) -> Result<LofAst, String> {
+pub fn parse_only(config: &Config, workspace: &str) -> Result<LofAst, LofError> {
     debug!("Parsing of workspace: '{}'...", workspace);
     let parser = LofParser::new(config.clone());
     let ast = parser.parse_workspace(config, &workspace)?;
@@ -32,7 +33,7 @@ pub fn parse_only(config: &Config, workspace: &str) -> Result<LofAst, String> {
 pub fn parse_and_elaborate<T: TypeTheory + Kernel>(
     config: &Config,
     workspace: &str,
-) -> Result<Schedule<T>, String> {
+) -> Result<Schedule<T>, LofError> {
     let ast = parse_only(config, workspace)?;
 
     debug!("Elaboration of the AST into a program...");
@@ -48,7 +49,7 @@ pub fn parse_and_elaborate<T: TypeTheory + Kernel>(
 pub fn type_check<T: TypeTheory + Kernel + Reducer>(
     config: &Config,
     workspace: &str,
-) -> Result<Schedule<T>, String> {
+) -> Result<Schedule<T>, LofError> {
     let schedule = parse_and_elaborate::<T>(config, workspace)?;
     debug!("Type checking of the program...");
     let mut environment: Environment<T> = T::default_environment();
@@ -83,30 +84,25 @@ pub fn type_check<T: TypeTheory + Kernel + Reducer>(
     if errors.is_empty() {
         Ok(schedule)
     } else {
-        Err(format!(
-            "Type checking failed with errors:\n{}",
-            errors.join("\n")
-        ))
+        Err(LofError::aggregate(errors))
     }
 }
 
 pub fn execute<T: TypeTheory + Kernel + Reducer>(
     config: &Config,
     workspace: &str,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     let schedule: Schedule<T> = type_check(config, workspace)?;
     let mut program = Program::with_schedule(schedule);
     program.execute()
 }
 
-pub fn read_input() -> Result<String, String> {
+pub fn read_input() -> Result<String, LofError> {
     let mut buffer = String::new();
 
     loop {
         let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .map_err(|e| e.to_string())?;
+        io::stdin().read_line(&mut input)?;
         buffer.push_str(&input);
 
         if buffer.ends_with("\\\n") || buffer.ends_with("\\\r\n") {
@@ -124,7 +120,7 @@ pub fn read_input() -> Result<String, String> {
 pub fn interactive<T: TypeTheory + Kernel + Reducer>(
     config: &Config,
     _workspace: &str,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     let parser = LofParser::new(config.clone());
     let mut program: Program<T> = Program::new();
 

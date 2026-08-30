@@ -1,3 +1,4 @@
+use crate::error::LofError;
 use crate::runtime::program::ProgramNode::{OfExp, OfStm};
 use crate::type_theory::{
     environment::Environment,
@@ -82,17 +83,17 @@ where
     pub fn execute_expression(
         &mut self,
         exp: &T::Exp,
-    ) -> Result<T::Exp, String> {
+    ) -> Result<T::Exp, LofError> {
         //TODO do something with the result
         Ok(T::normalize_expression(&mut self.environment, exp))
     }
 
-    pub fn execute_statement(&mut self, stm: &T::Stm) -> Result<(), String> {
+    pub fn execute_statement(&mut self, stm: &T::Stm) -> Result<(), LofError> {
         T::evaluate_statement(&mut self.environment, stm)
     }
 
     /// Execute the prorgam schedule
-    pub fn execute(&mut self) -> Result<(), String> {
+    pub fn execute(&mut self) -> Result<(), LofError> {
         let nodes: Vec<_> = self.schedule.iter().cloned().collect();
         for node in nodes {
             match node {

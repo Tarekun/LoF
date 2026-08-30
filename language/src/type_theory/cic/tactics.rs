@@ -1,6 +1,7 @@
 use super::cic::CicTerm;
 use super::cic::CicTerm::{Abstraction, Application, Product};
 use super::cic_utils::swap_body;
+use crate::error::LofError;
 use crate::parser::api::Tactic::{self, Apply, Exact, Intro};
 use crate::type_theory::cic::cic::Cic;
 use crate::type_theory::cic::cic_utils::{get_arg_types, get_prod_innermost};
@@ -14,7 +15,7 @@ pub fn type_check_tactic(
     tactic: &Tactic<CicTerm>,
     target: &CicTerm,
     partial_proof: &CicTerm,
-) -> Result<(CicTerm, Vec<CicTerm>), String> {
+) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
     match tactic {
         Intro(ass_name, ass_type) => type_check_intro(
             environment,
@@ -29,10 +30,10 @@ pub fn type_check_tactic(
         Apply(lemma) => {
             type_check_apply(environment, target, partial_proof, lemma)
         }
-        _ => Err(format!(
+        _ => Err(LofError::custom(format!(
             "Tactic {:?} currently not type-checkable in CIC",
             tactic
-        )),
+        ))),
     }
 }
 //
@@ -43,7 +44,7 @@ fn type_check_intro(
     partial_proof: &CicTerm,
     ass_name: &str,
     ass_type: &CicTerm,
-) -> Result<(CicTerm, Vec<CicTerm>), String> {
+) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
     match target {
         Product(_, domain, codomain) => {
             if Cic::base_type_equality(ass_type, domain).is_ok() {
@@ -55,17 +56,18 @@ fn type_check_intro(
 
                 Ok((partial_proof, vec![(**codomain).clone()]))
             } else {
-                Err(format!(
-                    "{} has inconsistent type: expected {:?}, found {:?}", 
-                    ass_name, domain, ass_type
+                Err(LofError::type_mismatch(
+                    format!("assumption `{}`", ass_name),
+                    domain,
+                    ass_type,
                 ))
             }
         },
         _ => {
-            Err(format!(
+            Err(LofError::custom(format!(
                 "Intro tactic not allowed: current proof target {:?} is not a dependent product",
                 target
-            ))
+            )))
         }
     }
 }
@@ -76,20 +78,14 @@ fn type_check_exact(
     target: &CicTerm,
     partial_proof: &CicTerm,
     proof_term: &CicTerm,
-) -> Result<(CicTerm, Vec<CicTerm>), String> {
+) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
     // TODO reevaluate if normalization is needed here: normal forms are already computed by CIC unification
     let proof_type = Cic::type_check_term(proof_term, environment)?;
     let proof_type_reduced = Cic::normalize_term(environment, &proof_type);
     let target_reduced = Cic::normalize_term(environment, target);
 
-    if Cic::types_unify(environment, &proof_type_reduced, &target_reduced) {
-        Ok((swap_body(partial_proof, proof_term), vec![]))
-    } else {
-        Err(format!(
-            "Term type and target don't unify: target is {:?} while expression has type {:?}",
-            target, proof_type
-        ))
-    }
+    Cic::types_unify(environment, &proof_type_reduced, &target_reduced)?;
+    Ok((swap_body(partial_proof, proof_term), vec![]))
 }
 //
 //
@@ -98,7 +94,7 @@ fn type_check_apply(
     target: &CicTerm,
     partial_proof: &CicTerm,
     lemma: &CicTerm,
-) -> Result<(CicTerm, Vec<CicTerm>), String> {
+) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
     // TODO see if i should be able to use a bigger term than the innermost as conclusion to unify
     let conclusion = get_prod_innermost(lemma);
     if Cic::type_unify(target, conclusion).is_ok() {
@@ -113,10 +109,7 @@ fn type_check_apply(
 
         Ok((new_proof, premises))
     } else {
-        Err(format!(
-            "Cannot unify target {:?} with conclusion of {:?}",
-            target, lemma
-        ))
+        Err(LofError::unification_failure(target, conclusion))
     }
 }
 

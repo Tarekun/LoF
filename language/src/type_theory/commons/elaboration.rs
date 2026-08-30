@@ -1,4 +1,5 @@
 use crate::{
+    error::LofError,
     parser::api::{
         Expression, LofAst, Statement,
         Tactic::{self, Apply, Begin, Exact, Intro, Qed},
@@ -9,9 +10,9 @@ use crate::{
 
 //########################### STATEMENTS ELABORATION
 pub fn elaborate_ast_vector<T: TypeTheory>(
-    root: &String,
+    _root: &String,
     asts: &Vec<LofAst>,
-) -> Result<Schedule<T>, String> {
+) -> Result<Schedule<T>, LofError> {
     let mut errors: Vec<_> = vec![];
     let mut schedule = Schedule::new();
 
@@ -33,25 +34,21 @@ pub fn elaborate_ast_vector<T: TypeTheory>(
     if errors.is_empty() {
         Ok(schedule)
     } else {
-        Err(format!(
-            "Elaborating the ASTs rooted at '{}' raised errors:\n{}",
-            root,
-            errors.join("\n")
-        ))
+        Err(LofError::aggregate(errors))
     }
 }
 
 pub fn elaborate_file_root<T: TypeTheory>(
     file_path: &String,
     asts: &Vec<LofAst>,
-) -> Result<Schedule<T>, String> {
+) -> Result<Schedule<T>, LofError> {
     elaborate_ast_vector::<T>(file_path, asts)
 }
 
 pub fn elaborate_dir_root<T: TypeTheory>(
     dir_path: &String,
     asts: &Vec<LofAst>,
-) -> Result<Schedule<T>, String> {
+) -> Result<Schedule<T>, LofError> {
     let mut schedule = Schedule::new();
 
     for sub_ast in asts {
@@ -64,7 +61,7 @@ pub fn elaborate_dir_root<T: TypeTheory>(
                 schedule.extend(&file_content);
             }
             _ => {
-                return Err(format!("AST nodes of directory node can only be FileRoot, not {:?}", sub_ast));
+                return Err(LofError::invalid_ast_node("FileRoot", sub_ast));
             }
         }
     }
@@ -78,7 +75,7 @@ pub fn elaborate_dir_root<T: TypeTheory>(
 pub fn elaborate_tactic<E, F: Fn(Expression) -> E>(
     tactic: Tactic<Expression>,
     elaborate_expression: F,
-) -> Result<Tactic<E>, String> {
+) -> Result<Tactic<E>, LofError> {
     match tactic {
         Begin() => Ok(Begin()),
         Qed() => Ok(Qed()),
@@ -97,7 +94,7 @@ fn elaborate_intro<E, F: Fn(Expression) -> E>(
     assumption_name: String,
     formula: Expression,
     elaborate_expression: F,
-) -> Result<Tactic<E>, String> {
+) -> Result<Tactic<E>, LofError> {
     Ok(Intro(assumption_name, elaborate_expression(formula)))
 }
 //
@@ -105,7 +102,7 @@ fn elaborate_intro<E, F: Fn(Expression) -> E>(
 fn elaborate_exact<E, F: Fn(Expression) -> E>(
     proof_term: Expression,
     elaborate_expression: F,
-) -> Result<Tactic<E>, String> {
+) -> Result<Tactic<E>, LofError> {
     Ok(Exact(elaborate_expression(proof_term)))
 }
 //
@@ -113,7 +110,7 @@ fn elaborate_exact<E, F: Fn(Expression) -> E>(
 fn elaborate_apply<E, F: Fn(Expression) -> E>(
     lemma: Expression,
     elaborate_expression: F,
-) -> Result<Tactic<E>, String> {
+) -> Result<Tactic<E>, LofError> {
     Ok(Apply(elaborate_expression(lemma)))
 }
 //########################### TACTICS ELABORATION

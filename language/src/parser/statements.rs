@@ -2,9 +2,10 @@ use super::api::Statement::{
     Auto, Axiom, Comment, EmptyRoot, Fun, Global, HClause, Inductive, Solve,
     Theorem,
 };
-use super::api::{Expression, LofAst, LofParser, Statement};
+use super::api::{Expression, LofAst, LofParser, PResult, Statement};
 use super::commons::{ws0, ws1};
 use crate::config::id_to_system;
+use crate::error::LofError;
 use crate::misc::Union;
 use crate::parser::api::Notation;
 use nom::multi::separated_list1;
@@ -13,30 +14,33 @@ use nom::{
     bytes::complete::{is_not, tag},
     character::complete::{char, line_ending, multispace0, not_line_ending},
     combinator::{map, opt},
-    error::{Error, ErrorKind},
+    error::ErrorKind,
     multi::many0,
     sequence::{delimited, preceded},
-    IResult,
 };
 
 //########################### STATEMENT PARSERS
 impl LofParser {
-    fn parse_import<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn parse_import<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("import"))(input)?;
         let (input, filepath) = preceded(
             ws0,
             delimited(char('"'), is_not("\""), char('"')),
         )(input)?;
 
-        let (_, ast) = self.parse_source_file(&format!("{}.lof", filepath));
+        let (_, ast) = self
+            .parse_source_file(&format!("{}.lof", filepath))
+            .map_err(nom::Err::Failure)?;
         match ast {
             LofAst::Stm(file_root_stm) => Ok((input, file_root_stm)),
-            LofAst::Exp(_exp) => panic!("fuck this type system fr"),
+            LofAst::Exp(_exp) => Err(nom::Err::Failure(LofError::custom(
+                "imported file elaborated to an expression, expected a statement root",
+            ))),
         }
     }
     //
     //
-    fn global<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn global<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("global"))(input)?;
         let (input, (var_name, opt_type)) = preceded(ws1, |input| {
             self.parse_optionally_typed_identifier(input)
@@ -53,7 +57,7 @@ impl LofParser {
     fn parse_function<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Statement> {
+    ) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("fun"))(input)?;
         let (input, is_rec) = opt(preceded(ws1, tag("rec")))(input)?;
         let is_rec = is_rec.is_some();
@@ -83,7 +87,7 @@ impl LofParser {
     }
     //
     //
-    fn parse_theorem<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn parse_theorem<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         let (input, _) = preceded(
             ws0,
             alt((tag("theorem"), tag("lemma"), tag("proposition"))),
@@ -109,7 +113,7 @@ impl LofParser {
     }
     //
     //
-    fn parse_comment<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn parse_comment<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         // only here we need to use multispace0 or we have an infinite recursion
         let (input, _) = multispace0(input)?;
         let (input, _) = tag("#")(input)?;
@@ -120,7 +124,7 @@ impl LofParser {
     }
     //
     //
-    fn parse_axiom<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn parse_axiom<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("axiom"))(input)?;
         let (input, axiom_name) =
             preceded(ws1, |input| self.parse_identifier(input))(input)?;
@@ -136,7 +140,7 @@ impl LofParser {
     fn parse_inductive_constructor<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, (String, Expression)> {
+    ) -> PResult<'a, (String, Expression)> {
         let (input, _) = preceded(ws0, char('|'))(input)?;
         let (input, constructor_name) =
             preceded(ws0, |input| self.parse_identifier(input))(input)?;
@@ -148,7 +152,7 @@ impl LofParser {
     fn parse_inductive_def<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Statement> {
+    ) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("inductive"))(input)?;
         let (input, inductive_type_name) =
             preceded(ws1, |input| self.parse_identifier(input))(input)?;
@@ -173,7 +177,7 @@ impl LofParser {
     }
     //
     //
-    fn prolog_query<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn prolog_query<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("solve"))(input)?;
         let (input, goals) = preceded(
             ws1,
@@ -189,7 +193,7 @@ impl LofParser {
     pub fn parse_theory_block<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Statement> {
+    ) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("!theory_block"))(input)?;
         let (input, system_id) =
             preceded(ws1, |input| self.parse_identifier(input))(input)?;
@@ -206,14 +210,15 @@ impl LofParser {
             }
             // TODO return a better error here
             Err(_message) => {
-                let error = nom::Err::Error(Error::new(input, ErrorKind::Tag));
+                let error =
+                    nom::Err::Error(LofError::parse_error(input, ErrorKind::Tag));
                 return Err(error);
             }
         }
     }
     //
     //
-    fn auto<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn auto<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("auto"))(input)?;
         let (input, formula) =
             preceded(ws1, |input| self.parse_expression(input))(input)?;
@@ -223,7 +228,7 @@ impl LofParser {
     }
     //
     //
-    fn horn_clause<'a>(&self, input: &'a str) -> IResult<&'a str, Statement> {
+    fn horn_clause<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("hclause"))(input)?;
         let (input, head) =
             preceded(ws0, |i| self.parse_type_expression(i))(input)?;
@@ -246,7 +251,7 @@ impl LofParser {
     pub fn parse_notation<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Statement> {
+    ) -> PResult<'a, Statement> {
         let parse_quoted =
             |input| delimited(char('"'), is_not("\""), char('"'))(input);
 
@@ -274,7 +279,7 @@ impl LofParser {
     pub fn parse_statement<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Statement> {
+    ) -> PResult<'a, Statement> {
         alt((
             |input| self.parse_comment(input),
             |input| self.global(input),

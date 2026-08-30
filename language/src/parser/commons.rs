@@ -5,20 +5,20 @@ use super::api::{
     },
     LofParser,
 };
+use super::api::PResult;
+use crate::error::LofError;
 use crate::misc::simple_map;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
     character::complete::{char, line_ending, multispace1, not_line_ending},
     combinator::{map, opt, recognize},
-    error::{Error, ErrorKind},
     multi::{many0, many1},
     sequence::{delimited, preceded, tuple},
-    IResult,
 };
 
 /// Skips zero or more whitespace characters or line comments (`# ...`).
-pub fn ws0(input: &str) -> IResult<&str, ()> {
+pub fn ws0(input: &str) -> PResult<'_, ()> {
     let (input, _) = many0(alt((
         map(multispace1, |_| ()),
         map(tuple((tag("#"), not_line_ending, opt(line_ending))), |_| ()),
@@ -27,7 +27,7 @@ pub fn ws0(input: &str) -> IResult<&str, ()> {
 }
 
 /// Skips one or more whitespace characters or line comments (`# ...`).
-pub fn ws1(input: &str) -> IResult<&str, ()> {
+pub fn ws1(input: &str) -> PResult<'_, ()> {
     let (input, _) = many1(alt((
         map(multispace1, |_| ()),
         map(tuple((tag("#"), not_line_ending, opt(line_ending))), |_| ()),
@@ -63,7 +63,7 @@ impl LofParser {
     pub fn parse_identifier<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, &'a str> {
+    ) -> PResult<'a, &'a str> {
         let (input, identifier) = preceded(
             ws0,
             recognize(take_while1(|c: char| {
@@ -74,7 +74,7 @@ impl LofParser {
         )(input)?;
 
         if RESERVED_KEYWORDS.contains(&identifier) {
-            Err(nom::Err::Error(Error::new(input, ErrorKind::Tag)))
+            Err(nom::Err::Error(LofError::reserved_keyword(identifier)))
         } else {
             Ok((input, identifier))
         }
@@ -83,7 +83,7 @@ impl LofParser {
     pub fn parse_typed_identifier<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, (String, Expression)> {
+    ) -> PResult<'a, (String, Expression)> {
         let (input, identifier) =
             preceded(ws0, |input| self.parse_identifier(input))(input)?;
         let (input, _) = preceded(ws0, tag(":"))(input)?;
@@ -96,7 +96,7 @@ impl LofParser {
     pub fn parse_optionally_typed_identifier<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, (String, Option<Expression>)> {
+    ) -> PResult<'a, (String, Option<Expression>)> {
         let (input, identifier) =
             preceded(ws0, |input| self.parse_identifier(input))(input)?;
 
@@ -114,7 +114,7 @@ impl LofParser {
     pub fn typed_parameter_list<'a>(
         &self,
         input: &'a str,
-    ) -> IResult<&'a str, Vec<(String, Expression)>> {
+    ) -> PResult<'a, Vec<(String, Expression)>> {
         many0(preceded(
             ws0,
             delimited(

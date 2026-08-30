@@ -11,6 +11,7 @@ use crate::type_theory::{
     interface::TypeTheory,
 };
 use crate::{
+    error::LofError,
     misc::simple_map,
     type_theory::{
         commons::type_check::type_check_fo_universal, interface::Kernel,
@@ -22,7 +23,7 @@ pub fn type_check_application(
     environment: &mut Environment<Sup>,
     fun_name: &str,
     args: &Vec<SupTerm>,
-) -> Result<SupFormula, String> {
+) -> Result<SupFormula, LofError> {
     type_check_nary(environment, fun_name, args)?;
     let (_, fun_type) = environment.get_from_context(fun_name).unwrap();
     // Sup shouldnt have dependent types
@@ -35,7 +36,7 @@ pub fn type_check_atomic(
     environment: &mut Environment<Sup>,
     pred_name: &str,
     args: &Vec<SupTerm>,
-) -> Result<SupFormula, String> {
+) -> Result<SupFormula, LofError> {
     type_check_nary(environment, pred_name, args)?;
     Ok(Atom(pred_name.to_string(), args.clone()))
 }
@@ -45,7 +46,7 @@ pub fn type_check_equality(
     _: &mut Environment<Sup>,
     t1: &SupTerm,
     t2: &SupTerm,
-) -> Result<SupFormula, String> {
+) -> Result<SupFormula, LofError> {
     Sup::base_term_equality(t1, t2)?;
     Ok(Equality(t1.clone(), t2.clone()))
 }
@@ -54,7 +55,7 @@ pub fn type_check_equality(
 pub fn type_check_not(
     environment: &mut Environment<Sup>,
     ψ: &SupFormula,
-) -> Result<SupFormula, String> {
+) -> Result<SupFormula, LofError> {
     Sup::type_check_type(ψ, environment)?;
     Ok(Not(Box::new(ψ.clone())))
 }
@@ -65,7 +66,7 @@ pub fn type_check_forall(
     var_name: &str,
     var_type: &SupFormula,
     ψ: &SupFormula,
-) -> Result<SupFormula, String> {
+) -> Result<SupFormula, LofError> {
     let _ = type_check_fo_universal::<Sup>(environment, var_name, var_type, ψ)?;
 
     Ok(ForAll(
@@ -79,7 +80,7 @@ pub fn type_check_forall(
 pub fn type_check_clause(
     environment: &mut Environment<Sup>,
     literals: &Vec<SupFormula>,
-) -> Result<SupFormula, String> {
+) -> Result<SupFormula, LofError> {
     fn is_literal(formula: &SupFormula) -> bool {
         match formula {
             Atom(_, _) => true,
@@ -95,10 +96,7 @@ pub fn type_check_clause(
         if is_literal(lit) {
             let _ = Sup::type_check_type(lit, environment)?;
         } else {
-            return Err(format!(
-                "Clauses can only contain literals, not {:?}",
-                lit
-            ));
+            return Err(LofError::type_mismatch("clause", &"a literal", lit));
         }
     }
 
@@ -112,7 +110,7 @@ fn type_check_nary(
     environment: &mut Environment<Sup>,
     applied: &str,
     args: &Vec<SupTerm>,
-) -> Result<(), String> {
+) -> Result<(), LofError> {
     let applied_type = type_check_variable::<Sup>(environment, applied)?;
 
     // check actual arguments are well typed
@@ -122,34 +120,30 @@ fn type_check_nary(
     let mut errors = vec![];
     for type_res in actual_types_res {
         match type_res {
-            Err(message) => errors.push(message),
+            Err(err) => errors.push(err),
             Ok(typee) => actual_types.push(typee),
         }
     }
     if !errors.is_empty() {
-        return Err(format!(
-            "Predicate application {} failed with:\n{}",
-            applied,
-            errors.join("\n")
-        ));
+        return Err(LofError::aggregate(errors));
     }
 
     // check actual arguments match formals
     let formal_types = get_arg_types(&applied_type);
     if formal_types.len() != actual_types.len() {
-        return Err(format!(
-            "Predicate {} expects {} arguments, but {} were given",
-            applied,
+        return Err(LofError::arity_mismatch(
+            format!("predicate `{}`", applied),
             formal_types.len(),
-            actual_types.len()
+            actual_types.len(),
         ));
     }
     for i in 0..formal_types.len() {
         if Sup::base_type_equality(&formal_types[i], &actual_types[i]).is_err()
         {
-            return Err(format!(
-                "Missmatched types, {} expects a {:?}, but {:?} was found",
-                applied, formal_types[i], actual_types[i]
+            return Err(LofError::type_mismatch(
+                format!("predicate `{}` argument", applied),
+                &formal_types[i],
+                &actual_types[i],
             ));
         }
     }
