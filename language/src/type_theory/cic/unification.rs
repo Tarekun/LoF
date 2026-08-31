@@ -2,6 +2,7 @@ use super::cic::CicTerm;
 use super::cic::CicTerm::{
     Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
 };
+use crate::error::LofError;
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function, get_arg_types, is_constant,
@@ -104,12 +105,14 @@ fn explode(term: &CicTerm) -> Vec<CicTerm> {
         _ => vec![],
     }
 }
-fn occurs_meta_check(meta_index: i32, term: &CicTerm) -> Result<(), String> {
+fn occurs_meta_check(meta_index: i32, term: &CicTerm) -> Result<(), LofError> {
     match term {
         Meta(index) => {
             if meta_index == *index {
-                Err("Unification Failure: cyclical metavariable reference"
-                    .to_string())
+                Err(LofError::occurs_check_cyclic(format!(
+                    "metavariable_{}",
+                    meta_index
+                )))
             } else {
                 Ok(())
             }
@@ -198,7 +201,7 @@ fn occurs(term: &CicTerm, name: &str) -> bool {
 pub fn cic_so_unification(
     term1: &CicTerm,
     term2: &CicTerm,
-) -> Result<Substitution<CicTerm>, String> {
+) -> Result<Substitution<CicTerm>, LofError> {
     solve_unifications_unnormalized(VecDeque::from([(
         term1.to_owned(),
         term2.to_owned(),
@@ -208,7 +211,7 @@ pub fn cic_so_unification(
 pub fn cic_solve_unifications(
     constraints: Vec<(CicTerm, CicTerm)>,
     environment: &mut Environment<Cic>,
-) -> Result<Substitution<CicTerm>, String> {
+) -> Result<Substitution<CicTerm>, LofError> {
     let mut reduced_constraints = VecDeque::new();
     for (left, right) in constraints {
         reduced_constraints.push_back((
@@ -223,7 +226,7 @@ pub fn cic_solve_unifications(
 
 fn solve_unifications_unnormalized(
     constraints: VecDeque<(CicTerm, CicTerm)>,
-) -> Result<Substitution<CicTerm>, String> {
+) -> Result<Substitution<CicTerm>, LofError> {
     Ok(ucs(
         &mut Substitution::empty(),
         constraints,
@@ -241,7 +244,7 @@ fn solve_unifications_unnormalized(
 pub fn cic_collect_unifications(
     term: &CicTerm,
     environment: &mut Environment<Cic>,
-) -> Result<Vec<(CicTerm, CicTerm)>, String> {
+) -> Result<Vec<(CicTerm, CicTerm)>, LofError> {
     match term {
         Abstraction(_var_name, var_type, body) => {
             let type_cons = cic_collect_unifications(var_type, environment)?;

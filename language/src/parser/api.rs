@@ -1,10 +1,15 @@
 use crate::{
     config::Config,
+    error::LofError,
     file_manager::{list_sources, read_source_file},
     misc::Union,
 };
-use nom::{branch::alt, combinator::map, multi::many0, IResult};
+use nom::{branch::alt, combinator::map, multi::many0};
 use std::{cell::RefCell, collections::BTreeMap};
+
+/// The parser's own `IResult`, wired to `LofError` so parse failures join
+/// the same error framework used by the rest of the pipeline.
+pub type PResult<'a, T> = nom::IResult<&'a str, T, LofError>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
@@ -104,7 +109,7 @@ impl LofParser {
     }
 
     /// Top level parser for single nodes that wraps expressions and statements
-    pub fn parse_node<'a>(&self, input: &'a str) -> IResult<&'a str, LofAst> {
+    pub fn parse_node<'a>(&self, input: &'a str) -> PResult<'a, LofAst> {
         alt((
             map(|input| self.parse_expression(input), LofAst::Exp),
             map(|input| self.parse_statement(input), LofAst::Stm),
@@ -114,25 +119,17 @@ impl LofParser {
     }
 
     /// Fully parses the source file at `filepath` and returns its corresponding AST
-    pub fn parse_source_file(&self, filepath: &str) -> (String, LofAst) {
-        let source = match read_source_file(filepath) {
-            Ok(content) => content,
-            Err(e) => {
-                panic!("Error reading file: {:?}", e);
-            }
-        };
-        let result = many0(|input| self.parse_node(input))(&source);
-        let (remaining_input, terms) = match result {
-            Ok((remaining, terms)) => (remaining, terms),
-            Err(e) => {
-                panic!("Parsing error: {:?}", e);
-            }
-        };
+    pub fn parse_source_file(
+        &self,
+        filepath: &str,
+    ) -> Result<(String, LofAst), LofError> {
+        let source = read_source_file(filepath)?;
+        let (remaining_input, terms) = many0(|input| self.parse_node(input))(&source)?;
 
-        (
+        Ok((
             remaining_input.to_string(),
             LofAst::Stm(Statement::FileRoot(filepath.to_string(), terms)),
-        )
+        ))
     }
 
     /// Fully parses the code contained in `workspace` amd returns its corresponding AST
@@ -140,7 +137,7 @@ impl LofParser {
         &self,
         _config: &Config,
         workspace: &str,
-    ) -> Result<LofAst, String> {
+    ) -> Result<LofAst, LofError> {
         let workspace_is_dir = std::path::Path::new(workspace).is_dir();
         let workspace_path = std::path::Path::new(workspace);
         let lof_files: Vec<String> = list_sources(workspace)
@@ -157,7 +154,7 @@ impl LofParser {
             })
             .collect();
         if workspace_is_dir {
-            std::env::set_current_dir(workspace).map_err(|e| e.to_string())?;
+            std::env::set_current_dir(workspace)?;
         }
         let mut asts = vec![];
         let mut errors = vec![];
@@ -166,19 +163,16 @@ impl LofParser {
             panic!("Directory {} is not a LoF workspace", workspace);
         }
         for filepath in lof_files {
-            let (remainder, ast) = self.parse_source_file(&filepath);
+            let (remainder, ast) = self.parse_source_file(&filepath)?;
             if !remainder.chars().all(|c| c.is_whitespace()) {
-                errors.push(format!(
-                    "Error parsing file '{}'. Remaining code:\n'{}'",
-                    filepath, remainder
-                ));
+                errors.push(LofError::leftover_input(filepath, remainder));
             } else {
                 asts.push(ast);
             }
         }
 
         if !errors.is_empty() {
-            return Err(errors.join("\n"));
+            return Err(LofError::aggregate(errors));
         }
         Ok(LofAst::Stm(Statement::DirRoot(workspace.to_string(), asts)))
     }

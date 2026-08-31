@@ -6,6 +6,7 @@ use super::{
     },
 };
 use crate::{
+    error::LofError,
     misc::Union::{self, L, R},
     runtime::program::Schedule,
     type_theory::{
@@ -58,39 +59,37 @@ impl TypeTheory for Sup {
     fn base_term_equality(
         term1: &SupTerm,
         term2: &SupTerm,
-    ) -> Result<(), String> {
+    ) -> Result<(), LofError> {
         if term1 == term2 {
             Ok(())
         } else {
-            Err(format!("{:?} and {:?} are not equal", term1, term2))
+            Err(LofError::type_mismatch("equality check", term1, term2))
         }
     }
     fn base_type_equality(
         type1: &SupFormula,
         type2: &SupFormula,
-    ) -> Result<(), String> {
+    ) -> Result<(), LofError> {
         if type1 == type2 {
             Ok(())
         } else {
-            Err(format!("{:?} and {:?} are not equal", type1, type2))
+            Err(LofError::type_mismatch("equality check", type1, type2))
         }
     }
 
     fn elaborate_expression(
         _: &crate::parser::api::Expression,
-    ) -> Result<Self::Exp, String> {
-        Err(
-            "TODO: superposition calculus doesnt support elaboration currently"
-                .to_string(),
-        )
+    ) -> Result<Self::Exp, LofError> {
+        Err(LofError::unsupported(
+            "TODO: superposition calculus doesnt support elaboration currently",
+        ))
     }
     fn elaborate_statement(
         _: &crate::parser::api::Statement,
-    ) -> Result<Schedule<Sup>, String> {
-        Err(
-            "TODO: superposition calculus doesnt support elaboration currently"
-                .to_string(),
-        )
+    ) -> Result<Schedule<Sup>, LofError> {
+        Err(LofError::unsupported(
+            "TODO: superposition calculus doesnt support elaboration currently",
+        ))
     }
 }
 
@@ -102,7 +101,7 @@ impl Kernel for Sup {
     fn type_check_term(
         term: &Self::Term,
         env: &mut Environment<Sup>,
-    ) -> Result<Self::Type, String> {
+    ) -> Result<Self::Type, LofError> {
         match term {
             Variable(var_name) => type_check_variable::<Sup>(env, var_name),
             Application(fun_name, args) => {
@@ -119,7 +118,7 @@ impl Kernel for Sup {
     fn type_check_type(
         φ: &Self::Type,
         environment: &mut Environment<Sup>,
-    ) -> Result<Self::Type, String> {
+    ) -> Result<Self::Type, LofError> {
         match φ {
             Atom(predicate, args) => {
                 type_check_atomic(environment, predicate, args)
@@ -136,7 +135,7 @@ impl Kernel for Sup {
     fn type_check_expression(
         exp: &Union<SupTerm, SupFormula>,
         environment: &mut Environment<Sup>,
-    ) -> Result<Self::Type, String> {
+    ) -> Result<Self::Type, LofError> {
         match exp {
             L(term) => Sup::type_check_term(term, environment),
             R(typee) => Sup::type_check_type(typee, environment),
@@ -146,8 +145,8 @@ impl Kernel for Sup {
     fn type_check_stm(
         _stm: &Self::Stm,
         _env: &mut Environment<Sup>,
-    ) -> Result<Self::Type, String> {
-        Err("Statement type checking is not supported in SUP".to_string())
+    ) -> Result<Self::Type, LofError> {
+        Err(LofError::unsupported("Statement type checking is not supported in SUP"))
     }
 }
 
@@ -164,7 +163,7 @@ impl Automatic for Sup {
         saturation_set: &Vec<SupFormula>,
         selection_fn: &SelectionFunctionSignature,
         giving_clause_fn: &GivingClauseSignature,
-    ) -> Result<Substitution<SupTerm>, String> {
+    ) -> Result<Substitution<SupTerm>, LofError> {
         saturate(saturation_set, selection_fn, *giving_clause_fn)
     }
 }

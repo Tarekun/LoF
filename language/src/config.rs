@@ -1,3 +1,4 @@
+use crate::error::LofError;
 use crate::file_manager::read_file;
 use std::sync::OnceLock;
 
@@ -18,7 +19,7 @@ pub enum GivingClause {
     Weighted,
 }
 
-pub fn id_to_system(system_id: &str) -> Result<TypeSystem, String> {
+pub fn id_to_system(system_id: &str) -> Result<TypeSystem, LofError> {
     map_type_system(system_id)
 }
 
@@ -54,13 +55,11 @@ impl Config {
 /// If left unspecified config defaults are
 /// `system`: cic
 /// `log_level`: INFO
-pub fn load_config(config_path: &str) -> Result<Config, String> {
+pub fn load_config(config_path: &str) -> Result<Config, LofError> {
     let mut config = Config::default();
 
-    let config_content = read_file(config_path)
-        .map_err(|e| format!("Failed to read config file: {}", e))?;
-    let overrides: serde_yaml::Value = serde_yaml::from_str(&config_content)
-        .map_err(|e| format!("Failed to parse config file: {}", e))?;
+    let config_content = read_file(config_path)?;
+    let overrides: serde_yaml::Value = serde_yaml::from_str(&config_content)?;
 
     if let Some(system) = overrides.get("system") {
         if let Some(system_str) = system.as_str() {
@@ -89,53 +88,52 @@ pub fn load_config(config_path: &str) -> Result<Config, String> {
     Ok(config)
 }
 
-fn map_type_system(system: &str) -> Result<TypeSystem, String> {
+fn map_type_system(system: &str) -> Result<TypeSystem, LofError> {
     match system {
         "cic" => Ok(TypeSystem::Cic),
         "fol" => Ok(TypeSystem::Fol),
-        _ => Err(format!("Unsupported type system {}", system)),
+        _ => Err(LofError::invalid_config_value("system", system, "cic, fol")),
     }
 }
 
-fn map_log_level(log_level: &str) -> Result<tracing::Level, String> {
+fn map_log_level(log_level: &str) -> Result<tracing::Level, LofError> {
     match log_level.to_lowercase().as_str() {
         "info" => Ok(tracing::Level::INFO),
         "error" => Ok(tracing::Level::ERROR),
         "debug" => Ok(tracing::Level::DEBUG),
         "trace" => Ok(tracing::Level::TRACE),
         "warn" => Ok(tracing::Level::WARN),
-        _ => return Err(format!(
-            "Invalid log level: {}. Must be one of: info, error, debug, trace, warn",
-            log_level
+        _ => Err(LofError::invalid_config_value(
+            "log_level",
+            log_level,
+            "info, error, debug, trace, warn",
         )),
     }
 }
 
-fn map_selection_fn(selection_fn: &str) -> Result<SelectionFunction, String> {
+fn map_selection_fn(selection_fn: &str) -> Result<SelectionFunction, LofError> {
     match selection_fn.to_lowercase().as_str() {
         "maximal" => Ok(SelectionFunction::Maximal),
         "all" => Ok(SelectionFunction::All),
-        _ => {
-            return Err(format!(
-                "Invalid selection function: {}. Must be one of: maximal, all",
-                selection_fn
-            ))
-        }
+        _ => Err(LofError::invalid_config_value(
+            "selection_fn",
+            selection_fn,
+            "maximal, all",
+        )),
     }
 }
 
 fn map_giving_clause_fn(
     giving_clause_fn: &str,
-) -> Result<GivingClause, String> {
+) -> Result<GivingClause, LofError> {
     match giving_clause_fn.to_lowercase().as_str() {
         "fifo" => Ok(GivingClause::Fifo),
         "weighted" => Ok(GivingClause::Weighted),
-        _ => {
-            return Err(format!(
-                "Invalid giving clause function: {}. Must be one of: fifo, weighted",
-                giving_clause_fn
-            ))
-        }
+        _ => Err(LofError::invalid_config_value(
+            "giving_clause_fn",
+            giving_clause_fn,
+            "fifo, weighted",
+        )),
     }
 }
 

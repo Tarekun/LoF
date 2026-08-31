@@ -6,6 +6,7 @@ use super::fol::{
     FolTerm::{Abstraction, Application, Let, Tuple, Variable},
 };
 use crate::{
+    error::LofError,
     misc::simple_map,
     type_theory::{
         commons::utils::generic_multiarg_fun_type,
@@ -118,7 +119,7 @@ pub fn make_multiarg_app(fun_name: &str, args: &[FolTerm]) -> FolTerm {
 
 pub fn get_application_components(
     app: &FolTerm,
-) -> Result<(String, Vec<FolTerm>), String> {
+) -> Result<(String, Vec<FolTerm>), LofError> {
     match app {
         Variable(fun_name) => Ok((fun_name.to_string(), vec![])),
         // TODO i have no idea how to handle anonymous functions
@@ -128,7 +129,10 @@ pub fn get_application_components(
             left_args.push((**right).clone());
             Ok((fun_name, left_args))
         }
-        _ => Err(format!("Term {:?} is not an application", app)),
+        _ => Err(LofError::custom(format!(
+            "Term {:?} is not an application",
+            app
+        ))),
     }
 }
 
@@ -577,7 +581,7 @@ pub fn conjunction_normal_form(φ: &FolFormula) -> Vec<FolFormula> {
 pub fn term_to_sup(
     term: &FolTerm,
     constants: &HashSet<String>,
-) -> Result<SupTerm, String> {
+) -> Result<SupTerm, LofError> {
     match &term {
         Variable(name) => {
             if constants.contains(name) {
@@ -594,10 +598,10 @@ pub fn term_to_sup(
             }
             Ok(SupTerm::Application(fun_name, sup_args))
         }
-        _ => Err(format!(
+        _ => Err(LofError::custom(format!(
             "FOL term {:?} doesn't have a corresponding SUP term",
             term
-        )),
+        ))),
     }
 }
 
@@ -605,11 +609,11 @@ pub fn term_to_sup(
 pub fn clausify(
     φ: &FolFormula,
     constants: &HashSet<String>,
-) -> Result<Vec<SupFormula>, String> {
+) -> Result<Vec<SupFormula>, LofError> {
     fn clauses_to_sup(
         clauses: Vec<FolFormula>,
         constants: &HashSet<String>,
-    ) -> Result<Vec<SupFormula>, String> {
+    ) -> Result<Vec<SupFormula>, LofError> {
         // collect errors across all clauses
         let mut errors = vec![];
         let mut sup_clauses = vec![];
@@ -617,21 +621,21 @@ pub fn clausify(
         for clause in clauses {
             match clause_to_sup(clause, constants) {
                 Ok(clause) => sup_clauses.push(clause),
-                Err(message) => errors.push(message),
+                Err(err) => errors.push(err),
             }
         }
 
         if errors.is_empty() {
             Ok(sup_clauses)
         } else {
-            Err(errors.join("\n\n"))
+            Err(LofError::aggregate(errors))
         }
     }
 
     fn clause_to_sup(
         C: FolFormula,
         constants: &HashSet<String>,
-    ) -> Result<SupFormula, String> {
+    ) -> Result<SupFormula, LofError> {
         let C = match C {
             Predicate(name, args) => {
                 let mut sup_args = vec![];
@@ -643,7 +647,7 @@ pub fn clausify(
             Disjunction(lits) => Clause(clauses_to_sup(lits, constants)?),
             Not(D) => SupFormula::Not(Box::new(clause_to_sup(*D, constants)?)),
             _ => {
-                return Err(format!("Not a Clause: {:?}", C));
+                return Err(LofError::custom(format!("Not a Clause: {:?}", C)));
             }
         };
 

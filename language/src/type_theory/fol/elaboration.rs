@@ -2,6 +2,7 @@ use super::fol::FolFormula::{Arrow, Disjunction, ForAll, Predicate};
 use super::fol::FolStm::{Auto, Axiom, Fun, Global, Solve, Theorem};
 use super::fol::FolTerm::{Abstraction, Application, Let, Tuple, Variable};
 use super::fol::{Fol, FolFormula, FolTerm};
+use crate::error::LofError;
 use crate::misc::simple_map;
 use crate::parser::api::{Statement, Tactic};
 use crate::runtime::program::Schedule;
@@ -39,37 +40,25 @@ fn map_typed_variables(
 fn type_expected_error<Expected>(
     task: &str,
     term: &FolTerm,
-) -> Result<Expected, String> {
-    Err(format!(
-        "[FOL elaboration]: in {} a type was expected, but term {:?} was received",
-        task,
-        term
-    ))
+) -> Result<Expected, LofError> {
+    Err(LofError::type_mismatch(format!("[FOL elaboration] {}", task), &"a type", term))
 }
 fn term_expected_error<Expected>(
     task: &str,
     type_exp: &FolFormula,
-) -> Result<Expected, String> {
-    Err(format!(
-        "[FOL elaboration]: in {} a term was expected, but type {:?} was received",
-        task,
-        type_exp
-    ))
+) -> Result<Expected, LofError> {
+    Err(LofError::type_mismatch(format!("[FOL elaboration] {}", task), &"a term", type_exp))
 }
 
-fn expect_term(arg: Union<FolTerm, FolFormula>) -> Result<FolTerm, String> {
+fn expect_term(arg: Union<FolTerm, FolFormula>) -> Result<FolTerm, LofError> {
     match arg {
         L(fol_term) => Ok(fol_term),
-        R(fol_type) => {
-            Err(format!("Expected term, found {:?} instead", fol_type))
-        }
+        R(fol_type) => Err(LofError::type_mismatch("expression", &"a term", &fol_type)),
     }
 }
-fn expect_type(arg: Union<FolTerm, FolFormula>) -> Result<FolFormula, String> {
+fn expect_type(arg: Union<FolTerm, FolFormula>) -> Result<FolFormula, LofError> {
     match arg {
-        L(fol_term) => {
-            Err(format!("Expected type, found {:?} instead", fol_term))
-        }
+        L(fol_term) => Err(LofError::type_mismatch("expression", &"a type", &fol_term)),
         R(fol_type) => Ok(fol_type),
     }
 }
@@ -77,7 +66,7 @@ fn expect_type(arg: Union<FolTerm, FolFormula>) -> Result<FolFormula, String> {
 //########################### EXPRESSIONS ELABORATION
 pub fn elaborate_expression(
     ast: &Expression,
-) -> Result<Union<FolTerm, FolFormula>, String> {
+) -> Result<Union<FolTerm, FolFormula>, LofError> {
     match ast {
         Expression::VarUse(var_name) => elaborate_var_use(var_name.clone()),
         Expression::Abstraction(var_name, var_type, body) => {
@@ -109,7 +98,7 @@ pub fn elaborate_expression(
 //
 pub fn elaborate_var_use(
     var_name: String,
-) -> Result<Union<FolTerm, FolFormula>, String> {
+) -> Result<Union<FolTerm, FolFormula>, LofError> {
     let pascal_case = Regex::new(r"^[A-Z][a-zA-Z]*$").unwrap();
 
     //TODO better evaluate how to distinguish them
@@ -126,7 +115,7 @@ pub fn elaborate_abstraction(
     var_name: &String,
     var_type: &Expression,
     body: &Expression,
-) -> Result<FolTerm, String> {
+) -> Result<FolTerm, LofError> {
     let var_type = elaborate_expression(var_type)?;
     match var_type {
         Union::R(var_type) => {
@@ -150,7 +139,7 @@ pub fn elaborate_abstraction(
 pub fn elaborate_arrow(
     domain: &Expression,
     codomain: &Expression,
-) -> Result<FolFormula, String> {
+) -> Result<FolFormula, LofError> {
     let domain = elaborate_expression(domain)?;
     match domain {
         Union::R(domain_type) => {
@@ -170,7 +159,7 @@ pub fn elaborate_arrow(
 pub fn elaborate_application(
     function: &Expression,
     args: &Vec<Expression>,
-) -> Result<Union<FolTerm, FolFormula>, String> {
+) -> Result<Union<FolTerm, FolFormula>, LofError> {
     let mut args_elaborated = vec![];
     for arg in args {
         args_elaborated.push(expect_term(elaborate_expression(arg)?)?);
@@ -185,7 +174,11 @@ pub fn elaborate_application(
         R(Predicate(pred_name, _)) => {
             wrap_type::<Fol>(Ok(Predicate(pred_name, args_elaborated)))
         }
-        _ => Err(format!("Applied expression {:?} isnt an applicable function nor a predicate symbol and can't be applied in FOL", function)),
+        _ => Err(LofError::type_mismatch(
+            "function application",
+            &"an applicable function or predicate symbol",
+            function,
+        )),
     }
 }
 //
@@ -194,7 +187,7 @@ pub fn elaborate_forall(
     var_name: &String,
     var_type: &Expression,
     body: &Expression,
-) -> Result<FolFormula, String> {
+) -> Result<FolFormula, LofError> {
     let var_type = elaborate_expression(var_type)?;
     match var_type {
         Union::R(var_type) => {
@@ -218,7 +211,7 @@ fn elaborate_let(
     var_type: &Option<Expression>,
     body: &Expression,
     scope: &Expression,
-) -> Result<FolTerm, String> {
+) -> Result<FolTerm, LofError> {
     let var_type = if var_type.is_some() {
         Some(expect_type(elaborate_expression(
             &var_type.as_ref().unwrap(),
@@ -238,7 +231,7 @@ fn elaborate_let(
 }
 //
 //
-pub fn elaborate_tuple(terms: &Vec<Expression>) -> Result<FolTerm, String> {
+pub fn elaborate_tuple(terms: &Vec<Expression>) -> Result<FolTerm, LofError> {
     let mut elaborated_terms = vec![];
     for term in terms {
         elaborated_terms.push(expect_term(elaborate_expression(term)?)?);
@@ -248,7 +241,7 @@ pub fn elaborate_tuple(terms: &Vec<Expression>) -> Result<FolTerm, String> {
 }
 //
 //
-pub fn elaborate_pipe(types: &Vec<Expression>) -> Result<FolFormula, String> {
+pub fn elaborate_pipe(types: &Vec<Expression>) -> Result<FolFormula, LofError> {
     let mut elaborated_types = vec![];
     for term in types {
         elaborated_types.push(expect_type(elaborate_expression(term)?)?);
@@ -259,7 +252,7 @@ pub fn elaborate_pipe(types: &Vec<Expression>) -> Result<FolFormula, String> {
 //########################### EXPRESSIONS ELABORATION
 //
 //########################### STATEMENTS ELABORATION
-pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Fol>, String> {
+pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Fol>, LofError> {
     match ast {
         Statement::Comment() => Ok(Schedule::new()),
         Statement::FileRoot(file_path, asts) => {
@@ -293,7 +286,7 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Fol>, String> {
         Statement::Solve(goals) => {
             Ok(Schedule::singleton_stm(elaborate_solve(goals)?))
         }
-        _ => Err(format!("Language construct {:?} not supported in FOL", ast)),
+        _ => Err(LofError::unsupported_construct("FOL", ast)),
     }
 }
 //
@@ -301,7 +294,7 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Fol>, String> {
 pub fn elaborate_axiom(
     axiom_name: &String,
     formula: &Expression,
-) -> Result<FolStm, String> {
+) -> Result<FolStm, LofError> {
     let formula = elaborate_expression(formula)?;
     match formula {
         Union::R(formula) => Ok(Axiom(axiom_name.to_string(), formula)),
@@ -316,7 +309,7 @@ pub fn elaborate_theorem(
     theorem_name: &String,
     formula: &Expression,
     proof: &Union<Expression, Vec<Tactic<Expression>>>,
-) -> Result<FolStm, String> {
+) -> Result<FolStm, LofError> {
     let fol_formula_union = elaborate_expression(formula)?;
     let fol_formula = expect_type(fol_formula_union)?;
     let proof: Union<FolTerm, Vec<Tactic<Union<FolTerm, FolFormula>>>> =
@@ -353,7 +346,7 @@ pub fn elaborate_global(
     var_name: &String,
     opt_type: &Option<Expression>,
     body: &Expression,
-) -> Result<FolStm, String> {
+) -> Result<FolStm, LofError> {
     let body = elaborate_expression(body)?;
     match body {
         Union::L(body_term) => {
@@ -391,7 +384,7 @@ pub fn elaborate_fun(
     out_type: &Expression,
     body: &Expression,
     is_rec: &bool,
-) -> Result<FolStm, String> {
+) -> Result<FolStm, LofError> {
     let out_type = elaborate_expression(out_type)?;
     match out_type {
         Union::R(out_type) => {
@@ -418,19 +411,19 @@ pub fn elaborate_fun(
 }
 //
 //
-pub fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Fol>, String> {
+pub fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Fol>, LofError> {
     elaborate_ast_vector::<Fol>(&"".to_string(), nodes)
 }
 //
 //
-fn elaborate_auto(formula: &Expression) -> Result<FolStm, String> {
+fn elaborate_auto(formula: &Expression) -> Result<FolStm, LofError> {
     let formula = elaborate_expression(formula)?;
 
     Ok(Auto(expect_type(formula)?))
 }
 //
 //
-fn elaborate_solve(goals: &Vec<Expression>) -> Result<FolStm, String> {
+fn elaborate_solve(goals: &Vec<Expression>) -> Result<FolStm, LofError> {
     let mut fol_goals = vec![];
     for goal in goals {
         fol_goals.push(expect_type(elaborate_expression(goal)?)?);
