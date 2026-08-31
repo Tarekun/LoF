@@ -33,9 +33,7 @@ impl LofParser {
             .map_err(nom::Err::Failure)?;
         match ast {
             LofAst::Stm(file_root_stm) => Ok((input, file_root_stm)),
-            LofAst::Exp(_exp) => Err(nom::Err::Failure(LofError::custom(
-                "imported file elaborated to an expression, expected a statement root",
-            ))),
+            LofAst::Exp(_exp) => unreachable!("fuck this type system fr"),
         }
     }
     //
@@ -54,10 +52,7 @@ impl LofParser {
     }
     //
     //
-    fn parse_function<'a>(
-        &self,
-        input: &'a str,
-    ) -> PResult<'a, Statement> {
+    fn parse_function<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         let (input, _) = preceded(ws0, tag("fun"))(input)?;
         let (input, is_rec) = opt(preceded(ws1, tag("rec")))(input)?;
         let is_rec = is_rec.is_some();
@@ -210,8 +205,10 @@ impl LofParser {
             }
             // TODO return a better error here
             Err(_message) => {
-                let error =
-                    nom::Err::Error(LofError::parse_error(input, ErrorKind::Tag));
+                let error = nom::Err::Error(LofError::parse_error(
+                    input,
+                    ErrorKind::Tag,
+                ));
                 return Err(error);
             }
         }
@@ -248,10 +245,7 @@ impl LofParser {
     }
     //
     //
-    pub fn parse_notation<'a>(
-        &self,
-        input: &'a str,
-    ) -> PResult<'a, Statement> {
+    pub fn parse_notation<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
         let parse_quoted =
             |input| delimited(char('"'), is_not("\""), char('"'))(input);
 
