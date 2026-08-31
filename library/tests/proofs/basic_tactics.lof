@@ -1,24 +1,24 @@
 # CIC definition of =
-inductive Eq (T:TYPE) (x:T) : T -> PROP {
-  | refl: Eq T x x
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
 }
 
 # CIC definition for naturals
 inductive Nat: TYPE {
-  | z: Nat 
+  | z: Nat
   | s: Nat -> Nat
 }
 
 # natural addition
-fun rec plus (n:Nat) (m:Nat) : Nat {
-  match n with 
+fun rec plus (n:Nat, m:Nat) : Nat {
+  match n with
   | z => m,
-  | s nn => s (plus nn m),
+  | s(nn) => s(plus(nn, m)),
 }
 
-theorem zero_plus_one_term : Eq Nat (plus z (s z)) (s z) := (refl Nat (s z))
+theorem zero_plus_one_term : Eq(Nat, plus(z, s(z)), s(z)) := (refl(Nat, s(z)))
 
-theorem zero_plus_one_tac : Eq Nat (plus z (s z)) (s z) := 
+theorem zero_plus_one_tac : Eq(Nat, plus(z, s(z)), s(z)) :=
   begin
-  exact refl Nat (s z)
+  exact refl(Nat, s(z))
   qed.

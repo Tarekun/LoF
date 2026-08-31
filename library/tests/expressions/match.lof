@@ -1,6 +1,6 @@
 # inductive definition for naturals
 inductive Nat: TYPE {
-  | z: Nat 
+  | z: Nat
   | s: Nat -> Nat
 }
 
@@ -8,10 +8,10 @@ inductive Nat: TYPE {
 # wrapping the match in a function prevents it from failing on execution
 fun test_function (n:Nat) : Nat {
     match n with
-    | z => z,       # 0->0
-    | s z => z,     # 1->0
-    | s (s z) => z, # 2->0
-    | s nn => s z,  # else->1
+    | z => z,             # 0->0
+    | s(z) => z,          # 1->0
+    | s(s(z)) => z,       # 2->0
+    | s(nn) => s(z),      # else->1
 }
 
 
@@ -24,8 +24,8 @@ inductive List : TYPE {
 fun test_function2 (l:List): Nat {
     match l with
     | nil => z,
-    | cons n nil => s z,
-    | cons n (cons m nil) => s (s z),
-    | cons n (cons m (cons o nil)) => s (s (s z)),
-    | cons n l => z,
+    | cons(n, nil) => s(z),
+    | cons(n, cons(m, nil)) => s(s(z)),
+    | cons(n, cons(m, cons(o, nil))) => s(s(s(z))),
+    | cons(n, l) => z,
 }

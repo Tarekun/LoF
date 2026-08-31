@@ -12,7 +12,7 @@ use nom::{
     character::complete::{char, line_ending, multispace1, not_line_ending},
     combinator::{map, opt, recognize},
     error::{Error, ErrorKind},
-    multi::{many0, many1},
+    multi::{many0, many1, separated_list0},
     sequence::{delimited, preceded, tuple},
     IResult,
 };
@@ -111,18 +111,22 @@ impl LofParser {
         Ok((input, (identifier.to_string(), opt_type)))
     }
 
+    /// Parses a parenthesized, comma-separated list of typed parameters,
+    /// e.g. `(a: A, b: B)`. Absence of the parenthesized group is treated
+    /// as an empty parameter list.
     pub fn typed_parameter_list<'a>(
         &self,
         input: &'a str,
     ) -> IResult<&'a str, Vec<(String, Expression)>> {
-        many0(preceded(
-            ws0,
-            delimited(
-                preceded(ws0, char('(')),
-                |input| self.parse_typed_identifier(input),
-                preceded(ws0, char(')')),
-            ),
-        ))(input)
+        let (input, params) = opt(delimited(
+            preceded(ws0, char('(')),
+            separated_list0(preceded(ws0, char(',')), |input| {
+                self.parse_typed_identifier(input)
+            }),
+            preceded(ws0, char(')')),
+        ))(input)?;
+
+        Ok((input, params.unwrap_or_default()))
     }
     pub fn substitute(
         &self,

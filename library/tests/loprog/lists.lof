@@ -11,21 +11,21 @@ axiom Eq     : ∀l1:List. ∀l2:List. PROP;
 
 # append([], l) = l
 axiom ax1 : ∀l:List.
-    Eq (append (nil) l) l;
+    Eq(append(nil, l), l);
 # append(h::l1, l2) = h::append(l1,l2)
 axiom ax2 : ∀h:SomeType. ∀l1:List. ∀l2:List.
-    Eq (append (cons h l1) l2) (cons h (append l1 l2));
+    Eq(append(cons(h, l1), l2), cons(h, append(l1, l2)));
 
 axiom any_list    : List;
 axiom any_element : SomeType;
 
 # validate this as correct
-solve Eq (append (nil) any_list) any_list
-#solve Eq (append (nil) any_list) nil
+solve Eq(append(nil, any_list), any_list)
+#solve Eq(append(nil, any_list), nil)
 # find the solution for the same equation
-solve Eq (append (nil) any_list) r
+solve Eq(append(nil, any_list), r)
 # is the function invertible?
-solve Eq (append (nil) r) any_list
+solve Eq(append(nil, r), any_list)
 # what returns append(h::l1, l2)?
-solve Eq (append (cons any_element any_list) any_list) r
-solve Eq (append (cons el ll1) ll2) (cons any_element (append any_list any_list))
+solve Eq(append(cons(any_element, any_list), any_list), r)
+solve Eq(append(cons(el, ll1), ll2), cons(any_element, append(any_list, any_list)))
