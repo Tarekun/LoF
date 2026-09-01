@@ -1,7 +1,7 @@
 pub fn get_flag_value(args: &[String], flag: &str) -> Option<String> {
-    for arg in args {
+    for (i, arg) in args.iter().enumerate() {
         if arg == flag {
-            return Some(arg.to_string());
+            return args.get(i + 1).cloned();
         }
     }
 
