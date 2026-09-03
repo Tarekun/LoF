@@ -46,6 +46,24 @@ mod tests {
         );
 
         assert_eq!(
+            negation_normal_form(&Arrow(
+                Box::new(Conjunction(vec![
+                    Predicate("A".to_string(), vec![]),
+                    Predicate("B".to_string(), vec![]),
+                ])),
+                Box::new(Predicate("H".to_string(), vec![])),
+            )),
+            Disjunction(vec![
+                Disjunction(vec![
+                    Not(Box::new(Predicate("A".to_string(), vec![]))),
+                    Not(Box::new(Predicate("B".to_string(), vec![]))),
+                ]),
+                Predicate("H".to_string(), vec![]),
+            ]),
+            "NNF algorithm doesnt apply De Morgan when negation reaches a conjunction through an implication's antecedent (not just through a literal ¬ node)"
+        );
+
+        assert_eq!(
             negation_normal_form(&Not(Box::new(Not(Box::new(Predicate(
                 "A".to_string(),
                 vec![]
@@ -400,6 +418,31 @@ mod tests {
                 ))),
             ])]),
             "Clausification didnt produce the expected formula"
+        );
+
+        assert_eq!(
+            clausify(
+                &Arrow(
+                    Box::new(Conjunction(vec![
+                        Predicate("A".to_string(), vec![]),
+                        Predicate("B".to_string(), vec![]),
+                    ])),
+                    Box::new(Predicate("H".to_string(), vec![])),
+                ),
+                &no_constants
+            ),
+            Ok(vec![SupFormula::Clause(vec![
+                SupFormula::Not(Box::new(SupFormula::Atom(
+                    "A".to_string(),
+                    vec![]
+                ))),
+                SupFormula::Not(Box::new(SupFormula::Atom(
+                    "B".to_string(),
+                    vec![]
+                ))),
+                SupFormula::Atom("H".to_string(), vec![]),
+            ])]),
+            "A rule with a 2-literal conjunctive body (H :- A, B) must clausify to the single Horn clause ¬A∨¬B∨H, not two separate (and logically weaker) clauses"
         );
     }
 }
