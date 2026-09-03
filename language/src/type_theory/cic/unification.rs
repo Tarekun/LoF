@@ -246,7 +246,7 @@ pub fn cic_collect_unifications(
     environment: &mut Environment<Cic>,
 ) -> Result<Vec<(CicTerm, CicTerm)>, LofError> {
     match term {
-        Abstraction(_var_name, var_type, body) => {
+        Abstraction(_, var_type, body) => {
             let type_cons = cic_collect_unifications(var_type, environment)?;
             let body_cons = cic_collect_unifications(body, environment)?;
 
@@ -266,6 +266,41 @@ pub fn cic_collect_unifications(
                 arg_cons,
             ]
             .concat())
+        }
+        Product(_, domain, codomain) => {
+            let domain_cons = cic_collect_unifications(domain, environment)?;
+            let codomain_cons =
+                cic_collect_unifications(codomain, environment)?;
+
+            Ok([domain_cons, codomain_cons].concat())
+        }
+        Let(_, opt_type, body, scope) => {
+            let type_cons = match &**opt_type {
+                Some(var_type) => {
+                    cic_collect_unifications(var_type, environment)?
+                }
+                // TODO im pretty sure this should introduce the opt_type=body_type constraint
+                None => vec![],
+            };
+            let body_cons = cic_collect_unifications(body, environment)?;
+            let scope_cons = cic_collect_unifications(scope, environment)?;
+
+            Ok([type_cons, body_cons, scope_cons].concat())
+        }
+        // TODO im pretty sure this branch should introduce constraints between the matched
+        // term type and the produced pattern + all of the branches results
+        Match(matched_term, branches) => {
+            let matched_cons =
+                cic_collect_unifications(matched_term, environment)?;
+            let mut branch_cons = vec![];
+            for (pattern, body) in branches {
+                branch_cons
+                    .extend(cic_collect_unifications(pattern, environment)?);
+                branch_cons
+                    .extend(cic_collect_unifications(body, environment)?);
+            }
+
+            Ok([matched_cons, branch_cons].concat())
         }
         _ => Ok(vec![]),
     }

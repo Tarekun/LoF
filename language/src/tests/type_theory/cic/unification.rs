@@ -16,6 +16,95 @@ use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::interface::{Kernel, TypeTheory};
 use std::collections::VecDeque;
 
+mod components {
+    use super::*;
+
+    #[test]
+    fn test_variable_structural_equality() {
+        assert!(
+            structurally_equal(
+                &Variable("x".to_string(), 0),
+                &Variable("y".to_string(), 0),
+            ),
+            "bound variables at the same de Bruijn position should be equal regardless of name (they're alpha equivalent)"
+        );
+
+        assert!(
+            !structurally_equal(
+                &Variable("x".to_string(), 0),
+                &Variable("y".to_string(), 1),
+            ),
+            "bound variables at different positions with different names must not be equal"
+        );
+
+        assert!(
+            !structurally_equal(
+                &Variable("z".to_string(), GLOBAL_INDEX),
+                &Variable("s".to_string(), GLOBAL_INDEX),
+            ),
+            "different global constants should not be considered structurally equal"
+        );
+    }
+}
+
+mod constraint_collection {
+    use super::*;
+
+    #[test]
+    fn test_collect_unifications_product_match_and_let() {
+        let mut env = Cic::default_environment();
+        env.add_to_context("Bool", &Sort("TYPE".to_string()));
+        env.add_to_context(
+            "f",
+            &Product(
+                "_".to_string(),
+                Box::new(Variable("Bool".to_string(), GLOBAL_INDEX)),
+                Box::new(Sort("TYPE".to_string())),
+            ),
+        );
+        let f = Variable("f".to_string(), GLOBAL_INDEX);
+        // applying `f` (Bool -> TYPE) to a metavariable generates a
+        // constraint pairing `f`'s domain against the meta's own type
+        let inner_application =
+            Application(Box::new(f.clone()), Box::new(Meta(0)));
+
+        let product = Product(
+            "_".to_string(),
+            Box::new(inner_application.clone()),
+            Box::new(Sort("TYPE".to_string())),
+        );
+        assert!(
+            !cic_collect_unifications(&product, &mut env).unwrap().is_empty(),
+            "cic_collect_unifications must recurse into a Product's domain/codomain"
+        );
+        // a Let whose body contains that inner application
+        let let_term = Let(
+            "x".to_string(),
+            Box::new(None),
+            Box::new(inner_application.clone()),
+            Box::new(Sort("TYPE".to_string())),
+        );
+        assert!(
+            !cic_collect_unifications(&let_term, &mut env)
+                .unwrap()
+                .is_empty(),
+            "cic_collect_unifications must recurse into a Let's body/scope"
+        );
+
+        let match_term = Match(
+            Box::new(inner_application),
+            vec![(
+                Variable("true".to_string(), GLOBAL_INDEX),
+                Sort("TYPE".to_string()),
+            )],
+        );
+        assert!(
+            !cic_collect_unifications(&match_term, &mut env).unwrap().is_empty(),
+            "cic_collect_unifications must recurse into a Match's scrutinee/branches"
+        );
+    }
+}
+
 #[test]
 fn test_variable_ground_unification() {
     fn var(name: &str) -> CicTerm {
