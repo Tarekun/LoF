@@ -46,6 +46,9 @@ pub mod type_theory {
         pub mod freedom;
         mod inferences;
         pub mod saturation;
+        pub mod sld;
+        #[cfg(test)]
+        mod sld_bench;
         pub mod sup;
         pub mod sup_utils;
         mod type_check;
