@@ -1,5 +1,5 @@
-use super::sup::SupFormula::{self, Clause};
-use super::sup::SupTerm::Variable;
+use super::sup::SupFormula::{self, Atom, Clause, Equality, ForAll, Not};
+use super::sup::SupTerm::{Application, Variable};
 use super::sup_utils::subsumes;
 use crate::error::LofError;
 use crate::type_theory::commons::unification::Substitution;
@@ -11,20 +11,203 @@ use crate::type_theory::sup::inferences::{
     subsumption_resolution_first, superposition,
 };
 use crate::type_theory::sup::sup::SupTerm;
-use crate::type_theory::sup::sup_utils::{is_tautology, substitute_term};
+use crate::type_theory::sup::sup_utils::{
+    is_tautology, standardize_apart, unpack_literals,
+};
+use std::collections::HashMap;
 
-/// Checks if a formula φ is the empty clause
-fn is_bottom(φ: &SupFormula) -> bool {
-    match φ {
-        Clause(literals) => literals.is_empty(),
-        _ => false,
+//########################### ANSWER TRACKING
+/// Predicate name prefix of the bookkeeping literals that carry the answer
+/// substitution through a derivation (Green's answer-literal method).
+///
+/// Reassembling the answer by merging every inference's mgu into one flat
+/// map can't work: clauses are renamed apart as they're derived (they have
+/// to be, see `generating_inferences`), so a binding recorded for `m` in one
+/// step has nothing to do with the `m` of another step, and the two only
+/// ever chained up by accident. An answer literal instead *rides along* in
+/// the clause, so every substitution the calculus applies to that clause is
+/// applied to the recorded answer too, renaming included.
+const ANSWER_PREFIX: &str = "$answer_";
+
+fn is_answer_literal(φ: &SupFormula) -> bool {
+    matches!(φ, Atom(name, _) if name.starts_with(ANSWER_PREFIX))
+}
+
+/// Splits a clause's literals into its ordinary ones and its answer literals
+fn split_answer_literals(
+    φ: &SupFormula
+) -> (Vec<SupFormula>, Vec<SupFormula>) {
+    unpack_literals(φ)
+        .into_iter()
+        .partition(|l| !is_answer_literal(l))
+}
+
+/// Drops a clause's answer literals, leaving the logical content the
+/// calculus's redundancy checks should be looking at. Clauses without any
+/// are returned untouched, so problems that track no variables behave
+/// exactly as they would with no answer literals in the picture at all.
+fn strip_answer_literals(φ: &SupFormula) -> SupFormula {
+    let (body, answers) = split_answer_literals(φ);
+    if answers.is_empty() {
+        φ.to_owned()
+    } else {
+        Clause(body)
     }
+}
+
+/// Distinct variable names of a formula, in order of first occurrence
+fn clause_variables(φ: &SupFormula) -> Vec<String> {
+    fn of_term(term: &SupTerm, found: &mut Vec<String>) {
+        match term {
+            Variable(name) => {
+                if !found.contains(name) {
+                    found.push(name.to_string());
+                }
+            }
+            Application(_, args) => {
+                args.iter().for_each(|arg| of_term(arg, found))
+            }
+        }
+    }
+    fn of_formula(φ: &SupFormula, found: &mut Vec<String>) {
+        match φ {
+            Atom(_, args) => args.iter().for_each(|arg| of_term(arg, found)),
+            Equality(left, right) => {
+                of_term(left, found);
+                of_term(right, found);
+            }
+            Not(ψ) => of_formula(ψ, found),
+            Clause(literals) => {
+                literals.iter().for_each(|l| of_formula(l, found))
+            }
+            ForAll(_, var_type, body) => {
+                of_formula(var_type, found);
+                of_formula(body, found);
+            }
+        }
+    }
+
+    let mut found = vec![];
+    of_formula(φ, &mut found);
+    found
+}
+
+/// Appends to `φ` an answer literal recording φ's own variables, returning
+/// it along with the original variable names those arguments started as.
+/// Variable-free clauses get no answer literal: there'd be nothing to solve.
+fn with_answer_literal(
+    φ: &SupFormula,
+    index: usize,
+) -> (SupFormula, Vec<String>) {
+    let variables = clause_variables(φ);
+    if variables.is_empty() {
+        return (φ.to_owned(), variables);
+    }
+
+    let mut literals = unpack_literals(φ);
+    literals.push(Atom(
+        format!("{}{}", ANSWER_PREFIX, index),
+        variables
+            .iter()
+            .map(|name| Variable(name.to_string()))
+            .collect(),
+    ));
+    (Clause(literals), variables)
+}
+
+/// Reads the answer substitution off a refutation, mapping each original
+/// variable name to whatever its answer literal ended up carrying.
+///
+/// A variable that took *different* values at different points of the same
+/// refutation (the recursive rule's own variables do, once it's applied more
+/// than once) has no single answer, so it's reported as unsolved rather than
+/// as an arbitrary one of its instances.
+fn extract_answer(
+    φ: &SupFormula,
+    origins: &Vec<Vec<String>>,
+) -> Substitution<SupTerm> {
+    let mut solved: HashMap<String, Option<SupTerm>> = HashMap::new();
+
+    for literal in unpack_literals(φ) {
+        let Atom(predicate, args) = &literal else {
+            continue;
+        };
+        let Some(index) = predicate
+            .strip_prefix(ANSWER_PREFIX)
+            .and_then(|index| index.parse::<usize>().ok())
+        else {
+            continue;
+        };
+        let Some(names) = origins.get(index) else {
+            continue;
+        };
+
+        for (name, value) in names.iter().zip(args.iter()) {
+            match solved.get(name) {
+                Some(Some(previous)) if previous != value => {
+                    solved.insert(name.to_string(), None);
+                }
+                Some(_) => {}
+                None => {
+                    solved.insert(name.to_string(), Some(value.to_owned()));
+                }
+            }
+        }
+    }
+
+    Substitution::from(
+        solved
+            .into_iter()
+            .filter_map(|(name, value)| Some((name, value?))),
+    )
+}
+//########################### ANSWER TRACKING
+
+/// Checks if a formula φ refutes the input set, ie if it's the empty clause.
+/// Answer literals don't count as content: they carry no logical claim, they
+/// only record what the refutation bound the original variables to.
+fn is_bottom(φ: &SupFormula) -> bool {
+    unpack_literals(φ).iter().all(is_answer_literal)
 }
 
 #[allow(non_snake_case)]
 /// Decides if the clause is redundant
 fn is_redundant(C: &SupFormula, kept: &Vec<SupFormula>) -> bool {
-    is_tautology(C) || kept.iter().any(|D| subsumes(D, C))
+    // answer literals are bookkeeping, so they're excluded from redundancy:
+    // otherwise every clause would carry differently instantiated ones and
+    // subsumption would essentially never fire again
+    let C = strip_answer_literals(C);
+    is_tautology(&C)
+        || kept.iter().any(|D| subsumes(&strip_answer_literals(D), &C))
+}
+
+/// Simplifies `clause` by `other` (demodulation + subsumption resolution),
+/// keeping `clause`'s answer literals attached: `subsumption_resolution_first`
+/// is free to drop a leading literal, which for an answer literal would
+/// silently throw away part of the answer. Demodulation still reaches them,
+/// so equalities keep rewriting the recorded answer as the proof proceeds.
+fn simplify_by(clause: SupFormula, other: &SupFormula) -> SupFormula {
+    let (body, answers) = split_answer_literals(&clause);
+    if answers.is_empty() {
+        let simplified = demodulate_first(&clause, other);
+        return subsumption_resolution_first(&simplified, other);
+    }
+
+    let simplified = demodulate_first(&Clause(body.clone()), other);
+    let simplified = subsumption_resolution_first(&simplified, other);
+    let simplified_body = unpack_literals(&simplified);
+    let simplified_answers: Vec<SupFormula> =
+        answers.iter().map(|a| demodulate_first(a, other)).collect();
+
+    // returning `clause` itself when nothing changed keeps this a no-op for
+    // the caller, which compares against the original to detect simplification
+    if simplified_body == body && simplified_answers == answers {
+        return clause;
+    }
+
+    let mut literals = simplified_body;
+    literals.extend(simplified_answers);
+    Clause(literals)
 }
 
 /// Forward simplification simplifies the given `clause` by the clauses in `kept`
@@ -32,14 +215,7 @@ fn forward_simplification(
     kept: &Vec<SupFormula>,
     clause: SupFormula,
 ) -> SupFormula {
-    let mut current_given_clause = clause;
-    for other in kept {
-        current_given_clause = demodulate_first(&current_given_clause, other);
-        current_given_clause =
-            subsumption_resolution_first(&current_given_clause, other);
-    }
-
-    current_given_clause
+    kept.iter().fold(clause, simplify_by)
 }
 
 /// Backward simplification simplifies the `kept` clauses by the given `clause`.
@@ -53,9 +229,7 @@ fn backward_simplification(
     let mut new_kept: Vec<SupFormula> = vec![];
 
     for other in kept.iter() {
-        let simplified_other = demodulate_first(&other, clause);
-        let simplified_other =
-            subsumption_resolution_first(&simplified_other, clause);
+        let simplified_other = simplify_by((*other).clone(), clause);
 
         // only include it if it was simplified
         if simplified_other != *other {
@@ -76,34 +250,50 @@ fn generating_inferences(
     given: &SupFormula,
     kept: &Vec<SupFormula>,
     selection_fn: &SelectionFunctionSignature,
-) -> (Vec<SupFormula>, Substitution<SupTerm>) {
+) -> Vec<SupFormula> {
     let mut newly_derived = vec![];
-    let mut solving_mgu = Substitution::empty();
 
-    let (derived, mgu) = factoring(&given, selection_fn);
-    newly_derived.extend(derived);
-    solving_mgu.merge(mgu);
+    // Answer literals are bookkeeping and must never be *selected*: they
+    // can't be resolved against anything (nothing ever negates them), so a
+    // clause whose answer literal came out maximal would have no selected
+    // literal left to work with and would go inert - which is easy to hit,
+    // since a clause with more variables than its predicate has arguments
+    // gets an answer literal that outweighs its real ones. Hiding them from
+    // the configured selection function keeps them out of the running while
+    // still leaving them in the clause, so inferences carry them along and
+    // apply their substitutions to them.
+    let selection_fn = |literals: &mut Vec<SupFormula>| {
+        let (mut body, answers) =
+            split_answer_literals(&Clause(literals.to_vec()));
+        let selected = selection_fn(&mut body);
+        *literals = body;
+        literals.extend(answers);
+        selected
+    };
 
-    let (derived, mgu) = eq_resolution(&given, selection_fn);
-    newly_derived.extend(derived);
-    solving_mgu.merge(mgu);
-
-    let (derived, mgu) = eq_factoring(&given, selection_fn);
-    newly_derived.extend(derived);
-    solving_mgu.merge(mgu);
+    // the mgus these return are dropped on purpose: the answer substitution
+    // is carried by each clause's own answer literals (see ANSWER_PREFIX),
+    // which is the only representation that survives the renaming below
+    newly_derived.extend(factoring(&given, &selection_fn).0);
+    newly_derived.extend(eq_resolution(&given, &selection_fn).0);
+    newly_derived.extend(eq_factoring(&given, &selection_fn).0);
 
     // binary inferences between given and each clause in kept
     for kept_clause in kept.iter() {
-        let (derived, mgu) = resolution(&given, &kept_clause, selection_fn);
-        newly_derived.extend(derived);
-        solving_mgu.merge(mgu);
-
-        let (derived, mgu) = superposition(&given, &kept_clause, selection_fn);
-        newly_derived.extend(derived);
-        solving_mgu.merge(mgu);
+        newly_derived.extend(resolution(&given, &kept_clause, &selection_fn).0);
+        newly_derived
+            .extend(superposition(&given, &kept_clause, &selection_fn).0);
     }
 
-    (newly_derived, solving_mgu)
+    // Rename every derived clause apart. `kept` clauses are reused against
+    // each new given clause, so without this a variable surviving from one
+    // use of a clause collides with the same-named variable of a later use,
+    // and the unifier - which compares variables by name - silently builds a
+    // circular substitution instead of failing. That corrupts the derived
+    // clause and makes proofs unreachable: `test_deep_recursion_needs_renaming`
+    // below pins down the smallest problem where dropping this loses a proof.
+    // newly_derived
+    newly_derived.iter().map(standardize_apart).collect()
 }
 
 pub fn saturate(
@@ -111,20 +301,25 @@ pub fn saturate(
     selection_fn: &SelectionFunctionSignature,
     giving_clause_fn: GivingClauseSignature,
 ) -> Result<Substitution<SupTerm>, LofError> {
-    let mut unprocessed = clauses.clone();
+    // every input clause gets an answer literal recording its own variables
+    // and is then renamed apart, so no two of them can share a name either
+    let mut origins = vec![];
+    let mut unprocessed = vec![];
+    for (index, clause) in clauses.iter().enumerate() {
+        let (augmented, variables) = with_answer_literal(clause, index);
+        origins.push(variables);
+        unprocessed.push(standardize_apart(&augmented));
+    }
     let mut kept = vec![];
-    let mut solving_mgu = Substitution::empty();
 
     /// termination checks for clause processing:
     /// * it's empty: the set is unsatisfiable
     /// * it's redundant: move to the next one
     macro_rules! termination {
         // dry like a mf
-        ($clause:expr, $kept:expr, $mgu:expr) => {
+        ($clause:expr, $kept:expr) => {
             if is_bottom(&$clause) {
-                return Ok($mgu.reduce(|term, var_name, arg| {
-                    substitute_term(term, &Variable(var_name.to_string()), arg)
-                }));
+                return Ok(extract_answer(&$clause, &origins));
             }
             if is_redundant(&$clause, &$kept) {
                 continue;
@@ -141,35 +336,66 @@ pub fn saturate(
 
         let clause = giving_clause_fn(&mut unprocessed)?;
 
-        termination!(clause, kept, solving_mgu);
+        termination!(clause, kept);
         let clause = forward_simplification(&kept, clause);
-        termination!(clause, kept, solving_mgu);
+        termination!(clause, kept);
         let simplified = backward_simplification(&mut kept, &clause);
         unprocessed.extend(simplified);
 
-        let (new_clauses, mgu) =
-            generating_inferences(&clause, &kept, selection_fn);
+        let new_clauses = generating_inferences(&clause, &kept, selection_fn);
         kept.push(clause);
 
         unprocessed.extend(new_clauses);
-        solving_mgu.merge(mgu);
     }
 }
 
 #[cfg(test)]
 mod unit_tests {
-    use crate::type_theory::sup::freedom::GivingClauseSignature;
+    use crate::error::LofError;
+    use crate::type_theory::commons::unification::Substitution;
+    use crate::type_theory::sup::freedom::{
+        GivingClauseSignature, SelectionFunctionSignature,
+    };
     use crate::{
         config::SelectionFunction,
         type_theory::sup::{
             freedom::{get_selection_fn, pick_clause, pick_clause_weighted},
             saturation::saturate,
             sup::{
-                SupFormula::{Atom, Clause, Equality, Not},
+                SupFormula::{self, Atom, Clause, Equality, Not},
                 SupTerm::{self, Application, Variable},
             },
         },
     };
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// Runs `saturate` on a background thread bounded by `timeout`,
+    /// collapsing a timeout into an `Err` so callers can treat it exactly
+    /// like a normal `saturate` result. Self-contained here rather than a
+    /// change to `saturate` itself: some axiom sets (eg a recursive
+    /// successor rule) have an infinite family of non-redundant
+    /// consequences, so "no contradiction found" can only ever be
+    /// confirmed by running forever, never by a definite `Err` return -
+    /// treating "didn't finish in time" the same as "didn't find a proof"
+    /// is the honest way to keep a test like that from hanging forever.
+    fn saturate_bounded(
+        clauses: Vec<SupFormula>,
+        selection_fn: SelectionFunctionSignature,
+        giving_clause_fn: GivingClauseSignature,
+        timeout: Duration,
+    ) -> Result<Substitution<SupTerm>, LofError> {
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ =
+                tx.send(saturate(&clauses, &selection_fn, giving_clause_fn));
+        });
+        rx.recv_timeout(timeout).unwrap_or_else(|_| {
+            Err(LofError::custom(
+                "saturation didn't terminate within the test's time budget",
+            ))
+        })
+    }
 
     fn s(n: SupTerm) -> SupTerm {
         Application("s".to_string(), vec![n])
@@ -199,6 +425,59 @@ mod unit_tests {
         a.iter()
             .flat_map(|x| b.iter().map(move |y| (x.clone(), y.clone())))
             .collect()
+    }
+
+    /// Pins down why `generating_inferences` renames every derived clause
+    /// apart. `add(3,1,R)` is the smallest problem where dropping that
+    /// renaming loses the proof: it needs the recursive rule three times, and
+    /// by the third use a variable surviving from the first use collides with
+    /// the rule's own same-named variable. The unifier compares variables by
+    /// name, so it can't tell them apart and quietly builds a circular
+    /// substitution (`p -> m`, `m -> s(p)`) that the occurs check misses -
+    /// it only looks at the term being inserted, not through existing
+    /// aliases - producing a corrupted clause the refutation can't use.
+    ///
+    /// Two applications of the rule (`add(2,*,R)`) still succeed without the
+    /// renaming, which is why the pre-existing tests never caught this.
+    /// Every selection/giving-clause combination fails without it and
+    /// succeeds with it, so this doesn't depend on a particular strategy.
+    #[test]
+    fn test_deep_recursion_needs_renaming_apart() {
+        let zero = Application("0".to_string(), vec![]);
+        let number = |n: usize| (0..n).fold(zero.clone(), |acc, _| s(acc));
+
+        // add(0,X,X).
+        let ax1 =
+            Atom("add".to_string(), vec![zero.clone(), var("x"), var("x")]);
+        // add(s(N),M,s(P)) :- add(N,M,P).
+        let ax2 = Clause(vec![
+            Atom("add".to_string(), vec![s(var("n")), var("m"), s(var("p"))]),
+            Not(Box::new(Atom(
+                "add".to_string(),
+                vec![var("n"), var("m"), var("p")],
+            ))),
+        ]);
+        // ?- add(3,1,R)
+        let neg_target = Not(Box::new(Atom(
+            "add".to_string(),
+            vec![number(3), number(1), var("R")],
+        )));
+
+        for ((sel_name, sel_variant), (gc_name, gc_fn)) in
+            all_combinations(all_selection_fns(), all_giving_clause_fns())
+        {
+            let selection_fn = get_selection_fn(sel_variant);
+            let mgu = saturate(
+                &vec![ax1.clone(), ax2.clone(), neg_target.clone()],
+                &selection_fn,
+                gc_fn,
+            );
+            assert_eq!(
+                mgu.as_ref().map(|mgu| mgu.resolvent("R")),
+                Ok(Some(&number(4))),
+                "three levels of recursion need derived clauses renamed apart, but selection={sel_name}, giving_clause={gc_name} got {mgu:?}"
+            );
+        }
     }
 
     #[test]
@@ -253,10 +532,11 @@ mod unit_tests {
             );
 
             // validate its not just passing on anything
-            let res = saturate(
-                &vec![ax1.clone(), ax2.clone(), inconsistent.clone()],
-                &selection_fn,
+            let res = saturate_bounded(
+                vec![ax1.clone(), ax2.clone(), inconsistent.clone()],
+                selection_fn,
                 gc_fn,
+                Duration::from_secs(2),
             );
             assert!(
                 res.is_err(),
@@ -285,8 +565,8 @@ mod unit_tests {
         for ((sel_name, sel_variant), (gc_name, gc_fn)) in
             all_combinations(all_selection_fns(), all_giving_clause_fns())
         {
-            // TODO with this combination the proof is found but R resolves to 1 instead
-            // fix this damn bug and remove this skip
+            // this config keeps generating new non-redundant consequences
+            // faster than the refutation is reached
             if sel_name == "All" && gc_name == "FIFO" {
                 continue;
             }

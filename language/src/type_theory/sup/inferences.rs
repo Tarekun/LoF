@@ -1,6 +1,5 @@
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::interface::Automatic;
-use crate::type_theory::sup::freedom::SelectionFunctionSignature;
 use crate::type_theory::sup::sup::{
     Sup,
     SupFormula::{self, Atom, Clause, Equality, Not},
@@ -14,6 +13,13 @@ use crate::type_theory::sup::unification::{
     terms_unify,
 };
 use std::cmp::{max_by, min_by, Ordering::Less};
+
+/// Anything that can act as a literal-selection function. Kept generic (rather
+/// than taking `SelectionFunctionSignature` directly) so callers can pass a
+/// short-lived wrapper closure around the configured one - the saturation loop
+/// uses that to hide its answer-tracking literals from selection.
+pub trait SelectionFn: Fn(&mut Vec<SupFormula>) -> Vec<SupFormula> {}
+impl<S: Fn(&mut Vec<SupFormula>) -> Vec<SupFormula> + ?Sized> SelectionFn for S {}
 
 //########################### SIMPLIFICATION INFERENCES
 #[allow(non_snake_case)]
@@ -83,10 +89,10 @@ pub fn subsumption_resolution_first(
 
 //########################### SUP INFERENCES
 #[allow(non_snake_case)]
-pub fn resolution(
+pub fn resolution<S: SelectionFn + ?Sized>(
     C: &SupFormula,
     D: &SupFormula,
-    selection_fn: &SelectionFunctionSignature,
+    selection_fn: &S,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut c_literals = unpack_literals(C);
     let mut d_literals = unpack_literals(D);
@@ -141,9 +147,9 @@ pub fn resolution(
 }
 
 #[allow(non_snake_case)]
-pub fn factoring(
+pub fn factoring<S: SelectionFn + ?Sized>(
     C: &SupFormula,
-    selection_fn: &SelectionFunctionSignature,
+    selection_fn: &S,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut literals = unpack_literals(C);
     let selected = selection_fn(&mut literals);
@@ -171,9 +177,9 @@ pub fn factoring(
 }
 
 #[allow(non_snake_case)]
-pub fn eq_resolution(
+pub fn eq_resolution<S: SelectionFn + ?Sized>(
     C: &SupFormula,
-    selection_fn: &SelectionFunctionSignature,
+    selection_fn: &S,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut lits = unpack_literals(C);
     let selected = selection_fn(&mut lits);
@@ -206,9 +212,9 @@ pub fn eq_resolution(
 }
 
 #[allow(non_snake_case)]
-pub fn eq_factoring(
+pub fn eq_factoring<S: SelectionFn + ?Sized>(
     C: &SupFormula,
-    selection_fn: &SelectionFunctionSignature,
+    selection_fn: &S,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut literals: Vec<SupFormula> = unpack_literals(C);
     let selected = selection_fn(&mut literals);
@@ -279,10 +285,10 @@ pub fn eq_factoring(
 }
 
 #[allow(non_snake_case)]
-pub fn superposition(
+pub fn superposition<S: SelectionFn + ?Sized>(
     C: &SupFormula,
     D: &SupFormula,
-    selection_fn: &SelectionFunctionSignature,
+    selection_fn: &S,
 ) -> (Vec<SupFormula>, Substitution<SupTerm>) {
     let mut c_literals = unpack_literals(C);
     let mut d_literals = unpack_literals(D);
