@@ -90,15 +90,16 @@ fn type_check_exact(
 //
 //
 fn type_check_apply(
-    _: &mut Environment<Cic>,
+    environment: &mut Environment<Cic>,
     target: &CicTerm,
     partial_proof: &CicTerm,
     lemma: &CicTerm,
 ) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
+    let lemma_type = Cic::type_check_term(lemma, environment)?;
     // TODO see if i should be able to use a bigger term than the innermost as conclusion to unify
-    let conclusion = get_prod_innermost(lemma);
+    let conclusion = get_prod_innermost(&lemma_type);
     if Cic::type_unify(target, conclusion).is_ok() {
-        let premises = get_arg_types(lemma);
+        let premises = get_arg_types(&lemma_type);
         let new_proof = swap_body(
             partial_proof,
             &Application(
@@ -109,7 +110,7 @@ fn type_check_apply(
 
         Ok((new_proof, premises))
     } else {
-        Err(LofError::unification_failure(target, conclusion))
+        Err(LofError::unification_failure(target, &lemma_type))
     }
 }
 
@@ -258,23 +259,29 @@ mod unit_tests {
         let premise1 = Variable("Premise1".to_string(), GLOBAL_INDEX);
         let premise2 = Variable("Premise2".to_string(), GLOBAL_INDEX);
         let conclusion = Variable("Conclusion".to_string(), GLOBAL_INDEX);
+        test_env.add_to_context("Premise1", &Sort("PROP".to_string()));
+        test_env.add_to_context("Premise2", &Sort("PROP".to_string()));
+        test_env.add_to_context("Conclusion", &Sort("PROP".to_string()));
+
         let simple_implication = Product(
             "_".to_string(),
             Box::new(premise1.clone()),
             Box::new(conclusion.clone()),
         );
+        test_env.add_to_context("simple_lemma", &simple_implication);
+        let simple_lemma = Variable("simple_lemma".to_string(), GLOBAL_INDEX);
         let hole = Cic::proof_hole();
 
         let (proof, subgoals) = Cic::type_check_tactic(
             &mut test_env,
-            &Apply(simple_implication.clone()),
+            &Apply(simple_lemma.clone()),
             &conclusion,
             &hole,
         )
         .unwrap();
         assert_eq!(
             proof,
-            Application(Box::new(simple_implication), Box::new(hole.clone())),
+            Application(Box::new(simple_lemma), Box::new(hole.clone())),
             "The constructed partial proof is not the expected one"
         );
         assert_eq!(subgoals, vec![premise1.clone()], "The returned subgoals dont match the premises of the applied implication");
@@ -288,9 +295,11 @@ mod unit_tests {
                 Box::new(conclusion.clone()),
             )),
         );
+        test_env.add_to_context("double_lemma", &double_implication);
+        let double_lemma = Variable("double_lemma".to_string(), GLOBAL_INDEX);
         let (_, subgoals) = Cic::type_check_tactic(
             &mut test_env,
-            &Apply(double_implication.clone()),
+            &Apply(double_lemma),
             &conclusion,
             &hole,
         )
