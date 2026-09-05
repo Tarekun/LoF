@@ -128,6 +128,11 @@ impl LofParser {
         input: &'a str,
     ) -> PResult<'a, Expression> {
         alt((
+            // custom notations must be tried before parse_app
+            // otherwise if a left operand looks like a complete application
+            // parse_app would greedily match just the left operand
+            // leaving the rest of the notation unparsed
+            |input| self.parse_custom(input),
             // application should show up before parse_var, otherwise a
             // function name followed by '(' would be parsed as a bare
             // variable and leave the rest of the argument unparsed
@@ -154,8 +159,12 @@ impl LofParser {
     //
     fn parse_pattern<'a>(&self, input: &'a str) -> PResult<'a, Expression> {
         let (input, construction) = alt((
-            |input| self.parse_app(input),
+            // custom notations must be tried before parse_app
+            // otherwise if a left operand looks like a complete application
+            // parse_app would greedily match just the left operand
+            // leaving the rest of the notation unparsed
             |input| self.parse_custom(input),
+            |input| self.parse_app(input),
             |input| self.parse_var(input),
         ))(input)?;
 
@@ -364,13 +373,17 @@ impl LofParser {
             |input| self.parse_arrow_type(input),
             |input| self.let_def(input),
             |input| self.parse_pattern_match(input),
+            // custom notations must be tried before parse_app
+            // otherwise if a left operand looks like a complete application
+            // parse_app would greedily match just the left operand
+            // leaving the rest of the notation unparsed
+            |input| self.parse_custom(input),
             // parse_app must come before parens for some reason
             |input| self.parse_app(input),
             |input| self.parse_parens(input),
             // parens must be tried before tuples to avoid conflicts
             |input| self.parse_tuple(input),
             |input| self.parse_pipe(input),
-            |input| self.parse_custom(input),
             // parse_var is the last one because it matches any identifiere, even
             // when it starts composite expressions. examples:
             // - parse_app starts with the name of the functions

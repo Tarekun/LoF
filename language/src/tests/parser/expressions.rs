@@ -38,26 +38,26 @@ mod unit_tests {
             )),
             "Custom notation parser cant cope with whitespaces"
         );
-        // assert_eq!(
-        //     parser.parse_expression("(n + m) + o"),
-        //     Ok((
-        //         "",
-        //         Application(
-        //             Box::new(VarUse("add".to_string())),
-        //             vec![
-        //                 Application(
-        //                     Box::new(VarUse("add".to_string())),
-        //                     vec![
-        //                         VarUse("n".to_string()),
-        //                         VarUse("m".to_string()),
-        //                     ]
-        //                 ),
-        //                 VarUse("o".to_string())
-        //             ]
-        //         )
-        //     )),
-        //     "Composed applications don't parse properly"
-        // );
+        assert_eq!(
+            parser.parse_expression("(n + m) + o"),
+            Ok((
+                "",
+                Application(
+                    Box::new(VarUse("add".to_string())),
+                    vec![
+                        Application(
+                            Box::new(VarUse("add".to_string())),
+                            vec![
+                                VarUse("n".to_string()),
+                                VarUse("m".to_string()),
+                            ]
+                        ),
+                        VarUse("o".to_string())
+                    ]
+                )
+            )),
+            "Composed applications don't parse properly"
+        );
         let _ = parser.parse_notation("sugar \"_0 ++ _1\" := \"add(_1, _0)\"");
         assert_eq!(
             parser.parse_expression("n ++ m"),
@@ -87,6 +87,79 @@ mod unit_tests {
                 )
             )),
             "Custom notation parser list doenst work properly"
+        );
+    }
+
+    #[test]
+    fn test_notation_as_application_argument() {
+        let parser = LofParser::new(Config::default());
+        let _ = parser.parse_notation("sugar \"_0 + _1\" := \"add(_0, _1)\"");
+
+        assert_eq!(
+            parser.parse_expression("f(n + m)"),
+            Ok((
+                "",
+                Application(
+                    Box::new(VarUse("f".to_string())),
+                    vec![Application(
+                        Box::new(VarUse("add".to_string())),
+                        vec![
+                            VarUse("n".to_string()),
+                            VarUse("m".to_string())
+                        ]
+                    )]
+                )
+            )),
+            "Custom notation should be usable as a function call argument"
+        );
+
+        assert_eq!(
+            parser.parse_expression("f(n + m, o)"),
+            Ok((
+                "",
+                Application(
+                    Box::new(VarUse("f".to_string())),
+                    vec![
+                        Application(
+                            Box::new(VarUse("add".to_string())),
+                            vec![
+                                VarUse("n".to_string()),
+                                VarUse("m".to_string())
+                            ]
+                        ),
+                        VarUse("o".to_string())
+                    ]
+                )
+            )),
+            "Custom notation should be usable as one of several function call arguments"
+        );
+    }
+
+    #[test]
+    fn test_notation_with_application_looking_operand() {
+        let parser = LofParser::new(Config::default());
+        let _ = parser.parse_notation("sugar \"_0 + _1\" := \"add(_0, _1)\"");
+
+        // the left operand ("g(n)") looks like a complete application on
+        // its own; parse_app must not be allowed to greedily match just
+        // that and leave the rest of the notation (` + m`) unparsed
+        assert_eq!(
+            parser.parse_expression("g(n) + m"),
+            Ok((
+                "",
+                Application(
+                    Box::new(VarUse("add".to_string())),
+                    vec![
+                        Application(
+                            Box::new(VarUse("g".to_string())),
+                            vec![VarUse("n".to_string())]
+                        ),
+                        VarUse("m".to_string())
+                    ]
+                )
+            )),
+            "Custom notation parser must not let parse_app shadow a notation \
+            whose left operand looks like a complete application"
         );
     }
 
