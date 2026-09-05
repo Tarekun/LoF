@@ -1,0 +1,32 @@
+# Regression test: type-inference constraint collection (used to check
+# abstractions/applications that may need metavariable resolution) recursed
+# into an Abstraction's body and a Product's codomain *without* adding their
+# own bound variable to the environment first. Any use of that bound
+# variable inside an application within the body/codomain (extremely common:
+# `\lambda x: A. f(x)`, the whole point of a lambda) then failed with
+# "Unbound variable" - even though the surrounding context had nothing to do
+# with tactics or pattern matching, just an ordinary, directly-applied
+# lambda.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+fun pred (n: Nat) : Nat {
+  match n with
+  | z => z,
+  | s(nn) => nn,
+}
+
+# the lambda's body applies a constructor to its own bound variable
+theorem lambda_applying_constructor :
+  Eq(Nat, (\lambda n: Nat. s(n))(z), s(z)) := (refl(Nat, s(z)))
+
+# the lambda's body applies a user-defined function to its own bound variable
+theorem lambda_applying_function :
+  Eq(Nat, (\lambda n: Nat. pred(n))(s(z)), z) := (refl(Nat, z))

@@ -146,6 +146,50 @@ mod constraint_collection {
             "cic_collect_unifications must recurse into a Match's scrutinee/branches"
         );
     }
+
+    #[test]
+    fn test_collect_unifications_works_with_bindings() {
+        let mut env = Cic::default_environment();
+        env.add_to_context("Nat", &Sort("TYPE".to_string()));
+        env.add_to_context(
+            "s",
+            &Product(
+                "_".to_string(),
+                Box::new(Variable("Nat".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("Nat".to_string(), GLOBAL_INDEX)),
+            ),
+        );
+        let s = Variable("s".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+
+        // `\lambda n: Nat. s(n)`
+        let abstraction = Abstraction(
+            "n".to_string(),
+            Box::new(nat.clone()),
+            Box::new(Application(
+                Box::new(s.clone()),
+                Box::new(Variable("n".to_string(), 0)),
+            )),
+        );
+        assert!(
+            cic_collect_unifications(&abstraction, &mut env).is_ok(),
+            "cic_collect_unifications fails when inner abstraction body needs argument in context"
+        );
+
+        // `forall n: Nat. Eq(Nat, s(n), s(n))`
+        let product = Product(
+            "n".to_string(),
+            Box::new(nat),
+            Box::new(Application(
+                Box::new(s),
+                Box::new(Variable("n".to_string(), 0)),
+            )),
+        );
+        assert!(
+            cic_collect_unifications(&product, &mut env).is_ok(),
+            "cic_collect_unifications fails when collection needs a binded variable in context"
+        );
+    }
 }
 
 #[test]
