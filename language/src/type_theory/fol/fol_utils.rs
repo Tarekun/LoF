@@ -294,55 +294,59 @@ pub fn negation_normal_form(φ: &FolFormula) -> FolFormula {
             Not(ψ) => match &**ψ {
                 // simplify double negation
                 Not(gamma) => solver(&*gamma, negate),
-                // ¬(φ ∧ ψ ∧ γ) => ¬φ ∨ ¬ψ ∨ ¬γ
-                Conjunction(formulas) => {
-                    Disjunction(simple_map(formulas.to_owned(), |ψ| {
-                        solver(&ψ, !negate)
-                    }))
+                _ => solver(ψ, !negate),
+            },
+            Conjunction(formulas) => {
+                let solved =
+                    simple_map(formulas.to_owned(), |ψ| solver(&ψ, negate));
+                if negate {
+                    Disjunction(solved)
+                } else {
+                    Conjunction(solved)
                 }
-                // ¬(φ ∨ ψ ∨ γ) => ¬φ ∧ ¬ψ ∧ ¬γ
-                Disjunction(formulas) => {
-                    Conjunction(simple_map(formulas.to_owned(), |ψ| {
-                        solver(&ψ, !negate)
-                    }))
+            }
+            Disjunction(formulas) => {
+                let solved =
+                    simple_map(formulas.to_owned(), |ψ| solver(&ψ, negate));
+                if negate {
+                    Conjunction(solved)
+                } else {
+                    Disjunction(solved)
                 }
-                ForAll(var_name, var_type, ψ) => {
-                    let ψ = solver(&*ψ, !negate);
+            }
+            ForAll(var_name, var_type, ψ) => {
+                // im not recurring on the variable type as i assume its a sort
+                let ψ = solver(ψ, negate);
+                if negate {
                     Exist(
                         var_name.to_string(),
                         var_type.to_owned(),
                         Box::new(ψ),
                     )
-                }
-                Exist(var_name, var_type, ψ) => {
-                    let ψ = solver(&*ψ, !negate);
+                } else {
                     ForAll(
                         var_name.to_string(),
                         var_type.to_owned(),
                         Box::new(ψ),
                     )
                 }
-                _ => solver(ψ, !negate),
-            },
-            Conjunction(formulas) => {
-                Conjunction(simple_map(formulas.to_owned(), |ψ| {
-                    solver(&ψ, negate)
-                }))
-            }
-            Disjunction(formulas) => {
-                Disjunction(simple_map(formulas.to_owned(), |ψ| {
-                    solver(&ψ, negate)
-                }))
-            }
-            ForAll(var_name, var_type, ψ) => {
-                let ψ = solver(ψ, negate);
-                // im not recurring on the variable type as i assume its a sort
-                ForAll(var_name.to_string(), var_type.to_owned(), Box::new(ψ))
             }
             Exist(var_name, var_type, ψ) => {
-                let ψ = solver(ψ, negate);
                 // im not recurring on the variable type as i assume its a sort
-                Exist(var_name.to_string(), var_type.to_owned(), Box::new(ψ))
+                let ψ = solver(ψ, negate);
+                if negate {
+                    ForAll(
+                        var_name.to_string(),
+                        var_type.to_owned(),
+                        Box::new(ψ),
+                    )
+                } else {
+                    Exist(
+                        var_name.to_string(),
+                        var_type.to_owned(),
+                        Box::new(ψ),
+                    )
+                }
             }
         }
     }
