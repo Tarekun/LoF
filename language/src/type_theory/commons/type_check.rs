@@ -312,7 +312,7 @@ pub fn eq_type_check_theorem<T: TypeTheory + Kernel + Interactive>(
         theorem_name,
         formula,
         proof,
-        |proof_type, formula| {
+        |proof_type, formula, _| {
             T::base_type_equality(proof_type, formula).is_ok()
         },
     )
@@ -328,11 +328,11 @@ pub fn u_type_check_theorem<T: TypeTheory + Kernel + Interactive + Refiner>(
     proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
 ) -> Result<T::Type, LofError> {
     type_check_theorem_base(
-        &mut environment.clone(),
+        environment,
         theorem_name,
         formula,
         proof,
-        |proof_type, formula| {
+        |proof_type, formula, environment| {
             T::types_unify(environment, proof_type, formula).is_ok()
         },
     )
@@ -342,7 +342,7 @@ pub fn u_type_check_theorem<T: TypeTheory + Kernel + Interactive + Refiner>(
 /// Includes `theorem_name` in the context for future usage
 fn type_check_theorem_base<
     T: TypeTheory + Kernel + Interactive,
-    P: FnMut(&T::Type, &T::Type) -> bool,
+    P: FnMut(&T::Type, &T::Type, &mut Environment<T>) -> bool,
 >(
     environment: &mut Environment<T>,
     theorem_name: &str,
@@ -354,20 +354,13 @@ fn type_check_theorem_base<
     match proof {
         L(proof_term) => {
             let proof_type = T::type_check_term(proof_term, environment)?;
-            if !are_compatible(&proof_type, formula) {
+            if !are_compatible(&proof_type, formula, environment) {
                 return Err(LofError::type_mismatch(
                     "proof checking of proven statement and target",
                     formula,
                     &proof_type,
                 ));
             }
-            // include theorem_name into the context for following script
-            let _ = evaluate_theorem::<T, T::Exp>(
-                environment,
-                theorem_name,
-                formula,
-                proof,
-            );
         }
         R(interactive_proof) => {
             let proof = type_check_interactive_proof::<T>(
@@ -377,7 +370,7 @@ fn type_check_theorem_base<
             )?;
             // check that the proof proves the statement
             let proof_type = T::type_check_term(&proof, environment)?;
-            if !are_compatible(&proof_type, formula) {
+            if !are_compatible(&proof_type, formula, environment) {
                 // TODO figure out what to do in this branch:
                 // this is a pratial proof are we sure we should fail if the goal isnt matched?
                 // proof_type might not be syntactically equal to formula but unify with it; should it fail or require refinement?
@@ -389,6 +382,15 @@ fn type_check_theorem_base<
             }
         }
     }
+    // include theorem_name into the context for following script, for both
+    // term-mode and tactic-mode proofs
+    let _ = evaluate_theorem::<T, T::Exp>(
+        environment,
+        theorem_name,
+        formula,
+        proof,
+    );
+
     Ok(formula.to_owned())
 }
 
@@ -445,3 +447,7 @@ fn type_check_interactive_proof<T: TypeTheory + Interactive>(
     })
 }
 //########################### STATEMENTS TYPE CHECKING
+
+#[cfg(test)]
+#[path = "../../tests/type_theory/commons/type_check.rs"]
+mod tests;

@@ -1,0 +1,65 @@
+# Regression test: a previously proven theorem must be usable by name in a
+# later theorem's proof (term-mode or tactic-mode) - one of the most basic
+# capabilities needed to build up a library of lemmas.
+#
+# Root cause: `u_type_check_theorem` (used by CIC) type-checked the theorem
+# against a *clone* of the environment (`&mut environment.clone()`), because
+# the `are_compatible` closure needed its own captured mutable reference to
+# the real environment for `types_unify`, which the borrow checker wouldn't
+# allow alongside passing the real environment to `type_check_theorem_base`
+# directly. Every registration performed while checking a theorem - most
+# importantly, `evaluate_theorem` adding the theorem's own name to the
+# context - happened on that throwaway clone and vanished the moment the
+# call returned. On top of that, the tactic-mode (`begin...qed.`) branch of
+# `type_check_theorem_base` never called `evaluate_theorem` at all, even
+# form-mode proofs. Together, no theorem's name was ever available to a
+# later theorem, whether proven by a term or by tactics.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+# a term-mode theorem ...
+theorem zero_eq_zero : Eq(Nat, z, z) := (refl(Nat, z))
+
+# ... reused by name in a later term-mode theorem
+theorem reuse_term_mode : Eq(Nat, z, z) := (zero_eq_zero)
+
+# a tactic-mode theorem ...
+theorem one_eq_one :
+  Eq(Nat, s(z), s(z)) :=
+  begin
+  exact refl(Nat, s(z))
+  qed.
+
+# ... reused by name in a later tactic-mode theorem
+theorem reuse_tactic_mode : Eq(Nat, s(z), s(z)) :=
+  begin
+  exact one_eq_one
+  qed.
+
+# a theorem used as an argument to a function, not just as a whole proof term
+fun rec plus (n:Nat, m:Nat) : Nat {
+  match n with
+  | z => m,
+  | s(nn) => s(plus(nn, m)),
+}
+
+axiom P : PROP;
+axiom Q : PROP;
+axiom p_proof : P;
+axiom pq_impl : P -> Q;
+
+theorem q_holds : Q :=
+  begin
+  apply pq_impl
+  exact p_proof
+  qed.
+
+# reusing a tactic-proven theorem (`q_holds`) as a term inside another proof
+theorem q_holds_again : Q := (q_holds)
