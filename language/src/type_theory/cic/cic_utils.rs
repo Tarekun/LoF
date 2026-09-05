@@ -135,11 +135,7 @@ pub fn swap_proof_hole(proof_term: &CicTerm, new_body: &CicTerm) -> CicTerm {
         }
         Sort(_) => new_body.to_owned(),
         Variable(_, _) => new_body.to_owned(),
-        Application(left, right) => Application(
-            // Box::new(swap_proof_hole(left, new_body)),
-            left.clone(),
-            Box::new(swap_proof_hole(right, new_body)),
-        ),
+        Application(_, _) => new_body.to_owned(),
         _ => panic!("TODO: handle better"),
     }
 }
@@ -448,12 +444,10 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
 mod unit_tests {
     use crate::type_theory::cic::{
         cic::{
-            CicTerm::{Abstraction, Product, Sort, Variable},
+            CicTerm::{Abstraction, Sort, Variable},
             GLOBAL_INDEX, PLACEHOLDER_DBI,
         },
-        cic_utils::{
-            index_variables, reindex_bound_vars_as_global, swap_proof_hole,
-        },
+        cic_utils::{index_variables, swap_proof_hole},
     };
 
     #[test]
