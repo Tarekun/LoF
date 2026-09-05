@@ -257,8 +257,10 @@ impl LofParser {
         let pattern_tokens: Vec<String> =
             notation.split_whitespace().map(|s| s.to_string()).collect();
         let (_, exp) = self.parse_expression(body)?;
+        let next_key = self.custom_notations.borrow().len() as i32;
+
         self.custom_notations.borrow_mut().insert(
-            0,
+            next_key,
             Notation {
                 pattern_tokens,
                 body: exp,

@@ -76,6 +76,33 @@ mod unit_tests {
             ),
             "Notation parser didnt trim whitespaces"
         );
+        // registering the second notation ("*") must not clobber the first
+        // one ("+"): both need to be retrievable at the same time
+        assert!(
+            notation_contains(
+                &parser,
+                Notation {
+                    pattern_tokens: vec![
+                        "_0".to_string(),
+                        "+".to_string(),
+                        "_1".to_string()
+                    ],
+                    body: Application(
+                        Box::new(VarUse("comb".to_string())),
+                        vec![
+                            VarUse("_0".to_string()),
+                            VarUse("_1".to_string())
+                        ]
+                    )
+                }
+            ),
+            "Registering a second notation must not overwrite/lose an earlier one"
+        );
+        assert_eq!(
+            parser.custom_notations.borrow().len(),
+            2,
+            "Both notations should be registered simultaneously"
+        );
     }
 
     #[test]
