@@ -45,6 +45,49 @@ mod components {
             "different global constants should not be considered structurally equal"
         );
     }
+
+    #[test]
+    fn test_structurally_equal_abstraction() {
+        // (x,y) -> x
+        let term = Abstraction(
+            "x".to_string(),
+            Box::new(Sort("TYPE".to_string())),
+            Box::new(Abstraction(
+                "y".to_string(),
+                Box::new(Sort("TYPE".to_string())),
+                Box::new(Variable("x".to_string(), 1)),
+            )),
+        );
+        // (y,x) -> y
+        let unifiable = Abstraction(
+            "y".to_string(),
+            Box::new(Sort("TYPE".to_string())),
+            Box::new(Abstraction(
+                "x".to_string(),
+                Box::new(Sort("TYPE".to_string())),
+                Box::new(Variable("y".to_string(), 1)),
+            )),
+        );
+        // (y,x) -> x
+        let ununifiable = Abstraction(
+            "y".to_string(),
+            Box::new(Sort("TYPE".to_string())),
+            Box::new(Abstraction(
+                "x".to_string(),
+                Box::new(Sort("TYPE".to_string())),
+                Box::new(Variable("x".to_string(), 2)),
+            )),
+        );
+
+        assert!(
+            structurally_equal(&term, &unifiable),
+            "first arg projection functions are not alpha equivalent"
+        );
+        assert!(
+            !structurally_equal(&term, &ununifiable),
+            "first/second arg projection functions are unifiable"
+        );
+    }
 }
 
 mod constraint_collection {
