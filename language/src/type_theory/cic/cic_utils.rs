@@ -122,12 +122,16 @@ pub fn clone_product_with_different_result(
     }
 }
 
-/// Clones the given abstraction, swapping the body with the given one
-pub fn swap_body(abstraction: &CicTerm, new_body: &CicTerm) -> CicTerm {
-    match abstraction {
+/// Clones the given `proof_term`, swapping the hole with the given `new_body`
+pub fn swap_proof_hole(proof_term: &CicTerm, new_body: &CicTerm) -> CicTerm {
+    match proof_term {
         Abstraction(var_name, var_type, body) => {
-            let new_body = swap_body(body, new_body);
-            Product(var_name.to_owned(), var_type.clone(), Box::new(new_body))
+            let new_body = swap_proof_hole(body, new_body);
+            Abstraction(
+                var_name.to_owned(),
+                var_type.clone(),
+                Box::new(new_body),
+            )
         }
         Sort(_) => new_body.to_owned(),
         Variable(_, _) => new_body.to_owned(),
@@ -425,6 +429,16 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
 
     solver(term, FIRST_INDEX, &mut HashMap::new())
 }
+
+/// Returns `term` where every occurance of `var_name` as a variable
+/// is replaced as a constant
+pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
+    substitute(
+        &term,
+        var_name,
+        &Variable(var_name.to_string(), GLOBAL_INDEX),
+    )
+}
 //########################### UNIT TESTS
 #[cfg(test)]
 mod unit_tests {
@@ -433,8 +447,55 @@ mod unit_tests {
             CicTerm::{Abstraction, Sort, Variable},
             GLOBAL_INDEX, PLACEHOLDER_DBI,
         },
-        cic_utils::index_variables,
+        cic_utils::{index_variables, swap_proof_hole},
     };
+
+    #[test]
+    fn test_swap_proof_hole_preserves_abstraction_shape() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let hole = Sort("THIS_IS_A_PARTIAL_PROOF_HOLE".to_string());
+        let outer_abstraction = Abstraction(
+            "n".to_string(),
+            Box::new(nat.clone()),
+            Box::new(hole.clone()),
+        );
+
+        assert_eq!(
+            swap_proof_hole(&outer_abstraction, &nat),
+            Abstraction(
+                "n".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone())
+            ),
+            "swap_proof_hole must rebuild a single Abstraction as an Abstraction"
+        );
+
+        // nested case, as produced by two successive `intro` calls
+        let inner_abstraction = Abstraction(
+            "m".to_string(),
+            Box::new(nat.clone()),
+            Box::new(hole.clone()),
+        );
+        let nested = Abstraction(
+            "n".to_string(),
+            Box::new(nat.clone()),
+            Box::new(inner_abstraction.clone()),
+        );
+
+        assert_eq!(
+            swap_proof_hole(&nested, &nat),
+            Abstraction(
+                "n".to_string(),
+                Box::new(nat.clone()),
+                Box::new(Abstraction(
+                    "m".to_string(),
+                    Box::new(nat.clone()),
+                    Box::new(nat.clone()),
+                )),
+            ),
+            "swap_proof_hole must preserve Abstraction shape through nested expressions"
+        );
+    }
 
     #[test]
     fn test_index_variables() {

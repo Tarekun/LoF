@@ -434,11 +434,14 @@ fn type_check_interactive_proof<T: TypeTheory + Interactive>(
         }
     }
 
-    solver(
-        environment,
-        interactive_proof,
-        vec![target.to_owned()],
-        T::proof_hole(),
-    )
+    // rollback to avoid env contamination with changes possibly made by tactics
+    environment.with_rollback(|local_env| {
+        solver(
+            local_env,
+            interactive_proof,
+            vec![target.to_owned()],
+            T::proof_hole(),
+        )
+    })
 }
 //########################### STATEMENTS TYPE CHECKING
