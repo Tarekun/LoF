@@ -1,6 +1,6 @@
 use super::cic::CicTerm;
 use super::cic::CicTerm::{Abstraction, Application, Product};
-use super::cic_utils::swap_body;
+use super::cic_utils::swap_proof_hole;
 use crate::error::LofError;
 use crate::parser::api::Tactic::{self, Apply, Exact, Intro};
 use crate::type_theory::cic::cic::Cic;
@@ -52,7 +52,7 @@ fn type_check_intro(
             if Cic::base_type_equality(ass_type, domain).is_ok() {
                 // make the introduced assumption available to later tactic steps
                 environment.add_to_context(ass_name, ass_type);
-                let partial_proof = swap_body(partial_proof, &Abstraction(
+                let partial_proof = swap_proof_hole(partial_proof, &Abstraction(
                     ass_name.to_string(),
                     Box::new(ass_type.to_owned()),
                     Box::new(Cic::proof_hole())
@@ -96,7 +96,7 @@ fn type_check_exact(
     let target_reduced = Cic::normalize_term(environment, target);
 
     Cic::types_unify(environment, &proof_type_reduced, &target_reduced)?;
-    Ok((swap_body(partial_proof, proof_term), vec![]))
+    Ok((swap_proof_hole(partial_proof, proof_term), vec![]))
 }
 //
 //
@@ -111,7 +111,7 @@ fn type_check_apply(
     let conclusion = get_prod_innermost(&lemma_type);
     if Cic::type_unify(target, conclusion).is_ok() {
         let premises = get_arg_types(&lemma_type);
-        let new_proof = swap_body(
+        let new_proof = swap_proof_hole(
             partial_proof,
             &Application(
                 Box::new(lemma.to_owned()),
