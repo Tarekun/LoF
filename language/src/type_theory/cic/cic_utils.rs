@@ -425,6 +425,16 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
 
     solver(term, FIRST_INDEX, &mut HashMap::new())
 }
+
+/// Returns `term` where every occurance of `var_name` as a variable
+/// is replaced as a constant
+pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
+    substitute(
+        &term,
+        var_name,
+        &Variable(var_name.to_string(), GLOBAL_INDEX),
+    )
+}
 //########################### UNIT TESTS
 #[cfg(test)]
 mod unit_tests {

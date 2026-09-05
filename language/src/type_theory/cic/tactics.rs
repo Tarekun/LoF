@@ -4,7 +4,9 @@ use super::cic_utils::swap_body;
 use crate::error::LofError;
 use crate::parser::api::Tactic::{self, Apply, Exact, Intro};
 use crate::type_theory::cic::cic::Cic;
-use crate::type_theory::cic::cic_utils::{get_arg_types, get_prod_innermost};
+use crate::type_theory::cic::cic_utils::{
+    get_arg_types, get_prod_innermost, mark_as_constant,
+};
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
     Interactive, Kernel, Reducer, Refiner, TypeInference, TypeTheory,
@@ -39,7 +41,7 @@ pub fn type_check_tactic(
 //
 //
 fn type_check_intro(
-    _: &mut Environment<Cic>,
+    environment: &mut Environment<Cic>,
     target: &CicTerm,
     partial_proof: &CicTerm,
     ass_name: &str,
@@ -48,13 +50,22 @@ fn type_check_intro(
     match target {
         Product(_, domain, codomain) => {
             if Cic::base_type_equality(ass_type, domain).is_ok() {
+                // make the introduced assumption available to later tactic steps
+                environment.add_to_context(ass_name, ass_type);
                 let partial_proof = swap_body(partial_proof, &Abstraction(
                     ass_name.to_string(),
                     Box::new(ass_type.to_owned()),
                     Box::new(Cic::proof_hole())
                 ));
+                // from here onwards ass_name is fixed and not a variable to be solved
+                // this forces it to be a constant not unifiable with other expressions
+                // TODO: see issue #286
+                let codomain = mark_as_constant(
+                    (**codomain).to_owned(),
+                    ass_name,
+                );
 
-                Ok((partial_proof, vec![(**codomain).clone()]))
+                Ok((partial_proof, vec![codomain]))
             } else {
                 Err(LofError::type_mismatch(
                     format!("assumption `{}`", ass_name),
@@ -218,6 +229,39 @@ mod unit_tests {
             )
             .is_err(),
             "Intro tactic checking accepts tactic with unassumable target"
+        );
+    }
+
+    #[test]
+    fn test_intro_exposes_variable_to_environment_and_reindexes_codomain() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let mut test_env = Cic::default_environment();
+        test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
+
+        let target = Product(
+            "n".to_string(),
+            Box::new(nat.clone()),
+            Box::new(Variable("n".to_string(), 0)),
+        );
+
+        let (_, subgoals) = type_check_intro(
+            &mut test_env,
+            &target,
+            &Cic::proof_hole(),
+            "n",
+            &nat.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            test_env.get_variable_type("n"),
+            Some(nat.clone()),
+            "intro doesnt add the introduced variable to the environment"
+        );
+        assert_eq!(
+            subgoals,
+            vec![Variable("n".to_string(), GLOBAL_INDEX)],
+            "intro doesnt mark introduced name as a constant"
         );
     }
 
