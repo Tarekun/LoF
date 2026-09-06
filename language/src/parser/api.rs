@@ -5,7 +5,10 @@ use crate::{
     misc::Union,
 };
 use nom::{branch::alt, combinator::map, multi::many0};
-use std::{cell::RefCell, collections::BTreeMap};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashSet},
+};
 
 /// The parser's own `IResult`, wired to `LofError` so parse failures join
 /// the same error framework used by the rest of the pipeline.
@@ -99,12 +102,18 @@ pub struct Notation {
 pub struct LofParser {
     pub config: Config,
     pub custom_notations: RefCell<BTreeMap<i32, Notation>>,
+    /// Modules already spliced in by an `import` statement, so importing the
+    /// same module a second time (directly, or via another already-imported
+    /// module - a diamond import) is a no-op rather than re-parsing and
+    /// re-splicing its whole contents again.
+    pub imported_modules: RefCell<HashSet<String>>,
 }
 impl LofParser {
     pub fn new(config: Config) -> LofParser {
         LofParser {
             config,
             custom_notations: RefCell::new(BTreeMap::new()),
+            imported_modules: RefCell::new(HashSet::new()),
         }
     }
 

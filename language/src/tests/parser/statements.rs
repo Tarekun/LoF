@@ -486,6 +486,35 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_import_is_deduplicated() {
+        // Regression test: importing the same module more than once (be it
+        // a direct repeat, or a diamond - two different imports that
+        // themselves both import a shared common module) used to re-parse
+        // and re-splice its entire contents again on every single import,
+        // duplicating every definition once per import path leading to it.
+        // That duplication compounds with every further shared import, and
+        // was observed to make evaluating even a simple recursive function
+        // call over the resulting environment hang. A second import of an
+        // already-imported module must be a no-op instead.
+        let parser = LofParser::new(Config::default());
+
+        let (_, first) = parser
+            .parse_statement("import \"../library/logic\"")
+            .expect("first import must parse and actually splice the module");
+        assert_ne!(
+            first,
+            Comment(),
+            "the first import of a module must actually splice its contents"
+        );
+
+        assert_eq!(
+            parser.parse_statement("import \"../library/logic\""),
+            Ok(("", Comment())),
+            "importing an already-imported module again must be a no-op, not re-splice it"
+        );
+    }
+
+    #[test]
     fn test_theory_block() {
         let cic_parser = LofParser::new(Config::new(TypeSystem::Cic));
         let fol_parser = LofParser::new(Config::new(TypeSystem::Fol));

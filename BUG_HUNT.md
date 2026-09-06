@@ -471,3 +471,63 @@ surfaced there, but it blocks the very next natural line of standard-library
 code (a lemma or example mixing `+` and `*` in one expression, eg.
 distributivity). Flagging it here rather than shipping a partial fix that
 would trade a loud parse error for a silently wrong parse tree.
+
+## 10. A diamond import hung the whole process
+
+**Symptom:** Writing a file that imports two library modules which
+themselves share a common dependency - an extremely ordinary thing to do in
+any multi-file project, eg. wanting both `nat`'s arithmetic and `lists`'s
+list operations (`lists` itself already `import`s `nat`) - made the process
+spin at 100% CPU forever instead of type checking:
+
+```
+import "nat"
+import "lists"
+
+theorem len_check :
+  Eq(Nat, len(cons(Nat, z, nil(Nat))), s(z)) :=
+  (refl(Nat, s(z)))
+```
+(plus an `import "logic"` for `Eq`/`refl`, or an inline definition). Merely
+importing both without ever using anything from them was fine; the hang
+only appeared once something involving the resulting, duplicated
+environment was actually evaluated (eg. calling the recursive `len`).
+
+**Root cause:** `import` (`parse_import` in
+`language/src/parser/statements.rs`) unconditionally re-parses and splices
+the target module's *entire* contents on every single `import` statement
+that names it, with no tracking of what had already been imported. A
+diamond import (`zzz` importing both `nat` and `lists`, and `lists` itself
+importing `nat`) therefore spliced `nat.lof`'s definitions twice just from
+resolving `zzz`'s own two `import`s, stacking duplicate registrations for
+every name in it on top of each other in the environment. This duplication
+compounds with every further shared import, and evaluating a recursive
+function over the resulting doubly/triply-redefined environment was
+observed to never terminate - each of `library/nat.lof` and
+`library/lists.lof` on their own already gets this kind of light
+duplication today (both are themselves top-level library files *and*
+`lists.lof` separately `import`s `nat`), which is apparently harmless in
+isolation, but the same pattern compounds badly once more than one shared
+import contributes further duplicate layers.
+
+**Fix:** `LofParser` now tracks which module paths have already been
+imported (`imported_modules`, a `RefCell<HashSet<String>>` alongside the
+existing `custom_notations` interior-mutable parser state). `parse_import`
+now checks this set first and, if the target was already imported, returns
+a no-op `Statement::Comment()` instead of re-parsing and re-splicing it -
+standard "include guard" semantics, matching what `import` should have been
+doing all along for repeated/diamond imports.
+
+**Verification:** New parser unit test `test_import_is_deduplicated` (in
+`language/src/tests/parser/statements.rs`), checking that a first import
+actually splices content while a second import of the same module returns
+the no-op `Comment()`. Manually re-reproduced the hang in an isolated
+scratch workspace (copies of `nat.lof`/`lists.lof`/`logic.lof` plus a file
+importing all three) before the fix (reliably hangs past a 20s timeout) and
+confirmed it resolves instantly after; not captured as a `library/tests/`
+`.lof` file since none of the existing ones use `import` (its relative-path
+resolution depends on the process's current working directory, which
+differs between running the whole `library/` workspace and running a single
+file under `library/tests/`, unlike everything else in that directory,
+which is self-contained). All 175 tests in `cargo test` pass, and the whole
+standard library still type-checks and executes cleanly.

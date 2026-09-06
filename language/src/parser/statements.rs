@@ -27,9 +27,21 @@ impl LofParser {
             ws0,
             delimited(char('"'), is_not("\""), char('"')),
         )(input)?;
+        let filepath = format!("{}.lof", filepath);
+
+        // importing an already-imported module (directly, or via another
+        // already-imported module - a diamond import) is a no-op: without
+        // this, re-splicing the same module's statements duplicates every
+        // definition in it once per import path leading to it, and that
+        // duplication compounds with every further shared import, which was
+        // observed to make evaluating even a simple recursive function call
+        // hang rather than just wastefully redefine a few names
+        if !self.imported_modules.borrow_mut().insert(filepath.clone()) {
+            return Ok((input, Comment()));
+        }
 
         let (_, ast) = self
-            .parse_source_file(&format!("{}.lof", filepath))
+            .parse_source_file(&filepath)
             .map_err(nom::Err::Failure)?;
         match ast {
             LofAst::Stm(file_root_stm) => Ok((input, file_root_stm)),
