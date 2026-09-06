@@ -22,6 +22,7 @@ pub mod type_theory {
     pub mod commons {
         pub mod elaboration;
         pub mod evaluation;
+        pub mod transport;
         pub mod type_check;
         pub mod unification;
         pub mod utils;
