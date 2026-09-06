@@ -1,0 +1,53 @@
+# Regression test for two parser bugs around custom `sugar` notations:
+#
+# 1. `parse_notation` always registered new notations at the same hardcoded
+#    map key, so defining a second (or third) `sugar` silently discarded
+#    the previous one. This was never caught because the standard library
+#    (`nat.lof`) defines `+`, `-`, `*` but never actually exercises them as
+#    infix operators anywhere - so nothing noticed that only the *last*
+#    defined notation actually worked. This file defines two notations and
+#    uses both.
+#
+# 2. `parse_app` was tried before `parse_custom` in the parser's
+#    alternatives (and `parse_custom` wasn't even available at all in
+#    argument position), so a notation could never be recognized as a
+#    function-call argument, nor whenever its left operand looked like a
+#    complete application on its own (eg `s(n) + m`) - `parse_app` would
+#    greedily match just `s(n)` and leave the rest unparsed.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+fun rec plus (n:Nat, m:Nat) : Nat {
+  match n with
+  | z => m,
+  | s(nn) => s(plus(nn, m)),
+}
+sugar "_0 + _1" := "plus(_0, _1)"
+
+fun rec times (n: Nat, m: Nat) : Nat {
+  match n with
+  | z => z,
+  | s(nn) => plus(times(nn, m), m),
+}
+sugar "_0 * _1" := "times(_0, _1)"
+
+# both notations must still be usable after both have been declared
+theorem plus_notation_works : Eq(Nat, s(z) + s(z), s(s(z))) := (refl(Nat, s(s(z))))
+theorem times_notation_works : Eq(Nat, s(s(z)) * s(s(z)), s(s(s(s(z))))) := (refl(Nat, s(s(s(s(z))))))
+
+# using the notation as a function argument (not just a standalone/top level expression)
+theorem notation_as_argument : Eq(Nat, plus(s(z) + s(z), z), s(s(z))) := (refl(Nat, s(s(z))))
+
+# the left operand ("s(z) + s(z)") already looks like a complete
+# application/constructor use once evaluated as an argument to `plus`, and
+# using the notation itself as an argument requires `parse_custom` to be
+# reachable from an argument position at all
+theorem notation_left_operand_is_application :
+  Eq(Nat, (s(z) + s(z)) + s(z), s(s(s(z)))) := (refl(Nat, s(s(s(z)))))
