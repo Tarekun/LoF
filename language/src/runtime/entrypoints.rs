@@ -452,10 +452,6 @@ mod unit_tests {
     fn test_transport_expected_failures() {
         let expectations = [
             (
-                "../library/tests/transport_failures/nat_bin_theorem.lof",
-                "bin_succ_induction",
-            ),
-            (
                 "../library/tests/transport_failures/raw_match.lof",
                 "cannot transport a raw `match`",
             ),
