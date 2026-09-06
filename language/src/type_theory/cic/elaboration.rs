@@ -1,5 +1,5 @@
 use super::cic::CicStm::{Axiom, Theorem};
-use super::cic::PLACEHOLDER_DBI;
+use super::cic::{GLOBAL_INDEX, PLACEHOLDER_DBI};
 use super::cic::{
     CicStm::{self},
     CicTerm,
@@ -232,6 +232,27 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, LofError> {
                 proof,
             )?))
         }
+        Statement::Equivalence(
+            name,
+            type_a,
+            type_b,
+            forward,
+            backward,
+            section,
+            retraction,
+            dep_elim,
+            eta,
+            dep_constr,
+            iota,
+        ) => Ok(Schedule::singleton_stm(elaborate_equivalence(
+            name, type_a, type_b, forward, backward, section, retraction,
+            dep_elim, eta, dep_constr, iota,
+        )?)),
+        Statement::Transport(new_name, new_type, old_name, equiv_name) => {
+            Ok(Schedule::singleton_stm(elaborate_transport(
+                new_name, new_type, old_name, equiv_name,
+            )?))
+        }
         // Statement::Auto(formula) => {
         //     Ok(Schedule::singleton_stm(elaborate_auto(formula)?))
         // } //
@@ -378,6 +399,101 @@ fn elaborate_theorem(
         theorem_name.to_string(),
         Box::new(elaborated_formula),
         elaborated_proof,
+    ))
+}
+//
+//
+#[allow(clippy::too_many_arguments)]
+fn elaborate_equivalence(
+    name: &String,
+    type_a: &Expression,
+    type_b: &Expression,
+    forward: &Expression,
+    backward: &Expression,
+    section: &Expression,
+    retraction: &Expression,
+    dep_elim: &Expression,
+    eta: &Option<Box<Expression>>,
+    dep_constr: &Vec<(String, Expression)>,
+    iota: &Vec<(String, Expression)>,
+) -> Result<CicStm, LofError> {
+    let type_a_term = elaborate_expression(type_a);
+    let type_b_term = elaborate_expression(type_b);
+
+    // The engine identifies type_a/type_b by name, so both must elaborate
+    // to a bare reference to an already-declared type.
+    let type_a_name = match &type_a_term {
+        Variable(type_name, _) => type_name.to_owned(),
+        _ => {
+            return Err(LofError::custom(format!(
+                "equivalence '{}': type_a must be a bare type name, got {:?}",
+                name, type_a_term
+            )))
+        }
+    };
+    let type_b_name = match &type_b_term {
+        Variable(type_name, _) => type_name.to_owned(),
+        _ => {
+            return Err(LofError::custom(format!(
+                "equivalence '{}': type_b must be a bare type name, got {:?}",
+                name, type_b_term
+            )))
+        }
+    };
+
+    let forward_term = elaborate_expression(forward);
+    let backward_term = elaborate_expression(backward);
+    let section_term = elaborate_expression(section);
+    let retraction_term = elaborate_expression(retraction);
+    let dep_elim_term = elaborate_expression(dep_elim);
+    // No default is synthesized when `eta` is omitted: the obvious one
+    // (the identity on type_b) isn't even well-formed for a parameterized
+    // target type, where the bare name is a type former rather than a type.
+    let eta_term = eta
+        .as_ref()
+        .map(|eta_expr| Box::new(elaborate_expression(eta_expr)));
+    let dep_constr_terms: Vec<(String, CicTerm)> = dep_constr
+        .iter()
+        .map(|(ctor_name, expr)| {
+            (ctor_name.to_owned(), elaborate_expression(expr))
+        })
+        .collect();
+    let iota_terms: Vec<(String, CicTerm)> = iota
+        .iter()
+        .map(|(ctor_name, expr)| {
+            (ctor_name.to_owned(), elaborate_expression(expr))
+        })
+        .collect();
+
+    Ok(CicStm::Equivalence(
+        name.to_string(),
+        Box::new(Variable(type_a_name, GLOBAL_INDEX)),
+        Box::new(Variable(type_b_name, GLOBAL_INDEX)),
+        Box::new(forward_term),
+        Box::new(backward_term),
+        Box::new(section_term),
+        Box::new(retraction_term),
+        Box::new(dep_elim_term),
+        eta_term,
+        dep_constr_terms,
+        iota_terms,
+    ))
+}
+//
+//
+fn elaborate_transport(
+    new_name: &String,
+    new_type: &Expression,
+    old_name: &String,
+    equiv_name: &String,
+) -> Result<CicStm, LofError> {
+    let new_type_term = elaborate_expression(new_type);
+
+    Ok(CicStm::Transport(
+        new_name.to_string(),
+        Box::new(new_type_term),
+        old_name.to_string(),
+        equiv_name.to_string(),
     ))
 }
 //
