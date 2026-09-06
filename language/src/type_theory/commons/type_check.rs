@@ -361,6 +361,11 @@ fn type_check_theorem_base<
                     &proof_type,
                 ));
             }
+            // Record the proof term for later introspection (eg by
+            // `transport`) - theorems otherwise behave like axioms
+            // (opaque for reduction), so without this their witness term
+            // is unrecoverable once checked.
+            environment.add_theorem_proof(theorem_name, proof_term);
         }
         R(interactive_proof) => {
             let proof = type_check_interactive_proof::<T>(
@@ -380,6 +385,7 @@ fn type_check_theorem_base<
                 //         proof_type, formula
                 //     ));
             }
+            environment.add_theorem_proof(theorem_name, &proof);
         }
     }
     // include theorem_name into the context for following script, for both

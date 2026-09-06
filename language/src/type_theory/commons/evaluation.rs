@@ -159,9 +159,22 @@ pub fn evaluate_theorem<T: TypeTheory, E>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
-    _proof: &Union<T::Term, Vec<Tactic<E>>>,
+    proof: &Union<T::Term, Vec<Tactic<E>>>,
 ) -> Result<(), LofError> {
     environment.add_to_context(&theorem_name, &formula);
+    // Record the term-mode proof for later introspection (eg by
+    // `transport`), matching what `type_check_theorem_base` already does -
+    // needed here too because `execute`'s evaluation pass runs against a
+    // fresh `Environment`, discarding whatever `type_check` registered.
+    // A tactic-mode proof's *resolved* term only exists after running the
+    // tactic engine (`type_check_interactive_proof`), which this generic,
+    // `Kernel`/`Interactive`-free function can't do - so only the L (term)
+    // case is recorded here; tactic-mode theorems remain introspectable
+    // via `type_check`'s own registration (which does resolve the term)
+    // but not through a bare `execute` run alone.
+    if let Union::L(proof_term) = proof {
+        environment.add_theorem_proof(theorem_name, proof_term);
+    }
     Ok(())
 }
 
