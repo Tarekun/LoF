@@ -368,17 +368,19 @@ fn type_check_theorem_base<
                 interactive_proof,
                 formula,
             )?;
-            // check that the proof proves the statement
+            // tactic steps assemble the proof out of independently-checked
+            // fragments (see `Interactive::reindex_proof`'s docs), so
+            // variable binding metadata needs recomputing over the whole
+            // term before it is trusted for type checking
+            let proof = T::reindex_proof(&proof);
+            // check that the assembled proof actually proves the statement
             let proof_type = T::type_check_term(&proof, environment)?;
             if !are_compatible(&proof_type, formula, environment) {
-                // TODO figure out what to do in this branch:
-                // this is a pratial proof are we sure we should fail if the goal isnt matched?
-                // proof_type might not be syntactically equal to formula but unify with it; should it fail or require refinement?
-
-                // return Err(format!(
-                //         "Theorem checking failed. Proof has type {:?} while stated type is {:?}",
-                //         proof_type, formula
-                //     ));
+                return Err(LofError::type_mismatch(
+                    "tactic proof checking of proven statement and target",
+                    formula,
+                    &proof_type,
+                ));
             }
         }
     }
@@ -429,7 +431,16 @@ fn type_check_interactive_proof<T: TypeTheory + Interactive>(
                     &target,
                     &partial_proof,
                 )?;
-                subgoals.extend(new_subgoals);
+                // `subgoals` is processed as a stack (via `.pop()` above), so
+                // the *last* pushed entry is the *next* one popped. Pushing
+                // `new_subgoals` as-is would therefore hand them to
+                // subsequent tactics in reverse of their declaration order
+                // (eg. a lemma `P -> P2 -> Q` would expect its `P` premise
+                // discharged before `P2`, but `.pop()` would yield `P2`
+                // first). Reversing on push restores that order while still
+                // resolving these fresh subgoals before any older, still
+                // pending ones already on the stack.
+                subgoals.extend(new_subgoals.into_iter().rev());
 
                 solver::<T>(environment, rest, subgoals, new_proof)
             }

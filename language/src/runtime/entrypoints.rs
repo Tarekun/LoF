@@ -441,4 +441,56 @@ mod unit_tests {
             "FOL solve execution failed",
         );
     }
+
+    /// Regression test for the `apply` tactic on a lemma with more than one
+    /// premise. Before the fix, `apply`'s subgoals were pushed onto a stack
+    /// and popped in reverse of their declared order, and the partial proof
+    /// term's holes were collapsed by `swap_proof_hole` so that supplying
+    /// `exact` proofs *in either order* was silently accepted (with the
+    /// stated theorem's formula never actually re-checked against the
+    /// assembled proof term). This meant `apply`-ing a two-premise lemma
+    /// and discharging its premises in their natural, declared order was
+    /// rejected, while discharging them in the wrong order was (wrongly)
+    /// accepted.
+    #[test]
+    fn test_apply_multi_premise_subgoal_order() {
+        fn check(tactic_body: &str) -> Result<(), crate::error::LofError> {
+            let source = format!(
+                "axiom P : PROP;\n\
+                 axiom P2 : PROP;\n\
+                 axiom Q : PROP;\n\
+                 axiom pq2 : P -> P2 -> Q;\n\
+                 axiom p : P;\n\
+                 axiom p2 : P2;\n\
+                 theorem thm : Q :=\n\
+                 begin\n\
+                 apply pq2\n\
+                 {tactic_body}\n\
+                 qed.\n"
+            );
+            let dir = std::env::temp_dir().join(format!(
+                "lof_apply_order_test_{:?}",
+                std::thread::current().id()
+            ));
+            std::fs::create_dir_all(&dir).expect("failed to create tempdir");
+            let file = dir.join("thm.lof");
+            std::fs::write(&file, source).expect("failed to write fixture");
+
+            let result = type_check::<Cic>(
+                &Config::new(TypeSystem::Cic),
+                file.to_str().expect("non-UTF-8 path"),
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+            result.map(|_| ())
+        }
+
+        assert!(
+            check("exact p\nexact p2").is_ok(),
+            "discharging apply's premises in their declared order (P, then P2) should be accepted"
+        );
+        assert!(
+            check("exact p2\nexact p").is_err(),
+            "discharging apply's premises in the wrong order (P2, then P) must be rejected, not silently accepted"
+        );
+    }
 }

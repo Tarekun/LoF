@@ -8,7 +8,7 @@ use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::CicTerm::{Application, Product};
 use crate::type_theory::cic::cic_utils::{
-    make_multiarg_fun_type, substitute, substitute_meta,
+    index_variables, make_multiarg_fun_type, substitute, substitute_meta,
 };
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
@@ -394,6 +394,10 @@ impl Interactive for Cic {
     }
     fn empty_target() -> CicTerm {
         CicTerm::Sort("THIS_IS_AN_EMPTY_TERMINATION_PROOF_TARGET".to_string())
+    }
+
+    fn reindex_proof(term: &CicTerm) -> CicTerm {
+        index_variables(term)
     }
 
     fn type_check_tactic(

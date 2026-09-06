@@ -1,0 +1,30 @@
+# Regression test: `apply`-ing a lemma with more than one premise.
+#
+# Two bugs conspired here:
+#  1. `type_check_apply` only ever inserted a single proof hole (regardless
+#     of how many premises the applied lemma had), so `swap_proof_hole`
+#     could never thread a second premise's proof into the assembled term -
+#     it just clobbered whatever was already there.
+#  2. The subgoals produced by `apply` were pushed onto (and popped from) a
+#     stack, which processes them in the reverse of their declared order, so
+#     `exact` steps had to be supplied back-to-front to be accepted.
+# Together with the fact that the assembled proof term was never actually
+# re-checked against the theorem's stated formula, a two-premise `apply`
+# discharged in its natural, left-to-right order was rejected, while
+# discharging it in the wrong order was silently accepted.
+
+axiom P : PROP;
+axiom P2 : PROP;
+axiom Q : PROP;
+
+axiom pq2 : P -> P2 -> Q;
+axiom p : P;
+axiom p2 : P2;
+
+# premises must be discharged in the same order they appear in `pq2`'s type
+theorem q_from_two_premises : Q :=
+  begin
+  apply pq2
+  exact p
+  exact p2
+  qed.

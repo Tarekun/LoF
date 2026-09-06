@@ -1,11 +1,11 @@
 use super::cic::CicTerm;
-use super::cic::CicTerm::{Abstraction, Application, Product};
+use super::cic::CicTerm::{Abstraction, Product};
 use super::cic_utils::swap_proof_hole;
 use crate::error::LofError;
 use crate::parser::api::Tactic::{self, Apply, Exact, Intro};
 use crate::type_theory::cic::cic::Cic;
 use crate::type_theory::cic::cic_utils::{
-    get_arg_types, get_prod_innermost, mark_as_constant,
+    apply_arguments, get_arg_types, get_prod_innermost, mark_as_constant,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
@@ -111,13 +111,11 @@ fn type_check_apply(
     let conclusion = get_prod_innermost(&lemma_type);
     if Cic::type_unify(target, conclusion).is_ok() {
         let premises = get_arg_types(&lemma_type);
-        let new_proof = swap_proof_hole(
-            partial_proof,
-            &Application(
-                Box::new(lemma.to_owned()),
-                Box::new(Cic::proof_hole()),
-            ),
-        );
+        // one fresh hole per premise, applied left-to-right, so every
+        // premise gets its own subgoal instead of only ever tracking one
+        let holes = premises.iter().map(|_| Cic::proof_hole()).collect();
+        let new_proof =
+            swap_proof_hole(partial_proof, &apply_arguments(lemma, holes));
 
         Ok((new_proof, premises))
     } else {

@@ -248,6 +248,19 @@ pub trait Interactive: TypeTheory {
     /// Canonical empty  target signaling the completeness of the proof
     fn empty_target() -> Self::Type;
 
+    /// Recomputes variable binding metadata (eg. de Bruijn indices) over a
+    /// fully assembled interactive proof term. Tactic steps are checked and
+    /// composed one subgoal at a time, each in its own, independently
+    /// elaborated fragment (eg. `intro`'s introduced assumption, or an
+    /// `exact`/`apply` term), so identically-named variables may end up
+    /// tagged inconsistently across fragments (eg. as a free/global
+    /// reference in one place, but a binder-relative index in another) even
+    /// though they refer to the same bound variable once the fragments are
+    /// glued together. Implementors should normalize the finished term so it
+    /// matches what ordinary, single-pass elaboration would have produced,
+    /// before it is type-checked against the theorem's stated formula.
+    fn reindex_proof(term: &Self::Term) -> Self::Term;
+
     /// Proof checking for the current `tactic` given a `target` and a `partial_proof`.
     /// Returns an updated (proof_term, subgoals) pair
     fn type_check_tactic(

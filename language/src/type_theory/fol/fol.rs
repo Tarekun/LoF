@@ -291,6 +291,10 @@ impl Interactive for Fol {
         )
     }
 
+    fn reindex_proof(term: &Self::Term) -> Self::Term {
+        term.to_owned()
+    }
+
     fn type_check_tactic(
         environment: &mut Environment<Fol>,
         tactic: &Tactic<Self::Exp>,

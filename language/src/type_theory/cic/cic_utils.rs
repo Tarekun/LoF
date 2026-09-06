@@ -122,22 +122,63 @@ pub fn clone_product_with_different_result(
     }
 }
 
-/// Clones the given `proof_term`, swapping the hole with the given `new_body`
-pub fn swap_proof_hole(proof_term: &CicTerm, new_body: &CicTerm) -> CicTerm {
+/// Returns whether `term` is the canonical placeholder produced by
+/// `Cic::proof_hole()`, marking a not-yet-solved subgoal inside a partial
+/// proof term.
+fn is_proof_hole(term: &CicTerm) -> bool {
+    matches!(term, Sort(name) if name == "THIS_IS_A_PARTIAL_PROOF_HOLE")
+}
+
+/// Searches `proof_term` for the leftmost (in left-to-right, depth-first
+/// order) proof hole and, if found, returns the term with that hole replaced
+/// by `new_body`. Returns `None` when `proof_term` contains no hole at all,
+/// so callers composing multiple subterms (eg. both sides of an
+/// `Application`) can try the next one.
+///
+/// A partial proof may contain several holes at once (eg. after `apply`-ing
+/// a lemma with more than one premise, one hole per premise is introduced),
+/// so this only ever touches the first one, leaving the rest of the term -
+/// and any other pending holes in it - untouched.
+fn try_swap_proof_hole(
+    proof_term: &CicTerm,
+    new_body: &CicTerm,
+) -> Option<CicTerm> {
+    if is_proof_hole(proof_term) {
+        return Some(new_body.to_owned());
+    }
     match proof_term {
         Abstraction(var_name, var_type, body) => {
-            let new_body = swap_proof_hole(body, new_body);
-            Abstraction(
-                var_name.to_owned(),
-                var_type.clone(),
-                Box::new(new_body),
-            )
+            try_swap_proof_hole(body, new_body).map(|new_body| {
+                Abstraction(
+                    var_name.to_owned(),
+                    var_type.clone(),
+                    Box::new(new_body),
+                )
+            })
         }
-        Sort(_) => new_body.to_owned(),
-        Variable(_, _) => new_body.to_owned(),
-        Application(_, _) => new_body.to_owned(),
-        _ => panic!("TODO: handle better"),
+        Application(left, right) => {
+            match try_swap_proof_hole(left, new_body) {
+                Some(new_left) => {
+                    Some(Application(Box::new(new_left), right.clone()))
+                }
+                None => try_swap_proof_hole(right, new_body).map(|new_right| {
+                    Application(left.clone(), Box::new(new_right))
+                }),
+            }
+        }
+        _ => None,
     }
+}
+
+/// Clones the given `proof_term`, swapping the (leftmost) hole with the
+/// given `new_body`. Panics if `proof_term` contains no hole to swap.
+pub fn swap_proof_hole(proof_term: &CicTerm, new_body: &CicTerm) -> CicTerm {
+    try_swap_proof_hole(proof_term, new_body).unwrap_or_else(|| {
+        panic!(
+            "swap_proof_hole: no partial-proof hole found in {:?}",
+            proof_term
+        )
+    })
 }
 
 /// Returns the innermost body term of a serie of concatenated Products
