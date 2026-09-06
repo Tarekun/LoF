@@ -1,5 +1,5 @@
 use super::cic::CicTerm::{
-    Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Meta, Proj, Product, Sort, Variable,
 };
 use super::cic::{Cic, CicTerm};
 use crate::misc::simple_map;
@@ -47,6 +47,9 @@ fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         }
         Let(var_name, _, body, scope) => {
             write!(f, "let {} := {} in\n{}", var_name, body, scope)
+        }
+        Proj(type_name, field_index, target) => {
+            write!(f, "{}.{}[{}]", target, type_name, field_index)
         }
         Meta(index) if *index == HOLE_INDEX => write!(f, "?"),
         Meta(index) => write!(f, "?[{}]", index),
@@ -239,6 +242,11 @@ pub fn substitute_meta(term: &CicTerm, target: &i32, arg: &CicTerm) -> CicTerm {
         }
         Sort(_) => term.clone(),
         Variable(_, _) => term.clone(),
+        Proj(type_name, field_index, target_term) => Proj(
+            type_name.to_string(),
+            *field_index,
+            Box::new(substitute_meta(target_term, target, arg)),
+        ),
         Application(left, right) => Application(
             Box::new(substitute_meta(left, target, arg)),
             Box::new(substitute_meta(right, target, arg)),
@@ -311,6 +319,12 @@ pub fn open_term(body: &CicTerm, name: &str) -> CicTerm {
     fn solver(term: &CicTerm, name: &str, depth: i32) -> CicTerm {
         match term {
             Sort(_) | Meta(_) => term.clone(),
+            // inert: nothing looks through a projection
+            Proj(type_name, field_index, target) => Proj(
+                type_name.to_string(),
+                *field_index,
+                Box::new(solver(target, name, depth)),
+            ),
             Variable(_, NameKind::Const()) | Variable(_, NameKind::Local()) => {
                 term.clone()
             }
@@ -393,6 +407,12 @@ pub fn close_term_as(body: &CicTerm, name: &str, new_name: &str) -> CicTerm {
         };
         match term {
             Sort(_) | Meta(_) => term.clone(),
+            // inert: nothing looks through a projection
+            Proj(type_name, field_index, target) => Proj(
+                type_name.to_string(),
+                *field_index,
+                Box::new(solver(target, name, depth)),
+            ),
             Variable(_, NameKind::Const()) => term.clone(),
             Variable(var_name, NameKind::Bound(dbi)) => {
                 if *dbi >= depth {
@@ -481,6 +501,11 @@ fn substitute_base(
             match term {
                 Sort(_) => term.clone(),
                 Meta(_) => term.clone(),
+                Proj(type_name, field_index, target) => Proj(
+                    type_name.to_string(),
+                    *field_index,
+                    Box::new(solver(target, amount, cutoff)),
+                ),
                 // a `Local` names a context entry rather than a position,
                 // so no amount of extra enclosing binders can change it --
                 // this is exactly the property `open` buys us.
@@ -559,6 +584,11 @@ fn substitute_base(
         match term {
             Sort(_) => term.clone(),
             Meta(_) => term.clone(),
+            Proj(type_name, field_index, target) => Proj(
+                type_name.to_string(),
+                *field_index,
+                Box::new(solver(target, target_name, arg, depth)),
+            ),
             // both consts and locally free vars are treated irreduceable
             Variable(_, NameKind::Const()) => term.clone(),
             Variable(_, NameKind::Local()) => term.clone(),

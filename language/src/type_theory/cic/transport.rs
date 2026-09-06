@@ -1,5 +1,5 @@
 use super::cic::CicTerm::{
-    Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Meta, Proj, Product, Sort, Variable,
 };
 use super::cic::{Cic, CicTerm, GLOBAL_INDEX, PLACEHOLDER_DBI};
 use super::cic_utils::{
@@ -53,6 +53,20 @@ fn transport_term_inner(
 ) -> Result<CicTerm, LofError> {
     match term {
         Sort(_) | Meta(_) => Ok(term.to_owned()),
+
+        // `Proj` never appears in a source proof (it has no surface
+        // syntax); it can only turn up if a term was normalized after the
+        // kernel eta-expanded something. Transport it structurally.
+        Proj(type_name, field_index, target) => Ok(Proj(
+            type_name.to_owned(),
+            *field_index,
+            Box::new(transport_term_inner(
+                environment,
+                config,
+                target,
+                known_params,
+            )?),
+        )),
 
         Variable(name, dbi) => {
             if name == &config.type_a {
