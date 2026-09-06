@@ -22,7 +22,7 @@ use crate::{
         },
         commons::type_check::type_check_variable,
         environment::Environment,
-        interface::{Kernel, Refiner},
+        interface::{Kernel, Reducer, Refiner},
     },
 };
 use tracing::error;
@@ -287,6 +287,18 @@ pub fn type_check_match(
     branches: &Vec<(CicTerm, CicTerm)>,
 ) -> Result<CicTerm, LofError> {
     let matching_type = Cic::type_check_term(matched_term, environment)?;
+    // Application inference hands back a substituted codomain without
+    // reducing it, so a scrutinee whose type comes from a dependent
+    // eliminator arrives as a beta-redex (`(λ_:Bin. Bin) b` rather than
+    // `Bin`) and the type former would come out an abstraction rather than
+    // a variable. Only normalize in that case: doing it unconditionally
+    // costs a full normalization on every `match` in the language, for a
+    // shape that is already a variable the overwhelming majority of the
+    // time.
+    let matching_type = match get_applied_function(&matching_type) {
+        Variable(_, _) => matching_type,
+        _ => Cic::normalize_term(environment, &matching_type),
+    };
     let mut return_type = None;
 
     let ind_type_constructor = get_applied_function(&matching_type);

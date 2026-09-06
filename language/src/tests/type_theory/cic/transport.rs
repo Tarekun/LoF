@@ -252,3 +252,168 @@ fn test_transport_raw_match_over_type_a_is_rejected() {
         },
     );
 }
+
+/// Iota: the equations that bridge a step which is definitional on the
+/// source side but only propositional on the target. These test the
+/// mechanism's pieces directly; the end-to-end case is
+/// `library/tests/proofs/transport_nat_bin.lof`, where `plus_z_r`'s base
+/// case `refl` only proves the transported goal after rewriting along
+/// `dep_elim`'s propositional computation rule.
+mod iota_repair {
+    use super::*;
+    use crate::type_theory::cic::transport::{
+        abstract_convertible_occurrence, beta_normalize, first_order_match,
+    };
+    use crate::type_theory::cic::cic::PLACEHOLDER_DBI;
+
+    fn global(name: &str) -> CicTerm {
+        Variable(name.to_string(), GLOBAL_INDEX)
+    }
+
+    fn apply(function: CicTerm, arguments: Vec<CicTerm>) -> CicTerm {
+        arguments.into_iter().fold(function, |acc, argument| {
+            Application(Box::new(acc), Box::new(argument))
+        })
+    }
+
+    #[test]
+    fn test_abstract_occurrence_replaces_the_redex_and_reports_a_miss() {
+        let mut env = test_env();
+        // Eq(B, plus(bz, bz), bz)  ~>  Eq(B, y, bz)
+        let redex = apply(global("plus"), vec![global("bz"), global("bz")]);
+        let goal = apply(global("Eq"), vec![
+            global("B"),
+            redex.clone(),
+            global("bz"),
+        ]);
+
+        assert_eq!(
+            abstract_convertible_occurrence(&mut env, &goal, &redex, "y"),
+            Some((
+                apply(global("Eq"), vec![
+                    global("B"),
+                    Variable("y".to_string(), PLACEHOLDER_DBI),
+                    global("bz"),
+                ]),
+                redex,
+            )),
+            "the occurrence should be replaced by the motive's bound variable, and reported back as the goal spells it"
+        );
+
+        assert_eq!(
+            abstract_convertible_occurrence(
+                &mut env,
+                &goal,
+                &apply(global("nowhere"), vec![global("bz")]),
+                "y"
+            ),
+            None,
+            "a needle that does not occur must report a miss, not a silently unchanged term - that is how the caller learns the rewrite does not apply"
+        );
+    }
+
+    #[test]
+    fn test_first_order_match_solves_a_rules_quantified_variables() {
+        // pattern: dep_elim(C, base, step, bs(b))
+        let binders = vec![
+            "C".to_string(),
+            "base".to_string(),
+            "step".to_string(),
+            "b".to_string(),
+        ];
+        let pattern = apply(global("dep_elim"), vec![
+            global("C"),
+            global("base"),
+            global("step"),
+            apply(global("bs"), vec![global("b")]),
+        ]);
+        let term = apply(global("dep_elim"), vec![
+            global("motive"),
+            global("bz"),
+            global("the_step"),
+            apply(global("bs"), vec![Variable("r".to_string(), 0)]),
+        ]);
+
+        let mut bindings = HashMap::new();
+        assert!(
+            first_order_match(&pattern, &term, &binders, &mut bindings),
+            "the rule's left-hand side should match the redex"
+        );
+        assert_eq!(bindings.get("C"), Some(&global("motive")));
+        assert_eq!(bindings.get("base"), Some(&global("bz")));
+        assert_eq!(bindings.get("step"), Some(&global("the_step")));
+        assert_eq!(
+            bindings.get("b"),
+            Some(&Variable("r".to_string(), 0)),
+            "the constructor's own argument is recovered from under the DepConstr image"
+        );
+    }
+
+    #[test]
+    fn test_first_order_match_rejects_an_inconsistent_binding() {
+        // pattern mentions `x` twice, term supplies two different values
+        let binders = vec!["x".to_string()];
+        let pattern =
+            apply(global("f"), vec![global("x"), global("x")]);
+        let term = apply(global("f"), vec![global("a"), global("b")]);
+
+        let mut bindings = HashMap::new();
+        assert!(
+            !first_order_match(&pattern, &term, &binders, &mut bindings),
+            "a quantified variable occurring twice must be matched by the same term both times"
+        );
+    }
+
+    #[test]
+    fn test_beta_normalize_reduces_redexes_without_unfolding_definitions() {
+        // (λn:B. Eq(B, plus(n, bz), n)) bz
+        let motive = Abstraction(
+            "n".to_string(),
+            Box::new(global("B")),
+            Box::new(apply(global("Eq"), vec![
+                global("B"),
+                apply(global("plus"), vec![
+                    Variable("n".to_string(), 0),
+                    global("bz"),
+                ]),
+                Variable("n".to_string(), 0),
+            ])),
+        );
+
+        assert_eq!(
+            beta_normalize(&Application(
+                Box::new(motive),
+                Box::new(global("bz"))
+            )),
+            apply(global("Eq"), vec![
+                global("B"),
+                apply(global("plus"), vec![global("bz"), global("bz")]),
+                global("bz"),
+            ]),
+            "a dep_elim premise type arrives as the motive applied to a constructor; beta must instantiate it while leaving `plus` folded"
+        );
+    }
+
+    #[test]
+    fn test_premises_are_left_alone_when_no_iota_entry_is_declared() {
+        // `ListPackedVec` declares `iota { }` because its dep_elim computes
+        // on its own: an equivalence like that must be unaffected.
+        let mut env = test_env();
+        let config = test_config();
+        assert!(config.iota.is_empty());
+
+        let term = apply(global("e_A"), vec![
+            global("motive"),
+            global("az"),
+            global("step"),
+        ]);
+        let transported =
+            super::super::transport_term(&mut env, &config, &term);
+
+        assert!(
+            transported.is_ok(),
+            "an equivalence with no iota entries must transport exactly as before: {:?}",
+            transported.err()
+        );
+    }
+}

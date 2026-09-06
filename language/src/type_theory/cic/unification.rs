@@ -321,14 +321,26 @@ pub fn cic_collect_unifications(
 
             let arg_type = Cic::type_check_term(arg, environment)?;
             let fun_type = Cic::type_check_term(fun, environment)?;
-            let first_arg_type = &get_arg_types(&fun_type)[0];
+            // The function's type can arrive un-reduced (a dependent
+            // eliminator's result is literally `motive(target, proof)`), in
+            // which case its Pi-chain isn't visible yet. Normalize before
+            // giving up, and emit no constraint if it still has no argument
+            // to constrain - a genuine arity error is reported by the
+            // application's own type checking, not here.
+            let argument_types = match get_arg_types(&fun_type).first() {
+                Some(_) => get_arg_types(&fun_type),
+                None => get_arg_types(&Cic::normalize_term(
+                    environment, &fun_type,
+                )),
+            };
+            let own_constraint = match argument_types.first() {
+                Some(first_arg_type) => {
+                    vec![(first_arg_type.to_owned(), arg_type)]
+                }
+                None => vec![],
+            };
 
-            Ok([
-                fun_cons,
-                vec![(first_arg_type.to_owned(), arg_type)],
-                arg_cons,
-            ]
-            .concat())
+            Ok([fun_cons, own_constraint, arg_cons].concat())
         }
         Product(var_name, domain, codomain) => {
             let domain_cons = cic_collect_unifications(domain, environment)?;

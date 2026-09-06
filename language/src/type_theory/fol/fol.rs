@@ -249,6 +249,14 @@ impl Reducer for Fol {
         substitute_term(term, var_name, body)
     }
 
+    fn normalize_type(
+        _environment: &Environment<Fol>,
+        typee: &FolFormula,
+    ) -> FolFormula {
+        // FOL formulas carry no redexes to reduce
+        typee.to_owned()
+    }
+
     fn normalize_expression(
         environment: &Environment<Fol>,
         exp: &Union<FolTerm, FolFormula>,

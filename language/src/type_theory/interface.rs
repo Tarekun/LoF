@@ -225,6 +225,16 @@ pub trait Reducer: TypeTheory {
     where
         Self: Sized;
 
+    /// Reduces the given type to its normal form. Distinct from
+    /// `normalize_term` only because `Term` and `Type` are separate
+    /// associated types; a theory where they coincide just delegates.
+    fn normalize_type(
+        environment: &Environment<Self>,
+        typee: &Self::Type,
+    ) -> Self::Type
+    where
+        Self: Sized;
+
     fn normalize_expression(
         environment: &Environment<Self>,
         exp: &Self::Exp,

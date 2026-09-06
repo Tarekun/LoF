@@ -7,10 +7,11 @@ use super::cic_utils::{
     get_prod_innermost, is_instance_of, substitute,
 };
 use crate::error::LofError;
+use std::collections::HashMap;
 use crate::type_theory::commons::transport::EquivConfig;
 use crate::type_theory::commons::utils::eta_expand;
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::Kernel;
+use crate::type_theory::interface::{Kernel, Reducer, Refiner};
 
 /// Mechanically transports a proof or function body about `config.type_a`
 /// into the corresponding term about `config.type_b`, following Ringer,
@@ -165,10 +166,12 @@ fn transport_term_inner(
                             transported_args,
                         ))
                     } else if *name == format!("e_{}", config.type_a) {
-                        Ok(apply_arguments(
-                            &config.dep_elim,
-                            transported_args,
-                        ))
+                        let repaired = repair_minor_premises(
+                            environment,
+                            config,
+                            &transported_args,
+                        )?;
+                        Ok(apply_arguments(&config.dep_elim, repaired))
                     } else {
                         // still transport the head: it may be the source
                         // type former itself (`List(T)` -> `PackedVec(T)`)
@@ -251,6 +254,646 @@ fn transport_term_inner(
         }
     }
 }
+
+//########################### IOTA REPAIR
+//
+/// Repairs the minor premises of a `dep_elim` application - the third of
+/// PUMPKIN Pi's four configuration components, Iota.
+///
+/// A source proof by induction discharges each case using the source
+/// type's *definitional* computation rules: `plus_z_r`'s base case is
+/// `refl(Nat,z)`, a proof only because `plus(z,z)` reduces to `z`. After
+/// transport the corresponding step is frequently only *propositional* -
+/// `plus_bin(bz,bz)` does not reduce to `bz`, because `plus_bin` is built
+/// from a `dep_elim` (`bin_succ_induction`) that has no computational
+/// behaviour of its own. The transported case is then a well-formed term
+/// of the wrong type, and the whole transport fails on unification.
+///
+/// `iota[c]` supplies exactly the missing equation: `dep_elim` applied at
+/// `dep_constr(c)` equals the corresponding case. This rewrites each
+/// premise's expected type along it, via `e_Eq` (this kernel's J), so the
+/// already-transported term proves the goal the target side actually
+/// states.
+///
+/// Premises that already type check are returned untouched, so an
+/// equivalence whose target computes on its own (`ListPackedVec`, whose
+/// `iota` table is empty) is unaffected.
+fn repair_minor_premises(
+    environment: &mut Environment<Cic>,
+    config: &EquivConfig<Cic>,
+    transported_args: &[CicTerm],
+) -> Result<Vec<CicTerm>, LofError> {
+    let param_count = environment
+        .get_inductive_param_count(&config.type_a)
+        .unwrap_or(0);
+    let Some(constructors) =
+        environment.constructor_store.get(&config.type_a).cloned()
+    else {
+        return Ok(transported_args.to_vec());
+    };
+
+    // layout: params.., motive, one case per constructor, [target]. The
+    // application may be partial - a proof by induction is routinely
+    // written without its target, as `∀n. ..` rather than `λn. ..`
+    if transported_args.len() < param_count + 1 {
+        return Ok(transported_args.to_vec());
+    }
+    let case_count = constructors
+        .len()
+        .min(transported_args.len() - param_count - 1);
+    if case_count == 0 {
+        return Ok(transported_args.to_vec());
+    }
+
+    // instantiate dep_elim's own type at the parameters and the transported
+    // motive, so each remaining Pi layer states one case's expected type in
+    // concrete terms
+    // Without dep_elim's type there is nothing to check the premises
+    // against; leave them exactly as transported and let any genuine
+    // mismatch surface as an ordinary type error later.
+    let Ok(mut remaining) = Cic::type_check_term(&config.dep_elim, environment)
+    else {
+        return Ok(transported_args.to_vec());
+    };
+    for supplied in transported_args.iter().take(param_count + 1) {
+        let Product(binder, _, codomain) = remaining else {
+            return Ok(transported_args.to_vec());
+        };
+        remaining = substitute(&codomain, &binder, supplied);
+    }
+
+    let mut repaired = transported_args.to_vec();
+    for (case_index, (constructor_name, _)) in
+        constructors.iter().enumerate().take(case_count)
+    {
+        let Product(binder, expected_type, codomain) = remaining.to_owned()
+        else {
+            break;
+        };
+
+        let slot = param_count + 1 + case_index;
+        repaired[slot] = repair_premise(
+            environment,
+            config,
+            constructor_name,
+            &repaired[slot],
+            &expected_type,
+        )?;
+
+        remaining = substitute(&codomain, &binder, &repaired[slot]);
+    }
+
+    Ok(repaired)
+}
+//
+//
+/// Repairs one minor premise against the type `dep_elim` expects of it.
+///
+/// Walks under the premise's binders in step with the expected type's Pi
+/// chain - the rewrite has to happen *inside* them, since the equation
+/// mentions the case's own arguments (`iota[s]` speaks about
+/// `bin_succ(b)`, and `b` is the step case's own binder) - then, if the
+/// body's actual type already matches, changes nothing.
+fn repair_premise(
+    environment: &mut Environment<Cic>,
+    config: &EquivConfig<Cic>,
+    constructor_name: &str,
+    premise: &CicTerm,
+    expected: &CicTerm,
+) -> Result<CicTerm, LofError> {
+    let mut binders: Vec<(String, CicTerm)> = vec![];
+    let mut body = premise.to_owned();
+    let mut goal = expected.to_owned();
+
+    while let (
+        Abstraction(premise_binder, _, premise_body),
+        Product(expected_binder, domain, codomain),
+    ) = (&body, &goal)
+    {
+        // keep the premise's own binder names: they are what its body
+        // actually refers to, whereas the expected type's names come from
+        // `dep_elim`'s declaration
+        binders
+            .push((premise_binder.to_owned(), (**domain).to_owned()));
+        let renamed = substitute(
+            codomain,
+            expected_binder,
+            &Variable(premise_binder.to_owned(), PLACEHOLDER_DBI),
+        );
+        let next_body = (**premise_body).to_owned();
+        goal = renamed;
+        body = next_body;
+    }
+
+    let repaired_body =
+        environment.with_local_assumptions(&binders, |environment| {
+            repair_body(environment, config, constructor_name, &body, &goal)
+        })?;
+
+    // nothing to do: hand the premise back exactly as it was
+    if repaired_body == body {
+        return Ok(premise.to_owned());
+    }
+
+    Ok(eta_expand::<Cic, _>(&binders, &repaired_body, |(name, ty), acc| {
+        Abstraction(name, Box::new(ty), Box::new(acc))
+    }))
+}
+//
+//
+/// The innermost step of `repair_premise`: `body` is expected to prove
+/// `goal`. If it already does, it is returned unchanged. Otherwise the
+/// constructor's `iota` entry is instantiated into an equation and used to
+/// rewrite `goal` into the proposition `body` does prove.
+fn repair_body(
+    environment: &mut Environment<Cic>,
+    config: &EquivConfig<Cic>,
+    constructor_name: &str,
+    body: &CicTerm,
+    goal: &CicTerm,
+) -> Result<CicTerm, LofError> {
+    let Ok(actual) = Cic::type_check_term(body, environment) else {
+        // the premise doesn't type check on its own; let the ordinary
+        // failure path report it rather than guessing at a rewrite
+        return Ok(body.to_owned());
+    };
+    if Cic::types_unify(environment, &actual, goal).is_ok() {
+        return Ok(body.to_owned());
+    }
+
+    let Some(iota) = config.iota.get(constructor_name) else {
+        // no bridging equation was declared for this constructor: fall
+        // through to the ordinary type error, which names the mismatch
+        return Ok(body.to_owned());
+    };
+
+    // `iota` is stated in `dep_elim`'s own binders (motive, cases, the
+    // constructor's arguments); instantiate it at whatever is in scope here
+    // by unifying its equation's left-hand side against a redex of the goal
+    // Two different vocabularies are in play. The rule speaks about
+    // `dep_elim` applied at a DepConstr image; the goal writes the same
+    // thing as a call to the lifted function (`plus_bin`). Matching needs
+    // them reconciled - but the *result* must stay in the goal's own
+    // vocabulary, because it ends up inside an `e_Eq` motive the kernel
+    // then type checks, and inlining definitions there is ruinously
+    // expensive: type checking a curried application re-checks its whole
+    // function spine, so nesting multiplies rather than adds.
+    //
+    // So: unfold the lifted names into a scratch copy, recover the rule's
+    // instantiation from that, then locate the redex back in the folded
+    // goal by *convertibility* and rewrite there.
+    let goal = beta_normalize(goal);
+    let unfolded_goal = unfold_lifted_names(environment, config, &goal);
+    let Some((equation_type, left, right, proof)) =
+        instantiate_iota(environment, iota, &unfolded_goal)
+    else {
+        return Ok(body.to_owned());
+    };
+
+    // rewrite the goal right-to-left: `body` proves the goal with the
+    // redex already replaced by `right`, and J run along the rule turns
+    // that into a proof of the goal itself
+    let normalized_left = Cic::normalize_term(environment, &left);
+    let Some((abstracted, occurrence)) = abstract_convertible_occurrence(
+        environment,
+        &goal,
+        &normalized_left,
+        "_iota_rewrite_target",
+    ) else {
+        return Ok(body.to_owned());
+    };
+
+    Ok(build_eq_rewrite(
+        &equation_type,
+        // the folded spelling of `left`, so the emitted term stays in the
+        // goal's own vocabulary
+        &occurrence,
+        &right,
+        "_iota_rewrite_target",
+        &abstracted,
+        &goal,
+        body,
+        &proof,
+    ))
+}
+//
+//
+/// Instantiates a declared `iota` entry into a concrete equation
+/// `(type, lhs, rhs, proof)` usable at the current goal.
+///
+/// The entry is a lemma quantified over `dep_elim`'s motive and cases and
+/// the constructor's own arguments; the goal fixes all of them. Its
+/// equation's left-hand side is `dep_elim` applied at that constructor's
+/// DepConstr image - a rigid head with the quantified variables sitting in
+/// argument positions - so the instantiation is recovered by ordinary
+/// first-order matching against a sub-term of the goal, not by search.
+///
+/// Both sides stay folded: the caller has already unfolded the lifted
+/// names in the goal, which is the only difference in vocabulary between
+/// the two. Keeping everything else folded matters because whatever this
+/// recovers becomes the rule's instantiation, and so ends up inside a term
+/// the kernel type checks.
+fn instantiate_iota(
+    environment: &mut Environment<Cic>,
+    iota: &CicTerm,
+    goal: &CicTerm,
+) -> Option<(CicTerm, CicTerm, CicTerm, CicTerm)> {
+    let iota_type = Cic::type_check_term(iota, environment).ok()?;
+
+    // peel the lemma's quantifiers, then read its equation off the body
+    let mut binder_names = vec![];
+    let mut remaining = iota_type;
+    while let Product(binder, _, codomain) = remaining {
+        binder_names.push(binder);
+        remaining = (*codomain).to_owned();
+    }
+    let (equation_type, pattern_left, _) = as_equation(&remaining)?;
+
+    for candidate in subterms(goal) {
+        let mut bindings = HashMap::new();
+        if !first_order_match(
+            &pattern_left,
+            &candidate,
+            &binder_names,
+            &mut bindings,
+        ) {
+            continue;
+        }
+        let Some(arguments) = binder_names
+            .iter()
+            .map(|name| bindings.get(name).cloned())
+            .collect::<Option<Vec<_>>>()
+        else {
+            // the match left some quantifier undetermined: this sub-term
+            // is not actually an instance of the rule
+            continue;
+        };
+
+        let instance = apply_arguments(iota, arguments);
+        let instance_type =
+            Cic::type_check_term(&instance, environment).ok()?;
+        let (instance_equation_type, left, right) =
+            as_equation(&instance_type)?;
+        let _ = equation_type;
+
+        return Some((instance_equation_type, left, right, instance));
+    }
+
+    None
+}
+//
+//
+/// Beta (and let) reduction only - no unfolding of definitions, no
+/// eliminator computation. Used to instantiate a `dep_elim` premise type
+/// (the motive applied to a DepConstr image) without inlining every
+/// definition it mentions, which full normalization would do.
+pub(crate) fn beta_normalize(term: &CicTerm) -> CicTerm {
+    match term {
+        Application(left, right) => {
+            let left = beta_normalize(left);
+            let right = beta_normalize(right);
+            match left {
+                Abstraction(binder, _, body) => {
+                    beta_normalize(&substitute(&body, &binder, &right))
+                }
+                _ => Application(Box::new(left), Box::new(right)),
+            }
+        }
+        Abstraction(name, domain, body) => Abstraction(
+            name.to_owned(),
+            Box::new(beta_normalize(domain)),
+            Box::new(beta_normalize(body)),
+        ),
+        Product(name, domain, body) => Product(
+            name.to_owned(),
+            Box::new(beta_normalize(domain)),
+            Box::new(beta_normalize(body)),
+        ),
+        Proj(type_name, field_index, target) => Proj(
+            type_name.to_owned(),
+            *field_index,
+            Box::new(beta_normalize(target)),
+        ),
+        Let(name, _, body, scope) => {
+            beta_normalize(&substitute(scope, name, body))
+        }
+        _ => term.to_owned(),
+    }
+}
+//
+//
+/// Replaces every already-transported auxiliary name in `term` by its
+/// definition, then beta-reduces. This is the *only* unfolding done before
+/// matching an iota rule: the rule is stated in terms of `dep_elim`, while
+/// a transported goal calls the lifted function that was built from it.
+fn unfold_lifted_names(
+    environment: &Environment<Cic>,
+    config: &EquivConfig<Cic>,
+    term: &CicTerm,
+) -> CicTerm {
+    let mut unfolded = term.to_owned();
+    for lifted in config.lifted_names.values() {
+        if let Some((_, definition)) = environment.get_from_deltas(lifted) {
+            unfolded = substitute(&unfolded, lifted, &definition);
+        }
+    }
+
+    beta_normalize(&unfolded)
+}
+//
+//
+/// Like `abstract_occurrence`, but a sub-term counts as an occurrence when
+/// it is *convertible* to `needle` rather than syntactically equal - the
+/// goal writes the redex as `plus_bin(..)` where the rule writes it as the
+/// `dep_elim` application that unfolds to.
+///
+/// Returns both the abstracted goal and the occurrence *as the goal spells
+/// it*, so the caller can keep the emitted proof term folded.
+///
+/// `needle` is expected to be already normalized; each candidate is
+/// normalized once and compared. Only application-shaped nodes are tested:
+/// the left-hand side of a `dep_elim` computation rule is always an
+/// application, and testing every node would mean a normalization per
+/// variable.
+pub(crate) fn abstract_convertible_occurrence(
+    environment: &mut Environment<Cic>,
+    haystack: &CicTerm,
+    needle: &CicTerm,
+    fresh_name: &str,
+) -> Option<(CicTerm, CicTerm)> {
+    fn walk(
+        environment: &mut Environment<Cic>,
+        haystack: &CicTerm,
+        needle: &CicTerm,
+        fresh_name: &str,
+        found: &mut Option<CicTerm>,
+    ) -> CicTerm {
+        if matches!(haystack, Application(_, _))
+            && &Cic::normalize_term(environment, haystack) == needle
+        {
+            *found = Some(haystack.to_owned());
+            return Variable(fresh_name.to_string(), PLACEHOLDER_DBI);
+        }
+
+        match haystack {
+            Application(left, right) => Application(
+                Box::new(walk(environment, left, needle, fresh_name, found)),
+                Box::new(walk(environment, right, needle, fresh_name, found)),
+            ),
+            Abstraction(name, domain, body) => Abstraction(
+                name.to_owned(),
+                Box::new(walk(environment, domain, needle, fresh_name, found)),
+                Box::new(walk(environment, body, needle, fresh_name, found)),
+            ),
+            Product(name, domain, body) => Product(
+                name.to_owned(),
+                Box::new(walk(environment, domain, needle, fresh_name, found)),
+                Box::new(walk(environment, body, needle, fresh_name, found)),
+            ),
+            Proj(type_name, field_index, target) => Proj(
+                type_name.to_owned(),
+                *field_index,
+                Box::new(walk(environment, target, needle, fresh_name, found)),
+            ),
+            _ => haystack.to_owned(),
+        }
+    }
+
+    let mut found = None;
+    let abstracted =
+        walk(environment, haystack, needle, fresh_name, &mut found);
+    found.map(|occurrence| (abstracted, occurrence))
+}
+//
+//
+/// First-order matching of `pattern` against `term`, where the names in
+/// `binder_names` are the pattern's variables. Each is bound to whatever
+/// sits in its position, and a name occurring twice must be matched by the
+/// same term both times.
+pub(crate) fn first_order_match(
+    pattern: &CicTerm,
+    term: &CicTerm,
+    binder_names: &[String],
+    bindings: &mut HashMap<String, CicTerm>,
+) -> bool {
+    if let Variable(name, _) = pattern {
+        if binder_names.contains(name) {
+            return match bindings.get(name) {
+                Some(already) => already == term,
+                None => {
+                    bindings.insert(name.to_owned(), term.to_owned());
+                    true
+                }
+            };
+        }
+    }
+
+    match (pattern, term) {
+        (Variable(left, _), Variable(right, _)) => left == right,
+        (Sort(left), Sort(right)) => left == right,
+        (Meta(left), Meta(right)) => left == right,
+        (
+            Application(pattern_left, pattern_right),
+            Application(term_left, term_right),
+        ) => {
+            first_order_match(
+                pattern_left,
+                term_left,
+                binder_names,
+                bindings,
+            ) && first_order_match(
+                pattern_right,
+                term_right,
+                binder_names,
+                bindings,
+            )
+        }
+        (
+            Abstraction(_, pattern_domain, pattern_body),
+            Abstraction(_, term_domain, term_body),
+        )
+        | (
+            Product(_, pattern_domain, pattern_body),
+            Product(_, term_domain, term_body),
+        ) => {
+            first_order_match(
+                pattern_domain,
+                term_domain,
+                binder_names,
+                bindings,
+            ) && first_order_match(
+                pattern_body,
+                term_body,
+                binder_names,
+                bindings,
+            )
+        }
+        (
+            Proj(pattern_type, pattern_field, pattern_target),
+            Proj(term_type, term_field, term_target),
+        ) => {
+            pattern_type == term_type
+                && pattern_field == term_field
+                && first_order_match(
+                    pattern_target,
+                    term_target,
+                    binder_names,
+                    bindings,
+                )
+        }
+        (
+            Match(pattern_scrutinee, pattern_branches),
+            Match(term_scrutinee, term_branches),
+        ) => {
+            pattern_branches.len() == term_branches.len()
+                && first_order_match(
+                    pattern_scrutinee,
+                    term_scrutinee,
+                    binder_names,
+                    bindings,
+                )
+                && pattern_branches.iter().zip(term_branches.iter()).all(
+                    |((_, pattern_body), (_, term_body))| {
+                        // patterns bind their own variables; only the
+                        // branch bodies are matchable
+                        first_order_match(
+                            pattern_body,
+                            term_body,
+                            binder_names,
+                            bindings,
+                        )
+                    },
+                )
+        }
+        _ => false,
+    }
+}
+//
+//
+/// Every sub-term of `term`, outermost first - the candidate redexes
+/// `instantiate_iota` matches its rule against.
+fn subterms(term: &CicTerm) -> Vec<CicTerm> {
+    let mut collected = vec![term.to_owned()];
+    match term {
+        Application(left, right) => {
+            collected.extend(subterms(left));
+            collected.extend(subterms(right));
+        }
+        Abstraction(_, domain, body) | Product(_, domain, body) => {
+            collected.extend(subterms(domain));
+            collected.extend(subterms(body));
+        }
+        Proj(_, _, target) => collected.extend(subterms(target)),
+        Match(scrutinee, branches) => {
+            collected.extend(subterms(scrutinee));
+            for (_, body) in branches {
+                collected.extend(subterms(body));
+            }
+        }
+        Let(_, _, body, scope) => {
+            collected.extend(subterms(body));
+            collected.extend(subterms(scope));
+        }
+        _ => {}
+    }
+    collected
+}
+//
+//
+/// Reads `Eq(T, lhs, rhs)` off a type, if that is what it is.
+fn as_equation(term: &CicTerm) -> Option<(CicTerm, CicTerm, CicTerm)> {
+    match get_applied_function(term) {
+        Variable(name, _) if name == "Eq" => {
+            let args = application_args(term);
+            match args.as_slice() {
+                [equation_type, left, right] => Some((
+                    equation_type.to_owned(),
+                    left.to_owned(),
+                    right.to_owned(),
+                )),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+//
+//
+/// A rewrite along `proof : Eq(T, from, to)`, turning `payload`, which
+/// proves `abstracted[to]`, into a proof of `goal` (= `abstracted[from]`).
+///
+/// Note the direction: the equation reads left-to-right but the rewrite
+/// runs right-to-left, because `iota` says what `dep_elim` *computes to*
+/// while the goal is stated in terms of `dep_elim` itself.
+///
+/// Rather than composing a `sym` with a rewrite - two nested `e_Eq`
+/// applications - this eliminates once, into a *function*:
+///
+/// ```text
+/// e_Eq(T, from, λy.λ_. abstracted[y] -> goal, (λx:goal. x), to, proof)
+///   : abstracted[to] -> goal
+/// ```
+///
+/// which is then applied to `payload`. At `y := from` the motive is
+/// `goal -> goal`, discharged by the identity; at `y := to` it is exactly
+/// the coercion wanted. Halving the nesting this way is not cosmetic:
+/// type checking a curried application re-checks its whole function spine,
+/// so nested applications multiply rather than add.
+#[allow(clippy::too_many_arguments)]
+fn build_eq_rewrite(
+    equation_type: &CicTerm,
+    from: &CicTerm,
+    to: &CicTerm,
+    abstracted_name: &str,
+    abstracted_goal: &CicTerm,
+    goal: &CicTerm,
+    payload: &CicTerm,
+    proof: &CicTerm,
+) -> CicTerm {
+    let bound =
+        Variable(abstracted_name.to_string(), PLACEHOLDER_DBI);
+
+    let motive = Abstraction(
+        abstracted_name.to_string(),
+        Box::new(equation_type.to_owned()),
+        Box::new(Abstraction(
+            "_rewrite_h".to_string(),
+            Box::new(apply_arguments(
+                &Variable("Eq".to_string(), GLOBAL_INDEX),
+                vec![
+                    equation_type.to_owned(),
+                    from.to_owned(),
+                    bound,
+                ],
+            )),
+            Box::new(Product(
+                "_rewrite_x".to_string(),
+                Box::new(abstracted_goal.to_owned()),
+                Box::new(goal.to_owned()),
+            )),
+        )),
+    );
+
+    let coercion =
+        apply_arguments(&Variable("e_Eq".to_string(), GLOBAL_INDEX), vec![
+            equation_type.to_owned(),
+            from.to_owned(),
+            motive,
+            Abstraction(
+                "_rewrite_x".to_string(),
+                Box::new(goal.to_owned()),
+                Box::new(Variable(
+                    "_rewrite_x".to_string(),
+                    PLACEHOLDER_DBI,
+                )),
+            ),
+            to.to_owned(),
+            proof.to_owned(),
+        ]);
+
+    Application(Box::new(coercion), Box::new(payload.to_owned()))
+}
+//########################### IOTA REPAIR
 
 /// Whether `scrutinee` is known to have type `config.type_a`. Prefers the
 /// locally tracked binder types (see `transport_term_inner`), falling back
