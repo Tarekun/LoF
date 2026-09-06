@@ -37,6 +37,7 @@ pub mod type_theory {
         pub mod elaboration;
         mod evaluation;
         mod tactics;
+        mod transport;
         mod type_check;
         mod unification;
     }
