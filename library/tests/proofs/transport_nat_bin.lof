@@ -204,6 +204,37 @@ theorem bin_succ_induction :
          bb,
          retraction_nat_bin(bb)))
 
+# Iota: `bin_succ_induction`'s *propositional* computation rules - what it
+# reduces to at each DepConstr image, stated as an equation because it does
+# not actually reduce there. `plus_z_r`'s base case is `refl`, a proof only
+# because `plus(z,z)` computes to `z`; its transported counterpart needs
+# `plus_bin(bz,bz)` to equal `bz`, and these are the equations that say so.
+#
+# Axiomatized for the same reason `retraction_nat_bin` above is: deriving
+# them needs a `bin_succ_induction` that genuinely computes - Coq's
+# `Pos.peano_rect`, defined by direct structural recursion on `Pos` rather
+# than bootstrapped through the retraction - plus its `peano_rect_succ`
+# lemma. That is a binary-arithmetic development on the scale of Coq's own
+# standard library, orthogonal to demonstrating that the engine consumes
+# Iota. See docs/language/systems/transport.md.
+#
+# The List/PackedVec worked example needs no axiom at all: there `dep_elim`
+# computes on its own, so its iota table is empty.
+axiom iota_bz :
+  ∀C:(Bin -> TYPE).
+    ∀base:C(bz).
+      ∀step:(∀b:Bin. C(b) -> C(bin_succ(b))).
+        Eq(C(bz), bin_succ_induction(C, base, step, bz), base);
+
+axiom iota_bsucc :
+  ∀C:(Bin -> TYPE).
+    ∀base:C(bz).
+      ∀step:(∀b:Bin. C(b) -> C(bin_succ(b))).
+        ∀b:Bin.
+          Eq(C(bin_succ(b)),
+             bin_succ_induction(C, base, step, bin_succ(b)),
+             step(b, bin_succ_induction(C, base, step, b)));
+
 # The MVP theorem to transport: proved by genuine induction (not
 # reflexivity - plus(n,z) doesn't reduce for unspecified n), so it
 # actually exercises DepElim + Iota rather than only DepConstr.
@@ -230,8 +261,8 @@ equivalence NatBin : Nat <-> Bin {
     | s => bin_succ
   }
   iota {
-    | z => refl(Bin, bz)
-    | s => bin_succ_correct
+    | z => iota_bz
+    | s => iota_bsucc
   }
 }
 
@@ -242,12 +273,12 @@ equivalence NatBin : Nat <-> Bin {
 # induction hypothesis.
 transport plus_bin : Bin -> Bin -> Bin from plus using NatBin;
 
-# Transporting the *theorem* `plus_z_r` on top of it does NOT work here,
-# and the reason is instructive rather than incidental - see
-# `library/tests/transport_failures/nat_bin_theorem.lof`, which pins the
-# failure down, and docs/language/systems/transport.md for the analysis.
-# In short: `plus_z_r`'s base case is `refl`, which is only a proof because
-# `plus(z,z)` *computes* to `z`. Its transported counterpart needs
-# `plus_bin(bz,bz)` to compute to `bz`, but `plus_bin` is built from
-# `bin_succ_induction` - a derived theorem, hence opaque to reduction -
-# so it has no computational behaviour at all.
+# Transporting the *theorem* `plus_z_r` on top of it works through Iota.
+# The base case's transported proof is `refl(Bin,bz)`, proving
+# `Eq(Bin,bz,bz)`, but the goal is `Eq(Bin, plus_bin(bz,bz), bz)` - and
+# `plus_bin` is built from `bin_succ_induction`, a derived theorem with no
+# computational behaviour, so the two are not definitionally equal. The
+# engine rewrites the goal along `iota_bz` (and the step case along
+# `iota_bsucc`) via `e_Eq`, which is exactly the role Iota plays in the
+# paper.
+transport plus_bin_z_r : ∀b:Bin. Eq(Bin, plus_bin(b, bz), b) from plus_z_r using NatBin;
