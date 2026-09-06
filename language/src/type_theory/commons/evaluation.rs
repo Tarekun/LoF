@@ -27,11 +27,14 @@ pub fn generic_term_normalization<
     term: &T::Term,
     one_step_reduction: F,
 ) -> T::Term {
-    let mut reduced = one_step_reduction(environment, &term);
-    while reduced != one_step_reduction(environment, &reduced) {
-        reduced = one_step_reduction(environment, &reduced);
+    let mut reduced = term.to_owned();
+    loop {
+        let next = one_step_reduction(environment, &reduced);
+        if next == reduced {
+            return reduced;
+        }
+        reduced = next
     }
-    reduced
 }
 
 //########################### TERM βδ-REDUCTION
