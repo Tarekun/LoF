@@ -176,3 +176,97 @@ proof.
 **Verification:** `library/tests/proofs/intro_apply_tactics.lof` (and the
 rest of the `intro`/`apply` regression suite) passes again with the bug #1
 check enabled; all 169 tests in `cargo test` pass.
+
+## 5. A bare lambda couldn't be passed directly as a function argument
+
+**Symptom:** `f(\lambda x: T. body)` failed to parse at all (`Unparsed
+remainder starting at: ...`), even though a lambda is an ordinary
+expression and `f(x, y, z)`-style application accepts "any expression" as an
+argument per the docs. The only way to pass a function literal was to wrap
+it in an extra, otherwise-meaningless pair of parens:
+`f((\lambda x: T. body))` - which is exactly what every use of `if(...)` in
+`library/bool.lof` already does (`if(?, true, (\lambda i: Unit. false),
+(\lambda i: Unit. true))`), suggesting this had already been discovered and
+silently worked around rather than fixed.
+
+**Root cause:** `argument_expression` (in `language/src/parser/expressions.rs`,
+used for each comma-separated slot inside `f(...)`) only tried `parse_custom`,
+`parse_app`, `parse_var`, `parse_meta` and `parse_parens` as alternatives -
+never a bare abstraction (`parse_abs`) or forall (`parse_type_abs`), unlike
+the top-level `parse_expression`, which tries both before anything else.
+`parse_app` looks like it should have covered a lambda too (its `left` side,
+`applicable_expression`, does include `parse_abs`/`parse_type_abs`) but
+`parse_app` additionally *requires* a following `(args)` list to actually be
+an application; a lambda used as a plain, non-applied argument has no such
+trailing parens, so `parse_app` fails and there was nothing left in the
+`alt(...)` to fall back on.
+
+**Fix:** Added `parse_abs` and `parse_type_abs` as the first alternatives
+tried in `argument_expression`, mirroring `parse_expression`'s order.
+
+**Verification:** New parser unit test
+`test_application_accepts_bare_lambda_argument` in
+`language/src/tests/parser/expressions.rs`, plus new end-to-end regression
+file `library/tests/expressions/lambda_argument.lof` (which also exercises
+bug #6 below, since it applies a lambda literal through a higher-order
+function).
+
+## 6. Substituting a variable could cross into a shadowing inner binder
+
+**Symptom:** Passing a lambda literal as an argument to a function whose own
+body reused the lambda's bound variable name for something else silently
+computed the *wrong* value instead of erroring - the most direct example
+being a generic `apply_twice(f, n) { f(f(n)) }` called with a lambda
+argument that itself takes a parameter also named `n`:
+
+```
+fun rec apply_twice (f: Nat -> Nat, n: Nat) : Nat {
+  f(f(n))
+}
+
+# silently reduced to `s(z)` instead of `s(s(z))`
+theorem apply_lambda_twice :
+  Eq(Nat, apply_twice(\lambda n: Nat. s(n), z), s(s(z))) := (refl(Nat, s(s(z))))
+```
+Only reusing the same parameter name across the two functions triggers it -
+the exact same program with the lambda's parameter renamed to anything else
+computes the correct answer, and using a *named* function instead of an
+inline lambda for the same purpose works fine either way (both sidestep the
+buggy code path, see below).
+
+**Root cause:** `substitute` (in `language/src/type_theory/cic/cic_utils.rs`)
+recursed into an `Abstraction`/`Product`'s codomain unconditionally, even
+when that binder's own `var_name` was identical to the `target_name` being
+substituted - i.e. even when the inner binder *shadows* the substituted
+variable. The `Let` case immediately below it already special-cased this
+correctly (skipping the substitution in `scope` when `var_name ==
+target_name`, with a comment noting `scope`'s name is overridden), and there
+was even a pre-existing `// TODO: dont carry substitution if names match to
+implement overriding of names` comment directly on the `Abstraction` arm -
+but the fix was never made.
+Concretely: reducing `apply_twice(lambda_arg, z)` first substitutes
+`apply_twice`'s `f` parameter with `lambda_arg` inside its body
+`\lambda n: Nat. f(f(n))`, giving `\lambda n: Nat. lambda_arg(lambda_arg(n))`
+- so far correct. Reducing this applied to `z` then substitutes `n` with
+`z`, but since `lambda_arg` is itself `\lambda n: Nat. s(n)`, the buggy,
+unconditional recursion reached *inside* both copies of `lambda_arg` and
+also replaced *their* own (shadowing, unrelated) `n` with `z`, turning them
+into `\lambda n: Nat. s(z)` (a lambda that ignores its argument). The
+resulting, corrupted term reduces to `s(z)` instead of `s(s(z))`.
+
+**Fix:** Mirrored `Let`'s existing handling: `substitute` now only recurses
+into an `Abstraction`/`Product`'s codomain when `var_name != target_name`;
+the domain (evaluated in the outer scope, so never shadowed by its own
+binder) is still always substituted.
+
+**Verification:** New unit test
+`test_substitute_does_not_cross_a_shadowing_binder` in
+`language/src/type_theory/cic/cic_utils.rs`, directly exercising the shadowing
+case, the domain-still-substitutes case, and the genuinely-free-still-
+substitutes case. End-to-end coverage via
+`library/tests/expressions/lambda_argument.lof` (bug #5's regression file,
+which happens to exercise this exact shadowing scenario) and the standalone
+`ho2`/`ho3`/`ho4`/`ho5` variants used to isolate the bug during
+investigation (single application, two independent nested calls, and a
+named-function equivalent all already worked correctly, narrowing the bug
+down to substitution specifically). All 171 tests in `cargo test` pass.

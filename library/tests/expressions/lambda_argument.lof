@@ -1,0 +1,24 @@
+# Regression test: a lambda passed directly as a function argument, with no
+# redundant wrapping parens (eg. `f(\lambda x: T. body)` rather than
+# `f((\lambda x: T. body))`). Before the fix, the application argument
+# parser had no alternative for a bare abstraction/forall, only for
+# `parse_app`, a plain variable, a metavariable or a further parenthesized
+# expression - so this failed to parse at all unless the lambda was wrapped
+# in its own extra parens (as every use of `if(...)` in `library/bool.lof`
+# still does, e.g. `if(?, true, (\lambda i: Unit. false), (\lambda i: Unit. true))`).
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+fun rec apply_twice (f: Nat -> Nat, n: Nat) : Nat {
+  f(f(n))
+}
+
+theorem apply_lambda_twice :
+  Eq(Nat, apply_twice(\lambda n: Nat. s(n), z), s(s(z))) :=
+  (refl(Nat, s(s(z))))

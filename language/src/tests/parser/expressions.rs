@@ -340,6 +340,62 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_application_accepts_bare_lambda_argument() {
+        // Regression test: a lambda passed directly as an application
+        // argument (eg. `f(\lambda x: T. body)`, the natural way to pass a
+        // function literal without naming it first) used to fail to parse
+        // unless redundantly wrapped in its own parens (`f((\lambda x: T.
+        // body))`), because the application argument parser tried `parse_app`
+        // and a few other alternatives but never a bare abstraction/forall.
+        let parser = LofParser::new(Config::default());
+
+        assert_eq!(
+            parser.parse_expression("f(\\lambda x: T. x)").unwrap(),
+            (
+                "",
+                Application(
+                    Box::new(VarUse("f".to_string())),
+                    vec![Abstraction(
+                        "x".to_string(),
+                        Box::new(VarUse("T".to_string())),
+                        Box::new(VarUse("x".to_string())),
+                    )]
+                )
+            ),
+            "Application parser must accept a bare lambda as an argument"
+        );
+
+        assert_eq!(
+            parser.parse_expression("f(\\lambda x: T. g(x), y)").unwrap(),
+            (
+                "",
+                Application(
+                    Box::new(VarUse("f".to_string())),
+                    vec![
+                        Abstraction(
+                            "x".to_string(),
+                            Box::new(VarUse("T".to_string())),
+                            Box::new(Application(
+                                Box::new(VarUse("g".to_string())),
+                                vec![VarUse("x".to_string())],
+                            )),
+                        ),
+                        VarUse("y".to_string()),
+                    ]
+                )
+            ),
+            "Application parser must accept a bare lambda argument followed by further arguments"
+        );
+
+        assert!(
+            parser
+                .parse_expression("f(\\forall x: T. P(x))")
+                .is_ok(),
+            "Application parser must accept a bare forall/type-product as an argument"
+        );
+    }
+
+    #[test]
     fn test_arrow_expression() {
         let parser = LofParser::new(Config::default());
         assert_eq!(

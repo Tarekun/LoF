@@ -128,6 +128,14 @@ impl LofParser {
         input: &'a str,
     ) -> PResult<'a, Expression> {
         alt((
+            // a bare lambda/forall must be tried before parse_app: parse_app
+            // would happily parse the abstraction as its *applied-to* left
+            // side, then fail requiring a following `(args)` list that isn't
+            // there for a lambda used as a plain argument (eg. `f(\lambda x:
+            // T. body)`), so without this the whole argument had to be
+            // wrapped in redundant parens to parse at all
+            |input| self.parse_abs(input),
+            |input| self.parse_type_abs(input),
             // custom notations must be tried before parse_app
             // otherwise if a left operand looks like a complete application
             // parse_app would greedily match just the left operand

@@ -330,16 +330,29 @@ pub fn substitute(term: &CicTerm, target_name: &str, arg: &CicTerm) -> CicTerm {
             Box::new(substitute(left, target_name, arg)),
             Box::new(substitute(right, target_name, arg)),
         ),
-        // TODO: dont carry substitution if names match to implement overriding of names
+        // the domain is evaluated in the outer scope, so it always gets
+        // substituted, but `var_name` shadows `target_name` inside
+        // `codomain`/the body from here on, exactly like `Let`'s `scope`
+        // below - leaving it be avoids incorrectly substituting through an
+        // inner binder that happens to reuse the same name (eg. two nested
+        // `\lambda n: Nat. ...` using `n` for unrelated variables)
         Abstraction(var_name, domain, codomain) => Abstraction(
             var_name.to_string(),
             Box::new(substitute(domain, target_name, arg)),
-            Box::new(substitute(codomain, target_name, arg)),
+            if var_name != target_name {
+                Box::new(substitute(codomain, target_name, arg))
+            } else {
+                codomain.clone()
+            },
         ),
         Product(var_name, domain, codomain) => Product(
             var_name.to_string(),
             Box::new(substitute(domain, target_name, arg)),
-            Box::new(substitute(codomain, target_name, arg)),
+            if var_name != target_name {
+                Box::new(substitute(codomain, target_name, arg))
+            } else {
+                codomain.clone()
+            },
         ),
         Let(var_name, var_type, body, scope) => {
             let var_type = if var_type.is_some() {
@@ -488,8 +501,68 @@ mod unit_tests {
             CicTerm::{Abstraction, Sort, Variable},
             GLOBAL_INDEX, PLACEHOLDER_DBI,
         },
-        cic_utils::{index_variables, swap_proof_hole},
+        cic_utils::{index_variables, substitute, swap_proof_hole},
     };
+
+    #[test]
+    fn test_substitute_does_not_cross_a_shadowing_binder() {
+        // Regression test: substituting `n` into a term that itself contains
+        // an inner binder rebinding the name `n` (eg. a lambda literal
+        // passed as an argument to a function whose own body already uses
+        // `n` for something else, as in `apply_twice(\lambda n: Nat. s(n),
+        // z)` where `apply_twice`'s own signature is `(f: Nat -> Nat, n:
+        // Nat)`) must leave that inner binder's body untouched: the `n`
+        // inside it refers to the inner binder, not the outer one being
+        // substituted.
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let s = Variable("s".to_string(), GLOBAL_INDEX);
+        let z = Variable("z".to_string(), GLOBAL_INDEX);
+
+        // \lambda n: Nat. s(n) -- an inner binder reusing the name `n`
+        let inner_lambda = Abstraction(
+            "n".to_string(),
+            Box::new(nat.clone()),
+            Box::new(crate::type_theory::cic::cic::CicTerm::Application(
+                Box::new(s.clone()),
+                Box::new(Variable("n".to_string(), 0)),
+            )),
+        );
+
+        // substituting the *outer* `n` with `z` must not reach inside
+        // `inner_lambda`'s own body, since its own `n` shadows the outer one
+        assert_eq!(
+            substitute(&inner_lambda, "n", &z),
+            inner_lambda,
+            "substitute must not descend into a nested binder that shadows the substituted name"
+        );
+
+        // the domain (type) position isn't shadowed by the binder it
+        // belongs to, so it must still be substituted
+        let shadowing_in_domain = Abstraction(
+            "n".to_string(),
+            Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+            Box::new(nat.clone()),
+        );
+        assert_eq!(
+            substitute(&shadowing_in_domain, "n", &z),
+            Abstraction("n".to_string(), Box::new(z.clone()), Box::new(nat.clone())),
+            "substitute must still apply to a binder's own domain type"
+        );
+
+        // an outer occurrence of `n` (not shadowed) is still substituted
+        let outer_application = crate::type_theory::cic::cic::CicTerm::Application(
+            Box::new(inner_lambda.clone()),
+            Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+        );
+        assert_eq!(
+            substitute(&outer_application, "n", &z),
+            crate::type_theory::cic::cic::CicTerm::Application(
+                Box::new(inner_lambda),
+                Box::new(z),
+            ),
+            "substitute must still replace a genuinely free/outer occurrence of the name"
+        );
+    }
 
     #[test]
     fn test_swap_proof_hole_preserves_abstraction_shape() {
