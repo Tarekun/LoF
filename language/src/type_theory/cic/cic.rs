@@ -14,7 +14,8 @@ use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
 };
 use crate::type_theory::cic::type_check::{
-    type_check_inductive, type_check_match,
+    type_check_equivalence, type_check_inductive, type_check_match,
+    type_check_transport,
 };
 use crate::type_theory::cic::unification::{
     cic_apply_unifier, cic_collect_unifications, cic_solve_unifications,
@@ -247,6 +248,41 @@ impl Kernel for Cic {
                     theorem_name,
                     formula,
                     proof,
+                )
+            }
+            Statement::Equivalence(
+                name,
+                type_a,
+                type_b,
+                forward,
+                backward,
+                section,
+                retraction,
+                dep_elim,
+                eta,
+                dep_constr,
+                iota,
+            ) => type_check_equivalence(
+                environment,
+                name,
+                type_a,
+                type_b,
+                forward,
+                backward,
+                section,
+                retraction,
+                dep_elim,
+                eta,
+                dep_constr,
+                iota,
+            ),
+            Statement::Transport(new_name, new_type, old_name, equiv_name) => {
+                type_check_transport(
+                    environment,
+                    new_name,
+                    new_type,
+                    old_name,
+                    equiv_name,
                 )
             }
             // Statement::Auto(formula) => {
