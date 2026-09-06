@@ -11,6 +11,11 @@ rewritten by hand.
 
 ## Theoretical basis
 
+For the theory this rests on - what a configuration *is*, why Iota and Eta
+are the two components that need machinery, why Eta had to be definitional
+and why that forces the no-indices condition, and a reading list -
+see [transport-theory.md](transport-theory.md). The summary:
+
 The implementation follows Ringer, Porter, Yazdani, Leo & Grossman,
 [*Proof Repair across Type Equivalences*](https://arxiv.org/abs/2010.00774)
 (the PUMPKIN Pi tool for Coq). That approach transforms proof **terms**
