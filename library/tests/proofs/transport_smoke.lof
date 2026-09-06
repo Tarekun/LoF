@@ -1,0 +1,49 @@
+# Smoke test for the `equivalence`/`transport` statements: exercises the
+# full pipeline (parse -> elaborate -> type-check -> evaluate) on the
+# simplest possible case, a degenerate self-equivalence (Nat <-> Nat via
+# the identity), before attempting the real Nat/Bin and List/Vec
+# equivalences. If this file fails, the bug is in the transport
+# plumbing itself, not in a hand-derived library proof.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+fun rec plus (n:Nat, m:Nat) : Nat {
+  match n with
+  | z => m,
+  | s(nn) => s(plus(nn, m)),
+}
+
+theorem plus_z_r : ∀n:Nat. Eq(Nat, plus(n,z), n) :=
+  (e_Nat(
+    (\lambda n:Nat. Eq(Nat, plus(n,z), n)),
+    refl(Nat, z),
+    (\lambda r:Nat. \lambda ih: Eq(Nat, plus(r,z), r).
+      e_Eq(Nat, plus(r,z),
+           (\lambda y:Nat. \lambda h: Eq(Nat, plus(r,z), y). Eq(Nat, s(plus(r,z)), s(y))),
+           refl(Nat, s(plus(r,z))),
+           r,
+           ih))
+  ))
+
+equivalence NatSelf : Nat <-> Nat {
+  forward    := (\lambda n:Nat. n);
+  backward   := (\lambda n:Nat. n);
+  section    := (\lambda n:Nat. refl(Nat, n));
+  retraction := (\lambda n:Nat. refl(Nat, n));
+  dep_elim   := e_Nat;
+  dep_constr {
+    | z => z
+    | s => s
+  }
+  iota {
+  }
+}
+
+transport plus_copy : Nat -> Nat -> Nat from plus using NatSelf;
+transport plus_z_r_copy : ∀n:Nat. Eq(Nat, plus_copy(n,z), n) from plus_z_r using NatSelf;
