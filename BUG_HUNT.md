@@ -531,3 +531,100 @@ differs between running the whole `library/` workspace and running a single
 file under `library/tests/`, unlike everything else in that directory,
 which is self-contained). All 175 tests in `cargo test` pass, and the whole
 standard library still type-checks and executes cleanly.
+
+## 11. `--config <path>` always crashed instead of loading the given config
+
+**Symptom:** The documented way to point LoF at a non-default config file
+(`lof check <workspace> --config path/to/config.yml`, needed to switch to
+the FOL type system for anything beyond the default `./config.yml`) always
+crashed:
+```
+thread 'main' panicked at src/main.rs:146:44:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 2, kind: NotFound, message: "No such file or directory" })
+```
+
+**Root cause:** `get_flag_value` (`language/src/cli.rs`) searched `args` for
+the element equal to `flag` and returned *that element itself*
+(`arg.to_string()`) instead of the argument following it:
+```rust
+for arg in args {
+    if arg == flag {
+        return Some(arg.to_string());  // returns "--config", not its value
+    }
+}
+```
+So `--config path/to/config.yml` resolved to the config path literally being
+the four-character string `"--config"`, which of course doesn't exist as a
+file, so `load_config` always failed and `main`'s `.unwrap()` on it always
+panicked. This is also how I initially failed to get an FOL-mode repro
+running in this bug hunt (`proofr check file.lof --config custom.yml`) until
+switching to `./config.yml` directly.
+
+**Fix:** Return the argument at the *next* index instead of the matched
+element itself.
+
+**Verification:** New unit test
+`test_get_flag_value_returns_the_following_argument` (in
+`language/src/cli.rs`), covering the normal case, a missing flag, and the
+flag being the last argument with nothing after it (must return `None`,
+not panic). All 176 tests in `cargo test` pass.
+
+## 12. The `auto` statement was unparseable as ordinary top-level source
+
+**Symptom:** `auto formula;` - the documented syntax for automatic theorem
+proving via saturation, and the *only* way to invoke it - failed to parse
+from a real source file, even though the exact same string parsed
+successfully when fed directly to the statement parser in isolation:
+```
+axiom Even : Nat -> PROP;
+...
+auto Even(s(s(z)));
+```
+```
+Error parsing file '...'. Unparsed remainder starting at: ;
+```
+
+**Root cause:** Top-level source is parsed node-by-node via `parse_node`
+(`language/src/parser/api.rs`), which tries `parse_expression` *before*
+`parse_statement`. `solve` and `hclause` - `auto`'s siblings as top-level
+statement keywords - are both in `RESERVED_KEYWORDS`
+(`language/src/parser/commons.rs`), which makes `parse_identifier` (and so
+`parse_var`/`parse_expression`) refuse to match them as a plain variable
+name, forcing `parse_node` to fall through to `parse_statement` and parse
+them correctly. `auto` was missing from that list, so `parse_expression`
+happily matched the bare word `auto` on its own as a valid (if meaningless)
+variable-reference expression-statement; `many0` then moved on and parsed
+`Even(s(s(z)))` as its own, separate expression statement right after,
+leaving the `;` that was meant to close the `auto` statement as unparseable
+leftover input. `apply` (a tactic keyword, parsed via a separate,
+dedicated grammar path that isn't affected by this particular ordering) was
+missing from the same list too, reserved here for consistency with its
+sibling tactic keywords (`begin`/`intro`/`exact`/`qed`), all of which
+already are.
+
+**Fix:** Added `auto` and `apply` to `RESERVED_KEYWORDS`.
+
+**Verification:** New parser unit test
+`test_auto_is_reserved_as_a_top_level_statement_keyword` (in
+`language/src/tests/parser/statements.rs`), driving the parser the same way
+`parse_source_file` actually does (`many0` over `parse_node`) rather than
+calling `parse_statement` directly - which is what the pre-existing
+`test_auto` did, and precisely why it never caught this: it never exercised
+`parse_node`'s expression-before-statement ordering that the real bug lived
+in. Manually re-verified `auto` now proves a real saturation goal end to end
+in FOL mode. All 177 tests in `cargo test` pass, and the whole standard
+library still type-checks and executes cleanly.
+
+**Related, unimplemented (not a regression, so not fixed here):** while
+chasing an FOL repro for this bug, `hclause` (Horn clauses) turned out to be
+parsed but never actually elaborated or type-checked for either type system
+- any `hclause ...;` statement is unconditionally rejected with "... is not
+supported in FOL", even though it's documented as a real, distinct
+statement form. `HClause` exists only in the parser's AST
+(`language/src/parser/api.rs`) with no corresponding elaboration anywhere
+under `language/src/type_theory/`. This looks like a feature that was
+planned and partially wired up (the parser and its tests) but never
+actually connected to a type system, rather than something that broke -
+worth flagging since it means every `hclause` example in
+`docs/language/syntax.md` currently doesn't work, but implementing real
+Horn-clause elaboration is a feature addition, not a small fix.

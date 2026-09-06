@@ -572,6 +572,40 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_auto_is_reserved_as_a_top_level_statement_keyword() {
+        // Regression test: `auto` was missing from `RESERVED_KEYWORDS`
+        // (unlike its sibling top-level statement keywords `solve` and
+        // `hclause`, which are both reserved). Top-level source is parsed
+        // node-by-node via `parse_node`, which tries `parse_expression`
+        // *before* `parse_statement` - so without being reserved, `auto`
+        // parsed as a bare variable reference (a seemingly harmless,
+        // unbound expression statement) instead of being recognized as the
+        // start of an `auto formula;` statement, silently breaking the
+        // parse: the formula parsed as its own, separate expression
+        // statement right after, leaving the trailing `;` as unparseable
+        // leftover input. Calling `parse_statement` directly (as
+        // `test_auto` above does) doesn't exercise this at all, since it
+        // skips straight past `parse_node`'s ordering.
+        let parser = LofParser::new(Config::new(TypeSystem::Cic));
+
+        let (remainder, nodes) = nom::multi::many0(|input| {
+            parser.parse_node(input)
+        })("auto P(x);")
+        .expect("a real auto statement must parse as a full document");
+
+        assert!(
+            remainder.trim().is_empty(),
+            "auto statement must be fully consumed, not leave `{}` unparsed",
+            remainder
+        );
+        assert_eq!(
+            nodes.len(),
+            1,
+            "auto formula; must parse as a single statement node, not split into a bare `auto` expression plus a separate formula expression"
+        );
+    }
+
+    #[test]
     fn test_solve() {
         let parser = LofParser::new(Config::new(TypeSystem::Cic));
 
