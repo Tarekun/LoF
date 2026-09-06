@@ -416,13 +416,23 @@ fn type_check_interactive_proof<T: TypeTheory + Interactive>(
         mut subgoals: Vec<T::Type>,
         partial_proof: T::Term,
     ) -> Result<T::Term, LofError> {
-        // TODO: make sure the proof closes with a qed.
         if subgoals.is_empty() {
             return Ok(partial_proof.to_owned());
         }
 
         match interactive_proof {
-            [] => Ok(partial_proof.to_owned()),
+            // running out of tactics with subgoals still pending used to be
+            // treated as a successfully finished proof, silently leaving
+            // `T::proof_hole()`'s sentinel embedded in the returned term -
+            // which only surfaced later, as a confusing "Unbound variable:
+            // THIS_IS_A_PARTIAL_PROOF_HOLE"-style error out of type checking
+            // the assembled proof, instead of a clear "incomplete proof"
+            // error pointing at what's actually wrong
+            [] => Err(LofError::custom(format!(
+                "Incomplete proof: {} goal(s) remaining: {:?}",
+                subgoals.len(),
+                subgoals
+            ))),
             [proof_step, rest @ ..] => {
                 let target = subgoals.pop().unwrap();
                 let (new_proof, new_subgoals) = T::type_check_tactic(

@@ -382,3 +382,92 @@ the current subgoal-tracking model (a flat, upfront list of already-concrete
 premise types) has no room for that. This is an existing, larger piece of
 machinery (metavariable-based goal-directed elaboration), not something to
 bolt on as a small patch, so it's documented here rather than attempted.
+
+## 8. An incomplete tactic proof was silently accepted as complete
+
+**Symptom:** Running out of tactic steps while a subgoal was still pending
+didn't reject the proof - it was accepted, and the failure only surfaced
+later as a confusing, implementation-detail error:
+
+```
+theorem le_refl_like : ∀n: Nat. le(n, n) :=
+  begin
+  intro n : Nat
+  qed.
+```
+(an incomplete proof - `intro` alone only peels off the `∀`, it doesn't
+discharge the resulting `le(n, n)` subgoal) failed with:
+```
+Program failed: Unbound variable: THIS_IS_A_PARTIAL_PROOF_HOLE
+```
+- naming the tactic engine's own internal hole-placeholder sentinel, not
+anything about the actual proof.
+
+**Root cause:** `type_check_interactive_proof`'s `solver`
+(`language/src/type_theory/commons/type_check.rs`) matched on the remaining
+tactic list *after* already confirming `subgoals` was non-empty, but its `[]`
+(no tactics left) arm returned `Ok(partial_proof)` unconditionally - exactly
+the gap flagged by an adjacent `// TODO: make sure the proof closes with a
+qed.` comment. The returned term still had `Interactive::proof_hole()`'s
+sentinel (`Sort("THIS_IS_A_PARTIAL_PROOF_HOLE")`) embedded wherever the
+missing tactic step would have filled it in, which only failed later, when
+that sentinel reached ordinary type-checking and was treated like any other
+unrecognized `Variable`.
+
+**Fix:** The `[]` arm now returns a `LofError` naming the count and content
+of the still-pending subgoals, instead of silently succeeding.
+
+**Verification:** New unit test
+`test_u_type_check_theorem_rejects_incomplete_tactic_proof` (in
+`language/src/tests/type_theory/commons/type_check.rs`), checking both that
+an incomplete proof is now rejected with a clear message and that the same
+formula is still accepted once every subgoal is actually discharged. All 174
+tests in `cargo test` pass.
+
+## 9. Custom notations can't be mixed in the same expression (documented, not fixed)
+
+**Symptom:** Two independently-registered custom notations (`sugar`) parse
+fine on their own, but not combined in the same expression:
+
+```
+sugar "_0 + _1" := "plus(_0, _1)"
+sugar "_0 * _1" := "times(_0, _1)"
+
+theorem precedence_check : Eq(Nat, s(z) + s(s(z)) * s(s(z)), s(s(s(z)))) := ...
+```
+fails to parse (`Unparsed remainder ...`), even though `s(z) + s(z)` and
+`s(z) * s(z)` each parse fine alone, and the same expression parses fine
+once the mixed part is wrapped in redundant parens:
+`s(z) + (s(s(z)) * s(s(z)))`.
+
+**Root cause:** `parse_custom` (`language/src/parser/expressions.rs`) parses
+each notation's `_N` placeholder via `non_custom_expression`, which
+deliberately excludes `parse_custom` from its own alternatives (hence the
+name) to avoid unbounded left-recursion (a placeholder re-invoking notation
+matching against the very same input position it's currently mid-match on).
+The consequence: a notation's operand can never itself be *another*
+notation's application - so parsing `+`'s right-hand operand on `s(s(z)) *
+s(s(z))` stops at `s(s(z))` (the longest match `non_custom_expression` can
+produce without recognizing `*`), leaving `* s(s(z))` dangling and
+unconsumed, which then breaks the enclosing parse.
+
+**Why this is documented rather than fixed:** naively adding `parse_custom`
+to `non_custom_expression`'s alternatives reintroduces exactly the
+unbounded left-recursion it was written to avoid (parsing `*`'s own `_0`
+placeholder on `s(s(z)) * s(s(z))` would immediately retry every notation,
+including `*` again, on that same starting position - a stack overflow, not
+a fix). A real fix needs actual precedence-climbing (per-notation binding
+powers, Pratt-parser style) so nesting is resolved deterministically instead
+of by whichever alternative happens to be tried first; a shortcut that lets
+notations nest without one would silently pick *some* precedence/
+associativity for every pair of registered notations (most likely always
+right- or left-associating them in registration order, regardless of what a
+reader would expect from `+`/`*`), which is arguably worse than the current
+hard parse error - it would silently produce whichever parse tree the
+implementation happens to build rather than the one the notations'
+declared precedence (if any existed) would call for. Since `library/nat.lof`
+only ever uses one arithmetic notation per expression today, this hasn't
+surfaced there, but it blocks the very next natural line of standard-library
+code (a lemma or example mixing `+` and `*` in one expression, eg.
+distributivity). Flagging it here rather than shipping a partial fix that
+would trade a loud parse error for a silently wrong parse tree.
