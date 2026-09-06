@@ -196,6 +196,91 @@ fn type_check_pattern(
 // this boils down to type checking an application against a target type where all of its arguments' types are to be infered;
 // => i have a strong feeling type_constr_vars&type_check_pattern can be simplified using unification
 //    (every unbound variable gets a ?_i type, the overall application is unified against the target type)
+/// Types a projection `target.i` out of a single-constructor inductive.
+///
+/// Given `target : T(p_1..p_m)` and `T`'s only constructor
+/// `C : ∀p_1..p_m. ∀a_0:A_0. .. ∀a_{k-1}:A_{k-1}. T(p_1..p_m)`, the result
+/// is `A_i` with the type's parameters instantiated to `target`'s actual
+/// ones and every *earlier* field replaced by its own projection:
+///
+/// ```text
+/// A_i[p_j := actual_j][a_0 := target.0, .., a_{i-1} := target.{i-1}]
+/// ```
+///
+/// That second substitution is what makes a dependent field come out
+/// right: `PackedVec`'s second field has declared type `Vec(Tp, n)`, and
+/// projecting it yields `Vec(Tp, target.0)` rather than a term mentioning
+/// the constructor's own unbound `n`.
+pub fn type_check_proj(
+    environment: &mut Environment<Cic>,
+    type_name: &str,
+    field_index: usize,
+    target: &CicTerm,
+) -> Result<CicTerm, LofError> {
+    let target_type = Cic::type_check_term(target, environment)?;
+    if !is_instance_of(&target_type, type_name) {
+        return Err(LofError::custom(format!(
+            "projection .{} expects a '{}', got a '{}'",
+            field_index, type_name, target_type
+        )));
+    }
+
+    let constructors =
+        environment.constructor_store.get(type_name).ok_or_else(|| {
+            LofError::custom(format!("unknown inductive type '{}'", type_name))
+        })?;
+    if constructors.len() != 1 {
+        return Err(LofError::custom(format!(
+            "projection .{} needs a single-constructor type, but '{}' has {}",
+            field_index,
+            type_name,
+            constructors.len()
+        )));
+    }
+    let constructor_type = constructors[0].1.to_owned();
+    let param_count = environment
+        .get_inductive_param_count(type_name)
+        .unwrap_or(0);
+    let actual_params = application_args(&target_type);
+
+    // walk the constructor's Pi-chain, substituting the type's parameters
+    // and then each earlier field's projection as we pass it
+    let mut remaining = constructor_type;
+    for depth in 0..param_count + field_index {
+        let Product(binder, _, codomain) = remaining else {
+            return Err(LofError::custom(format!(
+                "'{}' has no field {}",
+                type_name, field_index
+            )));
+        };
+        let value = if depth < param_count {
+            actual_params.get(depth).cloned().ok_or_else(|| {
+                LofError::custom(format!(
+                    "'{}' applied to too few parameters",
+                    type_name
+                ))
+            })?
+        } else {
+            CicTerm::Proj(
+                type_name.to_string(),
+                depth - param_count,
+                Box::new(target.to_owned()),
+            )
+        };
+        remaining = substitute(&codomain, &binder, &value);
+    }
+
+    match remaining {
+        Product(_, domain, _) => Ok((*domain).to_owned()),
+        _ => Err(LofError::custom(format!(
+            "'{}' has no field {}",
+            type_name, field_index
+        ))),
+    }
+}
+//
+//
+// TODO: a pattern is essentially an application containing unbound variables;
 pub fn type_check_match(
     environment: &mut Environment<Cic>,
     matched_term: &CicTerm,

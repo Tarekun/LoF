@@ -1,6 +1,6 @@
 use super::cic::CicStm::{Axiom, Fun, Global, Theorem};
 use super::cic::CicTerm::{
-    Abstraction, Application, Let, Match, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Proj, Product, Sort, Variable,
 };
 use super::cic::{Cic, CicStm, CicTerm, GLOBAL_INDEX};
 use super::cic_utils::{index_variables, make_multiarg_fun_type};
@@ -61,6 +61,9 @@ pub fn one_step_reduction(
         Match(matched_term, branches) => {
             reduce_match(environment, matched_term, branches)
         }
+        Proj(type_name, field_index, target) => {
+            reduce_proj(environment, type_name, *field_index, target)
+        }
         // Descend into a dependent function type's domain/codomain (resp.
         // an abstraction's domain/body) so a redex embedded there - eg a
         // motive applied to a bound variable, exactly what an eliminator's
@@ -86,6 +89,158 @@ pub fn one_step_reduction(
             Box::new(one_step_reduction(environment, body)),
         ),
         _ => term.clone(),
+    }
+}
+//
+//
+/// Whether `type_name` admits η-conversion: whether an *opaque* value of
+/// it may be treated as literally being an application of its single
+/// constructor to its own fields. Returns that constructor's name and
+/// type, plus how many fields it has beyond the type's parameters.
+///
+/// Three conditions, each load-bearing:
+///
+/// - **Exactly one constructor.** Otherwise there is no canonical shape to
+///   expand into.
+/// - **No indices** (the type former's arity is exhausted by its
+///   parameters). This one is a soundness condition, not conservatism:
+///   `Eq` is single-constructor, and η for it would say every proof of
+///   `Eq(T,x,y)` *is* `refl` - ie hand us UIP/axiom K for free.
+/// - **No recursive occurrence** among the constructor's own arguments.
+///   For a recursive type the expansion feeds a sub-term of the same type
+///   straight back into the rule, so normalization would not terminate.
+///
+/// `PackedVec(T) := pack(∀n:Nat. Vec(T,n) -> PackedVec(T))` satisfies all
+/// three; `Vec` (indexed), `Eq` (indexed) and `List` (two constructors,
+/// recursive) satisfy none.
+fn eta_eligible_constructor(
+    environment: &Environment<Cic>,
+    type_name: &str,
+) -> Option<(String, CicTerm, usize)> {
+    let constructors = environment.constructor_store.get(type_name)?;
+    if constructors.len() != 1 {
+        return None;
+    }
+    let (constructor_name, constructor_type) = &constructors[0];
+
+    let param_count = environment.get_inductive_param_count(type_name)?;
+
+    // no indices: every Pi layer of the type former's own type is a
+    // parameter
+    let (_, type_former) = environment.get_from_context(type_name)?;
+    let mut former_arity = 0;
+    let mut remaining = &type_former;
+    while let Product(_, _, codomain) = remaining {
+        former_arity += 1;
+        remaining = codomain;
+    }
+    if former_arity != param_count {
+        return None;
+    }
+
+    // no recursive occurrence among the constructor's arguments
+    let mut field_count = 0;
+    let mut remaining = constructor_type;
+    let mut depth = 0;
+    while let Product(_, domain, codomain) = remaining {
+        if depth >= param_count {
+            if is_instance_of(domain, type_name) {
+                return None;
+            }
+            field_count += 1;
+        }
+        depth += 1;
+        remaining = codomain;
+    }
+
+    Some((
+        constructor_name.to_owned(),
+        constructor_type.to_owned(),
+        field_count,
+    ))
+}
+//
+//
+/// η-expands an opaque `target` of the η-eligible type `type_name` into
+/// `C(params.., target.0, .., target.k-1)`, the fields being `Proj` nodes.
+///
+/// The caller supplies `params` because they are not recoverable from an
+/// opaque target - but both call sites have them to hand already (an
+/// eliminator application from its own leading arguments, a `match` from
+/// its pattern's leading slots, which β-reduction has already rewritten to
+/// the actual parameter values).
+///
+/// Returns `None` when the type is not η-eligible, which is also how the
+/// two call sites keep their previous "genuinely stuck" behaviour.
+fn eta_expand_target(
+    environment: &Environment<Cic>,
+    type_name: &str,
+    params: &[CicTerm],
+    target: &CicTerm,
+) -> Option<CicTerm> {
+    let (constructor_name, _, field_count) =
+        eta_eligible_constructor(environment, type_name)?;
+
+    let mut args = params.to_vec();
+    for field_index in 0..field_count {
+        args.push(Proj(
+            type_name.to_string(),
+            field_index,
+            Box::new(target.to_owned()),
+        ));
+    }
+
+    Some(apply_arguments(
+        &Variable(constructor_name, GLOBAL_INDEX),
+        args,
+    ))
+}
+//
+//
+/// ι-reduction for a projection: `C(params.., a_0..a_k).i` computes to
+/// `a_i`. On anything else - notably an opaque variable, which is the
+/// whole reason `Proj` exists - the projection is its own normal form.
+///
+/// Note this rule deliberately does *not* η-expand its own target: that is
+/// what stops `x -> C(x.0, x.1) -> C(C(x.0.0, ..).0, ..)` from running
+/// forever.
+fn reduce_proj(
+    environment: &Environment<Cic>,
+    type_name: &str,
+    field_index: usize,
+    target: &CicTerm,
+) -> CicTerm {
+    let normalized_target = Cic::normalize_term(environment, target);
+
+    let rebuilt = || {
+        Proj(
+            type_name.to_string(),
+            field_index,
+            Box::new(normalized_target.to_owned()),
+        )
+    };
+
+    let Some((constructor_name, _, _)) =
+        eta_eligible_constructor(environment, type_name)
+    else {
+        return rebuilt();
+    };
+    let Some(param_count) = environment.get_inductive_param_count(type_name)
+    else {
+        return rebuilt();
+    };
+
+    match get_applied_function(&normalized_target) {
+        Variable(name, dbi)
+            if dbi == GLOBAL_INDEX && name == constructor_name =>
+        {
+            let args = application_args(&normalized_target);
+            match args.get(param_count + field_index) {
+                Some(field) => field.to_owned(),
+                None => rebuilt(),
+            }
+        }
+        _ => rebuilt(),
     }
 }
 //
@@ -136,12 +291,26 @@ fn try_reduce_eliminator_application(
         return None;
     }
 
-    let instance = args.last()?;
+    let supplied_instance = args.last()?;
+    // The scrutinee isn't constructor-headed (eg a bound variable). For an
+    // η-eligible type that is not actually stuck: every value of a
+    // one-constructor, index-free, non-recursive type *is* an application
+    // of that constructor to its own fields, so expand it and carry on.
+    // For anything else it is genuinely stuck.
+    let eta_expanded = match get_applied_function(supplied_instance) {
+        Variable(_, dbi) if dbi == GLOBAL_INDEX => None,
+        _ => eta_expand_target(
+            environment,
+            &type_name,
+            &args[..param_count],
+            supplied_instance,
+        ),
+    };
+    let instance = eta_expanded.as_ref().unwrap_or(supplied_instance);
+
     let instance_head = get_applied_function(instance);
     let constructor_name = match &instance_head {
         Variable(name, dbi) if *dbi == GLOBAL_INDEX => name.to_owned(),
-        // the scrutinee isn't constructor-headed (eg a bound variable):
-        // genuinely stuck, not reducible
         _ => return None,
     };
     let constructor_index = constructors
@@ -227,6 +396,41 @@ fn reduce_match(
                 pattern,
                 body,
             );
+        }
+    }
+
+    // No branch matched, but the scrutinee may still be η-expandable: if
+    // this match is over a one-constructor, index-free, non-recursive
+    // type, an opaque scrutinee *is* an application of that constructor to
+    // its own fields. The matched type is read off the branch's own
+    // pattern head rather than inferred, and the pattern's leading slots
+    // supply the parameters (β-reduction has already rewritten them to the
+    // actual values).
+    if let Some((pattern, body)) = branches.first() {
+        if let Variable(pattern_head, _) = get_applied_function(pattern) {
+            if let Some(type_name) =
+                environment.constructor_type_of(&pattern_head)
+            {
+                if let Some(param_count) =
+                    environment.get_inductive_param_count(&type_name)
+                {
+                    let pattern_args = application_args(pattern);
+                    if pattern_args.len() >= param_count {
+                        if let Some(expanded) = eta_expand_target(
+                            environment,
+                            &type_name,
+                            &pattern_args[..param_count],
+                            &normalized_term,
+                        ) {
+                            if matches_pattern(&expanded, pattern) {
+                                return substitute_pattern_variables(
+                                    &expanded, pattern, body,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

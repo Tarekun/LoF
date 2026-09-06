@@ -397,3 +397,229 @@ mod eliminator_iota_reduction {
         );
     }
 }
+
+/// η-conversion for single-constructor inductives: an *opaque* value of a
+/// one-constructor, index-free, non-recursive type is treated as being
+/// literally an application of that constructor to its own projections, so
+/// a `match`/eliminator over it is no longer stuck.
+///
+/// The eligibility conditions matter as much as the rule: η for an
+/// *indexed* single-constructor type (`Eq`) would say every proof of
+/// `Eq(T,x,y)` is `refl`, ie hand out UIP/axiom K, and η for a *recursive*
+/// one would feed the rule its own output forever.
+mod single_constructor_eta {
+    use super::*;
+    use crate::type_theory::cic::cic::CicTerm::{self, Match, Proj};
+    use crate::type_theory::cic::evaluation::eta_eligible_constructor;
+    use crate::type_theory::environment::Environment;
+
+    fn apply(function: CicTerm, arguments: Vec<CicTerm>) -> CicTerm {
+        arguments.into_iter().fold(function, |acc, argument| {
+            Application(Box::new(acc), Box::new(argument))
+        })
+    }
+
+    fn global(name: &str) -> CicTerm {
+        Variable(name.to_string(), GLOBAL_INDEX)
+    }
+
+    /// A `Box(A) := mk(A -> A -> Box(A))`-shaped world:
+    /// - `Boxed`: one constructor, no indices, no recursion => eligible
+    /// - `Eq`:    one constructor but *indexed*                => not
+    /// - `Wrap`:  one constructor but *recursive*              => not
+    /// - `Nat`:   two constructors                             => not
+    fn eta_environment() -> Environment<Cic> {
+        let mut env = Cic::default_environment();
+        let type_sort = Sort("TYPE".to_string());
+        let nat = global("Nat");
+
+        env.add_to_context("Nat", &type_sort);
+        env.add_constructor_store(
+            "Nat",
+            vec![("z".to_string(), nat.clone()), (
+                "s".to_string(),
+                Product(
+                    "_".to_string(),
+                    Box::new(nat.clone()),
+                    Box::new(nat.clone()),
+                ),
+            )],
+        );
+        env.add_inductive_param_count("Nat", 0);
+
+        // inductive Boxed : TYPE { | mk : Nat -> Nat -> Boxed }
+        let boxed = global("Boxed");
+        env.add_to_context("Boxed", &type_sort);
+        env.add_constructor_store(
+            "Boxed",
+            vec![(
+                "mk".to_string(),
+                Product(
+                    "first".to_string(),
+                    Box::new(nat.clone()),
+                    Box::new(Product(
+                        "second".to_string(),
+                        Box::new(nat.clone()),
+                        Box::new(boxed.clone()),
+                    )),
+                ),
+            )],
+        );
+        env.add_inductive_param_count("Boxed", 0);
+
+        // inductive Eq (T:TYPE, x:T) : T -> PROP { | refl : Eq(T,x,x) }
+        // one constructor, but the type former takes an *index* beyond its
+        // two parameters
+        env.add_to_context(
+            "Eq",
+            &Product(
+                "T".to_string(),
+                Box::new(type_sort.clone()),
+                Box::new(Product(
+                    "x".to_string(),
+                    Box::new(global("T")),
+                    Box::new(Product(
+                        "_".to_string(),
+                        Box::new(global("T")),
+                        Box::new(Sort("PROP".to_string())),
+                    )),
+                )),
+            ),
+        );
+        env.add_constructor_store("Eq", vec![(
+            "refl".to_string(),
+            Product(
+                "T".to_string(),
+                Box::new(type_sort.clone()),
+                Box::new(Product(
+                    "x".to_string(),
+                    Box::new(global("T")),
+                    Box::new(apply(global("Eq"), vec![
+                        global("T"),
+                        global("x"),
+                        global("x"),
+                    ])),
+                )),
+            ),
+        )]);
+        env.add_inductive_param_count("Eq", 2);
+
+        // inductive Wrap : TYPE { | wrap : Wrap -> Wrap }
+        let wrap = global("Wrap");
+        env.add_to_context("Wrap", &type_sort);
+        env.add_constructor_store("Wrap", vec![(
+            "wrap".to_string(),
+            Product(
+                "_".to_string(),
+                Box::new(wrap.clone()),
+                Box::new(wrap.clone()),
+            ),
+        )]);
+        env.add_inductive_param_count("Wrap", 0);
+
+        env
+    }
+
+    #[test]
+    fn test_only_single_constructor_index_free_non_recursive_types_are_eligible()
+    {
+        let env = eta_environment();
+
+        let eligible = eta_eligible_constructor(&env, "Boxed");
+        assert!(
+            matches!(&eligible, Some((name, _, fields)) if name == "mk" && *fields == 2),
+            "a one-constructor, index-free, non-recursive type must be eta-eligible, got {:?}",
+            eligible.map(|(name, _, fields)| (name, fields))
+        );
+
+        assert!(
+            eta_eligible_constructor(&env, "Eq").is_none(),
+            "an INDEXED single-constructor type must never be eta-eligible: eta for `Eq` is UIP/axiom K"
+        );
+        assert!(
+            eta_eligible_constructor(&env, "Wrap").is_none(),
+            "a RECURSIVE single-constructor type must not be eta-eligible: the rule would feed its own output back in forever"
+        );
+        assert!(
+            eta_eligible_constructor(&env, "Nat").is_none(),
+            "a type with more than one constructor has no canonical shape to eta-expand into"
+        );
+    }
+
+    #[test]
+    fn test_projection_of_a_concrete_constructor_application_computes() {
+        let env = eta_environment();
+        let value = apply(global("mk"), vec![global("a"), global("b")]);
+
+        assert_eq!(
+            one_step_reduction(
+                &env,
+                &Proj("Boxed".to_string(), 0, Box::new(value.clone()))
+            ),
+            global("a"),
+            "projecting field 0 of a concrete `mk(a,b)` must compute to `a`"
+        );
+        assert_eq!(
+            one_step_reduction(
+                &env,
+                &Proj("Boxed".to_string(), 1, Box::new(value))
+            ),
+            global("b"),
+            "projecting field 1 of a concrete `mk(a,b)` must compute to `b`"
+        );
+    }
+
+    #[test]
+    fn test_projection_of_an_opaque_value_is_its_own_normal_form() {
+        let env = eta_environment();
+        let projection =
+            Proj("Boxed".to_string(), 0, Box::new(Variable("bx".to_string(), 0)));
+
+        assert_eq!(
+            one_step_reduction(&env, &projection),
+            projection,
+            "a projection of an opaque value must stay stuck - re-expanding it is what would loop forever"
+        );
+    }
+
+    #[test]
+    fn test_match_on_an_opaque_single_constructor_scrutinee_now_reduces() {
+        let env = eta_environment();
+        let scrutinee = Variable("bx".to_string(), 0);
+        // match bx with | mk(first, second) => second
+        let term = Match(
+            Box::new(scrutinee.clone()),
+            vec![(
+                apply(global("mk"), vec![global("first"), global("second")]),
+                global("second"),
+            )],
+        );
+
+        assert_eq!(
+            one_step_reduction(&env, &term),
+            Proj("Boxed".to_string(), 1, Box::new(scrutinee)),
+            "a match over an opaque value of an eta-eligible type must reduce, binding each pattern variable to the corresponding projection"
+        );
+    }
+
+    #[test]
+    fn test_match_on_an_opaque_multi_constructor_scrutinee_stays_stuck() {
+        let env = eta_environment();
+        let term = Match(
+            Box::new(Variable("n".to_string(), 0)),
+            vec![
+                (global("z"), global("base")),
+                (
+                    apply(global("s"), vec![global("nn")]),
+                    global("step"),
+                ),
+            ],
+        );
+
+        assert_eq!(
+            one_step_reduction(&env, &term),
+            term,
+            "eta must not fire for a multi-constructor type: `n` is genuinely not known to be either `z` or `s(..)`"
+        );
+    }
+}

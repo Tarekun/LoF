@@ -1,6 +1,6 @@
 use super::cic::CicTerm;
 use super::cic::CicTerm::{
-    Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Meta, Proj, Product, Sort, Variable,
 };
 use crate::error::LofError;
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
@@ -73,6 +73,12 @@ fn structurally_equal(term1: &CicTerm, term2: &CicTerm) -> bool {
             structurally_equal(body1, body2)
                 && structurally_equal(scope1, scope2)
         }
+        // same field of the same type; the targets are compared later, via
+        // `explode` pushing them back onto the ucs queue as their own
+        // constraint pair - same reasoning as the `Match` arm below
+        (Proj(type1, field1, _), Proj(type2, field2, _)) => {
+            type1 == type2 && field1 == field2
+        }
         // Only check "same number of branches" here rather than eagerly
         // recursing into the scrutinee (as this arm used to): the
         // scrutinee is compared later anyway, via `explode` pushing it
@@ -112,6 +118,7 @@ fn explode(term: &CicTerm) -> Vec<CicTerm> {
         Application(left, right) => {
             vec![(**left).to_owned(), (**right).to_owned()]
         }
+        Proj(_, _, target) => vec![(**target).to_owned()],
         // TODO this explosion is order dependent on the branches, itd be nice to
         // reorder branches in some deterministic way
         Match(matched_term, branches) => {
@@ -153,6 +160,7 @@ fn occurs_meta_check(meta_index: i32, term: &CicTerm) -> Result<(), LofError> {
             occurs_meta_check(meta_index, &left)?;
             occurs_meta_check(meta_index, &right)
         }
+        Proj(_, _, target) => occurs_meta_check(meta_index, target),
         Match(matched, branches) => {
             for (pattern, body) in branches {
                 occurs_meta_check(meta_index, pattern)?;
@@ -185,6 +193,7 @@ fn occurs_var_check(term: &CicTerm, name: &str) -> bool {
         Application(func, arg) => {
             occurs_var_check(func, name) || occurs_var_check(arg, name)
         }
+        Proj(_, _, target) => occurs_var_check(target, name),
         Match(scrutinee, branches) => {
             occurs_var_check(scrutinee, name)
                 || branches.iter().any(|(pattern, body)| {

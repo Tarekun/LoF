@@ -249,6 +249,19 @@ impl<T: TypeTheory> Environment<T> {
             .insert(name.to_string(), typee.clone());
     }
 
+    /// Reverse of `get_constructors_for`: which inductive type declares
+    /// `constructor_name`. Used where a term's type has to be recovered
+    /// from a constructor occurrence rather than inferred - notably by the
+    /// reducer, which only holds `&Environment` and so cannot type check.
+    pub fn constructor_type_of(&self, constructor_name: &str) -> Option<String> {
+        self.constructor_store.iter().find_map(|(type_name, constructors)| {
+            constructors
+                .iter()
+                .any(|(name, _)| name == constructor_name)
+                .then(|| type_name.to_owned())
+        })
+    }
+
     pub fn get_constructors_for(&self, name: &str) -> Option<HashSet<String>> {
         match self.constructor_store.get(name) {
             None => None,
