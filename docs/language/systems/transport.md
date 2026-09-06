@@ -20,8 +20,8 @@ directly, guided by a per-equivalence *configuration* with four components:
 |---|---|---|
 | **DepConstr** | how each constructor of the source type is built on the target side | `dep_constr` table |
 | **DepElim** | the eliminator to use over the target type in place of the source type's own | `dep_elim` field |
-| **Eta** | repackaging needed when the target type bundles extra data | `eta` field (recorded, not consumed - see Limitations) |
-| **Iota** | proofs bridging steps that reduce definitionally on the source side but only propositionally on the target | `iota` table (recorded, not consumed - see Limitations) |
+| **Eta** | repackaging needed when the target type bundles extra data | supplied by the kernel's own eta rule for single-constructor inductives; the `eta` field is recorded but no longer needed |
+| **Iota** | proofs bridging steps that reduce definitionally on the source side but only propositionally on the target | `iota` table, one entry per source constructor |
 
 Crucially the approach needs **no new axioms**: the output is an ordinary
 term checked by the ordinary kernel. That is what makes it implementable
@@ -79,6 +79,22 @@ generated eliminator `e_<TypeA>`: parameters, motive, one case per
 constructor of A, then the target. That is what lets the engine drop it in
 wherever the source proof eliminated an A.
 
+Each `iota` entry is `dep_elim`'s *propositional computation rule* at the
+corresponding DepConstr - what `dep_elim` would reduce to at that
+constructor, stated as an equation because in general it does not reduce
+there:
+
+```
+iota[c] : forall params. forall C. forall case_1..case_n. forall a_1..a_k.
+  Eq( C(dep_constr_c(a..)),
+      dep_elim(params, C, case_1..case_n, dep_constr_c(a..)),
+      case_c(a.., dep_elim(params, C, case.., a_rec) ..) )
+```
+
+The table may be left empty when `dep_elim` genuinely computes, as
+`ListPackedVec`'s does - the engine only reaches for an entry when a
+transported case does not already type check.
+
 ### Invoking transport
 
 ```
@@ -104,7 +120,7 @@ before the proofs that use them.
 | Node | Action |
 |---|---|
 | a constructor of `type_a` (bare or applied) | replaced by its `dep_constr` image, arguments transported |
-| an application of `e_<type_a>` | head replaced by `dep_elim`, arguments (motive, cases, target) transported |
+| an application of `e_<type_a>` | head replaced by `dep_elim`, arguments (motive, cases, target) transported, minor premises repaired via `iota` where needed |
 | a name already lifted under this equivalence | replaced by its lifted counterpart |
 | an occurrence of `type_a` itself | replaced by `type_b` |
 | `Abstraction`/`Product` | binder type and body transported - this is what turns `forall x:A. …` into `forall x:B. …`, with no separate statement-translation pass |
@@ -116,6 +132,24 @@ parameter. That `match` is converted into a `dep_elim` application - a
 constant motive built from the declared target type, one minor premise per
 constructor built from the corresponding branch, and each self-recursive
 call replaced by the induction hypothesis.
+
+Each transported minor premise is then checked against the type `dep_elim`
+expects of it. When it already matches, nothing happens - which is why an
+equivalence with an empty `iota` table behaves exactly as before. When it
+does not, the constructor's `iota` entry is instantiated by first-order
+matching against the goal and used to rewrite it, via `e_Eq` (this kernel's
+J). The rewrite eliminates once, into a function
+`abstracted[to] -> goal`, rather than composing a `sym` with a rewrite:
+type checking a curried application re-checks its whole function spine, so
+nesting multiplies rather than adds.
+
+Two vocabularies meet at that point. The rule speaks about `dep_elim`
+applied at a DepConstr image; the goal says the same thing by calling the
+lifted function built from it. Matching therefore runs against a scratch
+copy with the lifted names unfolded, while the rewrite is applied back in
+the goal's own folded vocabulary - emitting normal forms instead would
+inline every definition the goal mentions, which measured two orders of
+magnitude more type-check work.
 
 The result is re-indexed, type checked with the ordinary kernel, and unified
 against the declared target type before being registered. A failed
@@ -137,8 +171,21 @@ it cannot express "prove `C(bin_succ(b))` from `C(b)`". It is bootstrapped
 by induction on `Nat` (where `nat_to_bin(s(n)) = bin_succ(nat_to_bin(n))`
 holds definitionally) and then transferred to `Bin` via the retraction.
 
-`transport plus_bin … from plus` succeeds. Transporting a theorem on top of
-it does not - see Limitations.
+`transport plus_bin … from plus` succeeds, and `plus_z_r` transports on top
+of it. That last step is what needs Iota: `plus_z_r`'s base case is `refl`,
+a proof only because `plus(z,z)` computes to `z`, while `plus_bin(bz,bz)`
+does not compute to `bz` at all - `bin_succ_induction` is a derived theorem
+routed through an axiomatized retraction, so it has no computational
+behaviour. The two `iota` entries supply that equality, and the engine
+rewrites both the base and the step case along them.
+
+Those two entries are themselves axiomatized, alongside the
+`retraction_nat_bin` the fixture already assumed. Deriving them needs a
+`bin_succ_induction` that genuinely computes - Coq's `Pos.peano_rect`,
+defined by direct structural recursion on `Pos` rather than bootstrapped
+through the retraction - plus its `peano_rect_succ` lemma: a
+binary-arithmetic development on the scale of Coq's own standard library.
+The List/PackedVec example below needs no axiom at all.
 
 ### Lists ≃ length-indexed vectors (`transport_list_vec.lof`)
 
@@ -147,7 +194,16 @@ it does not - see Limitations.
 this language has no dependent pair). `dep_elim` is an ordinary `global`
 composing the two generated eliminators `e_PackedVec` and `e_Vec`, so unlike
 the Nat/Bin case it computes. Both `len` and `app` transport into functions
-over `PackedVec`.
+over `PackedVec`, and so does the theorem `len_app_nil` about them.
+
+The theorem is the case that needs Eta. `len(cons(h,l))` reduces
+definitionally, but `pv_cons` - `cons`'s DepConstr image - is a function
+that must destructure its argument, and for the universally quantified `pv`
+an induction's step case introduces, that `match` is stuck. The kernel's
+eta rule unsticks it: `PackedVec` has a single constructor, so every `pv`
+*is* a `pack`. Nothing in the equivalence declaration changes to make this
+work - the configuration was already sufficient, `iota` stays empty, and
+the transported proof uses no axiom.
 
 ## Kernel changes this required
 
@@ -176,37 +232,59 @@ The following were fixed along the way:
 - **Identity bindings.** `x ≐ x` where only one side is flagged global (an
   artifact of indexing each elaborated fragment separately) was reported as
   an occurs-check cycle.
+- **Eta for single-constructor inductives.** A `match` or `e_<Type>` whose
+  target is an opaque value of a one-constructor type was permanently
+  stuck. It now eta-expands into `C(params.., t.0, .., t.k-1)`, the fields
+  being a new `Proj` term former. `Proj` has to be its own term former
+  rather than sugar for an `e_<Type>` application: an eliminator-encoded
+  projection would itself be a stuck eliminator application, so the rule
+  would fire on its own output and expand forever, and normalization has no
+  fuel. Eligibility is three conditions - exactly one constructor, **no
+  indices**, and no recursive occurrence among the constructor's arguments.
+  The middle one is soundness, not caution: `Eq` is single-constructor, and
+  eta for it would say every proof of `Eq(T,x,y)` is `refl`, ie hand out
+  UIP/axiom K.
+- **Application type checking is no longer exponential.** Checking an
+  application collected unification constraints over the whole `f x` term,
+  and constraint collection on an application itself type checks that
+  application's function - the two were mutually recursive, so cost doubled
+  per argument. Only the node's own constraint (the argument's type against
+  the domain) is collected now; both sides have just been type checked in
+  their own right. A six-argument curried application nested three deep
+  went from 27 million type-check calls to a few hundred, and the whole
+  test suite from 20s to 15s while doing strictly more work.
+- **Un-reduced function and scrutinee types.** A dependent eliminator's
+  result type is literally `motive(target, proof)`, so a term whose type
+  comes from one arrives as a beta-redex rather than a `Pi` or an inductive
+  instance. Application checking, `match` checking and constraint
+  collection now normalize on that fallback path.
 - **Theorem proof terms are retained.** `evaluate_theorem` discarded them,
   so an already-proved theorem's witness could not be retrieved by name -
   which transport fundamentally needs.
 
 ## Limitations
 
-These are the boundaries of the MVP. Each is pinned by a fixture under
-`library/tests/transport_failures/`, asserted to fail by
+These are the boundaries of the MVP. Where one is pinned by a fixture, it
+lives under `library/tests/transport_failures/` and is asserted to fail by
 `test_transport_expected_failures`.
 
-**Iota is recorded but not inserted.** The `iota` table is part of the
-configuration but the engine never consumes it. Where a step is definitional
-on the source side and only propositional on the target, the transported
-proof has a hole the engine cannot fill. Concretely
-(`nat_bin_theorem.lof`): `plus_z_r`'s base case is `refl`, valid only
-because `plus(z,z)` *computes* to `z`. Its transported counterpart needs
-`plus_bin(bz,bz)` to compute to `bz`, but `plus_bin` is built from
-`bin_succ_induction` - a derived *theorem*, and theorems are opaque to
-reduction here exactly like axioms - so it has no computational behaviour at
-all. Note the ι-reduction rule above does not help: it fires for an
-inductive's own `e_<Type>`, and `Bin`'s own eliminator cannot serve as
-`dep_elim` in the first place.
+**Iota entries are hand-written, and may need axioms.** The engine consumes
+the `iota` table but does not derive it. Where `dep_elim` computes, the
+table can be empty; where it does not, each entry is a proof obligation the
+library author owes, and one that can be genuinely hard - see the Nat/Bin
+example above, whose entries are axiomatized rather than derived.
 
-**Eta is recorded but not inserted, and the kernel has no eta rule.**
-(`list_vec_theorem.lof`.) `len(cons(h,ll))` reduces definitionally, but the
-target-side step `len_pv(pv_cons(h,pv))` does not: `pv_cons` is a function
-that must destructure its argument, and for a universally quantified `pv`
-that `match` is stuck. What would fix it is precisely Eta - `PackedVec` has
-a single constructor, so every `pv` *is* `pack(n,v)` - but making that a
-definitional equality needs an eta rule for single-constructor inductives
-(Coq gets this from primitive projections), which this kernel lacks.
+**Eta covers single-constructor, index-free, non-recursive types only.**
+Those are the conditions the kernel rule requires (see above; the
+no-indices one is what keeps `Eq` out, and with it UIP). A target type
+outside them whose DepConstr images must destructure their own recursive
+argument will still get stuck, and no `iota` entry can help - the
+stuck-ness is in an ordinary function, not in `dep_elim`.
+
+**One rewrite per premise.** A minor premise is repaired by a single
+rewrite along a single `iota` entry, located by first-order matching. A
+case needing two independent bridging steps, or one whose redex is not an
+instance of any declared rule, falls through to an ordinary type error.
 
 **Raw `match` over the source type.** (`raw_match.lof`.) Only a top-level
 recursion split is converted to `dep_elim`. A `match` elsewhere is rejected
