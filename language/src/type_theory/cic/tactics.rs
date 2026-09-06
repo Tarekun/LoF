@@ -5,7 +5,8 @@ use crate::error::LofError;
 use crate::parser::api::Tactic::{self, Apply, Exact, Intro};
 use crate::type_theory::cic::cic::Cic;
 use crate::type_theory::cic::cic_utils::{
-    apply_arguments, get_arg_types, get_prod_innermost, mark_as_constant,
+    apply_arguments, apply_substitution, get_named_arg_types,
+    get_prod_innermost, mark_as_constant,
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
@@ -109,17 +110,36 @@ fn type_check_apply(
     let lemma_type = Cic::type_check_term(lemma, environment)?;
     // TODO see if i should be able to use a bigger term than the innermost as conclusion to unify
     let conclusion = get_prod_innermost(&lemma_type);
-    if Cic::type_unify(target, conclusion).is_ok() {
-        let premises = get_arg_types(&lemma_type);
-        // one fresh hole per premise, applied left-to-right, so every
-        // premise gets its own subgoal instead of only ever tracking one
-        let holes = premises.iter().map(|_| Cic::proof_hole()).collect();
-        let new_proof =
-            swap_proof_hole(partial_proof, &apply_arguments(lemma, holes));
+    match Cic::type_unify(target, conclusion) {
+        Ok(substitution) => {
+            // Unifying the lemma's conclusion against the goal may already
+            // solve some of its own leading parameters by name (eg. an
+            // inductive constructor's own type parameters: applying
+            // `left: ΠP:PROP. ΠQ:PROP. P -> Or(P, Q)` to prove `Or(Foo,
+            // Bar)` determines `P := Foo` and `Q := Bar` outright). Those
+            // don't need a fresh subgoal - they're filled in directly - only
+            // the remaining premises (with the same solution substituted
+            // into their type) become new subgoals.
+            let mut args = vec![];
+            let mut premises = vec![];
+            for (name, premise_type) in get_named_arg_types(&lemma_type) {
+                match substitution.get(&format!("variable_{}", name)) {
+                    Some(solved) => args.push(solved.to_owned()),
+                    None => {
+                        args.push(Cic::proof_hole());
+                        premises.push(apply_substitution(
+                            &premise_type,
+                            &substitution,
+                        ));
+                    }
+                }
+            }
+            let new_proof =
+                swap_proof_hole(partial_proof, &apply_arguments(lemma, args));
 
-        Ok((new_proof, premises))
-    } else {
-        Err(LofError::unification_failure(target, &lemma_type))
+            Ok((new_proof, premises))
+        }
+        Err(_) => Err(LofError::unification_failure(target, &lemma_type)),
     }
 }
 
@@ -350,6 +370,82 @@ mod unit_tests {
             subgoals,
             vec![premise1, premise2],
             "Apply tactic doesnt track all premises of the applied lemma"
+        );
+    }
+
+    #[test]
+    fn test_apply_solves_leading_bound_parameters_via_unification() {
+        // Regression test for `apply`-ing a lemma whose own leading
+        // parameters (eg. a parametrized inductive constructor's type
+        // parameters, like `Or`'s `left : ΠP:PROP. ΠQ:PROP. P -> Or(P, Q)`)
+        // get solved outright by unifying the lemma's conclusion against the
+        // goal, rather than becoming subgoals of their own (asking to
+        // "prove PROP" makes no sense) - and that the one genuine remaining
+        // premise has that solution substituted into its type.
+        let mut test_env = Cic::default_environment();
+        let prop = Sort("PROP".to_string());
+        let foo = Variable("Foo".to_string(), GLOBAL_INDEX);
+        let bar = Variable("Bar".to_string(), GLOBAL_INDEX);
+        test_env.add_to_context("Foo", &prop);
+        test_env.add_to_context("Bar", &prop);
+
+        // ΠP:PROP. ΠQ:PROP. Π_:P. ((Or P) Q)
+        let or_type = Variable("Or".to_string(), GLOBAL_INDEX);
+        let left_type = Product(
+            "P".to_string(),
+            Box::new(prop.clone()),
+            Box::new(Product(
+                "Q".to_string(),
+                Box::new(prop.clone()),
+                Box::new(Product(
+                    "_".to_string(),
+                    Box::new(Variable("P".to_string(), 1)),
+                    Box::new(Application(
+                        Box::new(Application(
+                            Box::new(or_type.clone()),
+                            Box::new(Variable("P".to_string(), 2)),
+                        )),
+                        Box::new(Variable("Q".to_string(), 2)),
+                    )),
+                )),
+            )),
+        );
+        test_env.add_to_context("left", &left_type);
+        let left = Variable("left".to_string(), GLOBAL_INDEX);
+
+        // ((Or Foo) Bar)
+        let target = Application(
+            Box::new(Application(
+                Box::new(or_type.clone()),
+                Box::new(foo.clone()),
+            )),
+            Box::new(bar.clone()),
+        );
+        let hole = Cic::proof_hole();
+
+        let (proof, subgoals) = Cic::type_check_tactic(
+            &mut test_env,
+            &Apply(left.clone()),
+            &target,
+            &hole,
+        )
+        .unwrap();
+
+        assert_eq!(
+            subgoals,
+            vec![foo.clone()],
+            "P and Q must be solved by unification, not turned into subgoals; only the value premise (of type Foo) should remain"
+        );
+        assert_eq!(
+            proof,
+            Application(
+                Box::new(Application(
+                    Box::new(Application(Box::new(left), Box::new(foo))),
+                    Box::new(bar),
+                )),
+                Box::new(hole),
+            ),
+            "the assembled proof must apply `left` to the solved P/Q directly, and leave a hole only for the real premise"
         );
     }
 }

@@ -1,0 +1,53 @@
+# Regression test: `apply`-ing a constructor of a *parametrized* inductive
+# type/proposition (eg. `And`, `Or`) - about as ordinary as tactic proofs
+# get, yet a chain of four separate bugs made it impossible:
+#
+#  1. A constructor's field types (eg. `left: P -> Or(P, Q)`) are elaborated
+#     on their own, before the inductive's own parameters (`P`, `Q`) exist as
+#     enclosing binders, so any reference to them inside the field type was
+#     elaborated as an unbound/global variable rather than a properly bound
+#     one - even after later wrapping the field type in the parameters'
+#     Products. This made such a reference structurally indistinguishable
+#     from an unrelated global constant, so unification could never solve
+#     for it.
+#  2. Once (1) was fixed and such a variable *could* be solved for, the
+#     unifier's own final substitution-reduction step only knew how to
+#     finalize `?`-metavariable solutions, and panicked (`ParseIntError`) on
+#     a solved plain named variable.
+#  3. `apply` still didn't propagate that solution into the lemma's
+#     remaining premises, so eg. applying `left : P -> Or(P, Q)` to prove
+#     `Or(Foo, Bar)` asked the next tactic step to prove the literal
+#     type-level premises `PROP`/`PROP` (nonsense) instead of narrowing down
+#     to the one real premise, `Foo`.
+#  4. The occurs-check used while solving for such a variable compared
+#     candidates *by display name only*, so it misfired as a bogus
+#     self-reference whenever the caller's own axiom happened to share a
+#     name with the constructor's parameter (eg. both called `P`) - which is
+#     the overwhelmingly common case, since callers naturally reuse a
+#     predicate's own parameter names for their instantiations.
+
+inductive Or (P: PROP, Q: PROP) : PROP {
+  | left: P -> Or(P, Q)
+  | right: Q -> Or(P, Q)
+}
+inductive And (P: PROP, Q: PROP) : PROP {
+  | conj: P -> Q -> And(P, Q)
+}
+
+axiom P : PROP;
+axiom Q : PROP;
+axiom p : P;
+axiom q : Q;
+
+theorem or_via_apply : Or(P, Q) :=
+  begin
+  apply left
+  exact p
+  qed.
+
+theorem and_via_apply : And(P, Q) :=
+  begin
+  apply conj
+  exact p
+  exact q
+  qed.

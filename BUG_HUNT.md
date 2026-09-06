@@ -270,3 +270,115 @@ which happens to exercise this exact shadowing scenario) and the standalone
 investigation (single application, two independent nested calls, and a
 named-function equivalent all already worked correctly, narrowing the bug
 down to substitution specifically). All 171 tests in `cargo test` pass.
+
+## 7. `apply` couldn't be used on a parametrized inductive constructor at all
+
+**Symptom:** Proving `Or(P, Q)`/`And(P, Q)`-shaped goals via `apply` on their
+own constructors - about the most ordinary thing to do with `Or`/`And`/etc.
+- failed outright, in three different ways depending on details:
+
+```
+inductive Or (P: PROP, Q: PROP) : PROP {
+  | left: P -> Or(P, Q)
+  | right: Q -> Or(P, Q)
+}
+axiom P : PROP;
+axiom Q : PROP;
+axiom p : P;
+
+theorem or_via_apply : Or(P, Q) :=
+  begin
+  apply left
+  exact p
+  qed.
+```
+- With the caller's own axioms named differently from `Or`'s parameters
+  (eg. `Foo`/`Bar` instead of `P`/`Q`), this either crashed the whole process
+  with `thread 'main' panicked ... ParseIntError` or, depending on order of
+  fixes, asked the next tactic step to prove the nonsensical goal `PROP`.
+- With the caller's own axioms named the *same* as the constructor's
+  parameters (`P`, `Q`, as above - an extremely natural thing to do, and
+  exactly what every predicate in `library/logic.lof` does with its own
+  callers) it instead failed with a plain `do not unify` error before
+  `apply` even got to pick premises.
+
+This is a chain of four separate, compounding bugs, all needed together to
+make ordinary `apply` usage on parametrized constructors work at all:
+
+**7a. Constructor field types never got their own parameters' occurrences
+properly bound.** `elaborate_inductive` (`language/src/type_theory/cic/elaboration.rs`)
+elaborates each constructor's field type (eg. `P -> Or(P, Q)`) on its own,
+before the inductive's declared parameters (`P`, `Q`) exist as enclosing
+binders in that expression - so any reference to them is elaborated as an
+unbound/global variable. The parameters' `Product`s are only wrapped around
+the field type *afterwards*, by `make_multiarg_fun_type`, in
+`evaluate_inductive`/`type_check_inductive` - which never re-derives the
+now-properly-nested variables' binding metadata. The result: a constructor's
+own parameter references stay permanently tagged as free/global, making them
+structurally indistinguishable from an unrelated global constant, so
+unification (which is what `apply`'s subgoal generation relies on, unlike
+ordinary name-based substitution) could never solve for them.
+Fix: `evaluate_inductive` now runs the existing `index_variables` pass over
+the fully-wrapped inductive type and each fully-wrapped constructor type
+before registering them, so their parameters are correctly bound the same
+way any other elaborated `Π`-chain's are.
+
+**7b. Solving a plain (non-metavariable) variable during unification
+crashed.** Once (7a) made such a variable solvable, `solve_unifications_unnormalized`'s
+final substitution-reduction step (`language/src/type_theory/cic/unification.rs`)
+only handled `metavariable_<idx>`-keyed solutions (via `substitute_meta`),
+and unconditionally tried to `.parse()` any other key as an integer index -
+panicking with `ParseIntError` on the `variable_<name>`-keyed solutions
+`is_substitutable` also produces for plain bound variables.
+Fix: handle both key shapes, applying `substitute` by name for the latter.
+
+**7c. `apply` never propagated a solved parameter into the remaining
+premises.** `type_check_apply` only checked `Cic::type_unify(target,
+conclusion).is_ok()`, discarding the solving substitution entirely, then
+returned *all* of the lemma's premises via `get_arg_types` unmodified - so
+premises whose value the unification had just determined (a constructor's
+own type parameters) were still handed to the user as new subgoals, and
+`PROP`/`TYPE`-sorted premises like these can never be "proven" as if they
+were propositions.
+Fix: `type_check_apply` now keeps the substitution, and (using the new
+`get_named_arg_types` to keep each premise's binder name) fills in any
+premise whose name the substitution solved directly as a concrete argument,
+substituting the solution into the type of only the genuinely remaining
+premises, which alone become new subgoals - mirroring how `apply`/`eapply`
+behave in mainstream interactive provers.
+
+**7d. The occurs-check compared candidates by display name only.** Even
+after (7a)-(7c), solving `variable_P := <the caller's own axiom P>`
+specifically (as opposed to some other, differently-named term) was rejected
+by `occurs_var_check` (`language/src/type_theory/cic/unification.rs`) as a
+bogus self-reference, since it matched `Variable(var_name, _) => var_name ==
+name` regardless of whether that variable was the caller's own unrelated
+global constant or a genuine occurrence of the local variable being solved.
+Fix: also require the candidate not be a global constant
+(`*dbi != GLOBAL_INDEX`), matching the same distinction `is_substitutable`
+already uses to decide what counts as solvable in the first place.
+
+**Verification:** New regression file
+`library/tests/proofs/apply_parametrized_constructor.lof` (exercising `Or`
+and `And`, with the caller's axioms deliberately named the same as the
+constructors' own parameters, `P`/`Q`, to cover 7d). New unit tests
+`test_apply_solves_leading_bound_parameters_via_unification` (in
+`language/src/type_theory/cic/tactics.rs`) and
+`test_cic_occurs_ignores_a_global_constant_sharing_the_variable_name` (in
+`language/src/tests/type_theory/cic/unification.rs`). All 173 tests in
+`cargo test` pass, and the whole standard library still type-checks and
+executes cleanly.
+
+**Known remaining limitation (not fixed):** `apply`-ing a constructor whose
+premises depend on an earlier, *value-level* (not type-level) parameter that
+doesn't itself appear in the conclusion - eg. `Exists`'s `excon : ∀t:T. P(t)
+-> Exists(T, P)`, where using it to prove `Exists(Nat, λn. Eq(Nat, n, z))`
+needs to pick a witness `t` that only the *next* tactic step actually
+provides - still fails (`Unification error: ... and Nat do not unify`).
+Fixing this needs the missing premise to become an actual metavariable
+(`?`) threaded through the remaining subgoals, so a later step's choice of
+witness can retroactively specialize an earlier, dependent premise's type;
+the current subgoal-tracking model (a flat, upfront list of already-concrete
+premise types) has no room for that. This is an existing, larger piece of
+machinery (metavariable-based goal-directed elaboration), not something to
+bolt on as a small patch, so it's documented here rather than attempted.

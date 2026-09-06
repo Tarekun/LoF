@@ -6,7 +6,7 @@ use crate::error::LofError;
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function, get_arg_types, is_constant,
-    substitute_meta,
+    substitute, substitute_meta,
 };
 use crate::type_theory::commons::unification::{ucs, Substitution};
 use crate::type_theory::environment::Environment;
@@ -149,7 +149,14 @@ fn occurs_meta_check(meta_index: i32, term: &CicTerm) -> Result<(), LofError> {
 fn occurs_var_check(term: &CicTerm, name: &str) -> bool {
     match term {
         Sort(_) => false,
-        Variable(var_name, _) => var_name == name,
+        // a global constant that merely happens to share its display name
+        // with the (necessarily non-constant, see `is_substitutable`)
+        // variable being solved for isn't a real self-reference - eg.
+        // solving `variable_P := Foo` for a parametrized inductive
+        // constructor's own type parameter `P` must not be rejected as
+        // "occurring" just because the caller's own axiom/constant happens
+        // to also be named `P`
+        Variable(var_name, dbi) => var_name == name && *dbi != GLOBAL_INDEX,
         Abstraction(var_name, var_type, body) => {
             (var_name != name && occurs_var_check(var_type, name))
                 || (var_name != name && occurs_var_check(body, name))
@@ -236,8 +243,21 @@ fn solve_unifications_unnormalized(
         occurs,
     )?
     .reduce(|term, idx, arg| {
-        let stripped_idx = idx.strip_prefix("metavariable_").unwrap_or(idx);
-        substitute_meta(term, &stripped_idx.parse().unwrap(), arg)
+        // `idx` is one of `is_substitutable`'s two key shapes: a
+        // metavariable (`metavariable_<int idx>`) or a plain, non-constant
+        // bound variable unification is solving for by name
+        // (`variable_<name>`, eg. an inductive constructor's own type
+        // parameter, as in `apply`-ing `left: P -> Or(P, Q)`). Only the
+        // former used to be handled here; a `variable_`-keyed entry fell
+        // through to `.parse().unwrap()` on a non-numeric string and
+        // panicked as soon as any unification actually solved for one.
+        if let Some(meta_idx) = idx.strip_prefix("metavariable_") {
+            substitute_meta(term, &meta_idx.parse().unwrap(), arg)
+        } else if let Some(var_name) = idx.strip_prefix("variable_") {
+            substitute(term, var_name, arg)
+        } else {
+            term.to_owned()
+        }
     }))
 }
 

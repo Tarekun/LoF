@@ -4,7 +4,7 @@ use super::cic::{Cic, CicStm, CicTerm};
 use super::cic_utils::make_multiarg_fun_type;
 use crate::error::LofError;
 use crate::type_theory::cic::cic_utils::{
-    application_args, get_applied_function, substitute,
+    application_args, get_applied_function, index_variables, substitute,
 };
 use crate::type_theory::cic::type_check::inductive_eliminator;
 use crate::type_theory::commons::evaluation::{
@@ -126,12 +126,23 @@ pub fn evaluate_inductive(
     ariety: &CicTerm,
     constructors: &Vec<(String, CicTerm)>,
 ) -> Result<(), LofError> {
-    let ind_type = make_multiarg_fun_type(params, ariety);
+    let ind_type = index_variables(&make_multiarg_fun_type(params, ariety));
     environment.add_to_context(name, &ind_type);
 
     let mut constr_set = vec![];
     for (constr_name, constr_type) in constructors {
-        let constr_type = make_multiarg_fun_type(&params, constr_type);
+        // `constr_type` was elaborated on its own (see `elaborate_inductive`),
+        // before `params` existed as enclosing binders, so any reference to
+        // a type parameter inside it (eg. `P`/`Q` in `left: P -> Or(P, Q)`)
+        // was elaborated as an unbound/global variable. Wrapping it in the
+        // parameters' Products here makes it a bound variable in truth, but
+        // doesn't retag those existing occurrences - left unfixed, they stay
+        // marked as global constants, which makes the constructor's type
+        // impossible to unify against a concrete instantiation (as `apply`
+        // needs to): unification treats a global-tagged variable as a fixed
+        // constant rather than something it can solve for.
+        let constr_type =
+            index_variables(&make_multiarg_fun_type(&params, constr_type));
         environment.add_to_context(constr_name, &constr_type);
         constr_set.push((constr_name.to_string(), constr_type));
     }

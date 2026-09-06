@@ -6,6 +6,7 @@ use crate::misc::simple_map;
 use crate::type_theory::cic::cic::{
     FIRST_INDEX, GLOBAL_INDEX, PLACEHOLDER_DBI,
 };
+use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::commons::utils::generic_multiarg_fun_type;
 use std::collections::HashMap;
 use std::fmt;
@@ -89,6 +90,21 @@ pub fn get_arg_types(fun_type: &CicTerm) -> Vec<CicTerm> {
         Product(_, domain, codomain) => {
             let mut result: Vec<CicTerm> = vec![(**domain).clone()];
             result.extend(get_arg_types(&codomain));
+            return result;
+        }
+        _ => vec![],
+    }
+}
+
+/// Like `get_arg_types`, but keeps each argument's binder name alongside its
+/// domain type (eg. so callers can tell which arguments are the ones a prior
+/// unification already solved for by name, rather than genuine remaining
+/// premises).
+pub fn get_named_arg_types(fun_type: &CicTerm) -> Vec<(String, CicTerm)> {
+    match fun_type {
+        Product(var_name, domain, codomain) => {
+            let mut result = vec![(var_name.to_owned(), (**domain).clone())];
+            result.extend(get_named_arg_types(codomain));
             return result;
         }
         _ => vec![],
@@ -392,6 +408,32 @@ pub fn substitute(term: &CicTerm, target_name: &str, arg: &CicTerm) -> CicTerm {
         //TODO implementare qua la sostituzione delle metavariabili?
         Meta(_) => term.clone(),
     }
+}
+
+/// Applies every mapping of a unification `substitution` to `term`. Keys are
+/// tagged by `is_substitutable` (see `unification.rs`) as either
+/// `metavariable_<idx>` (a `?`-introduced inference variable, applied via
+/// `substitute_meta`) or `variable_<name>` (a plain, non-constant bound
+/// variable unification solved for by name - eg. a parametrized inductive
+/// constructor's own type parameter - applied via `substitute`).
+pub fn apply_substitution(
+    term: &CicTerm,
+    substitution: &Substitution<CicTerm>,
+) -> CicTerm {
+    let mut result = term.to_owned();
+    for key in substitution.names() {
+        let value = substitution.get(key).expect("key came from `names()`");
+        if let Some(meta_idx) = key.strip_prefix("metavariable_") {
+            result = substitute_meta(
+                &result,
+                &meta_idx.parse().expect("metavariable_ key isn't an index"),
+                value,
+            );
+        } else if let Some(var_name) = key.strip_prefix("variable_") {
+            result = substitute(&result, var_name, value);
+        }
+    }
+    result
 }
 
 /// Creates the CIC type of a function with named arguments `arg_types`

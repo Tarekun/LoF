@@ -521,6 +521,30 @@ fn test_cic_occurs() {
 }
 
 #[test]
+fn test_cic_occurs_ignores_a_global_constant_sharing_the_variable_name() {
+    // Regression test: solving `variable_P := <some term>` must not be
+    // rejected as a bogus self-reference just because that term happens to
+    // be a *global constant* also named `P` (eg. the caller's own `axiom P :
+    // PROP;`, entirely unrelated to whatever local/bound variable is being
+    // solved for - as commonly happens when applying a parametrized
+    // inductive constructor like `Or`'s `left : P -> Or(P, Q)` to prove
+    // `Or(P, Q)` for the caller's own, identically-named axioms `P`/`Q`).
+    // The occurs check used to compare by display name only, so it treated
+    // every such constant as if it were the variable itself.
+    let global_p = Variable("P".to_string(), GLOBAL_INDEX);
+    let bound_p = Variable("P".to_string(), 0);
+
+    assert!(
+        !occurs(&global_p, "variable_P"),
+        "a global constant must not count as an occurrence of a same-named local variable"
+    );
+    assert!(
+        occurs(&bound_p, "variable_P"),
+        "a genuinely bound variable must still count as an occurrence of itself"
+    );
+}
+
+#[test]
 fn test_plus_zero_one_unification() {
     let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
     let mut env = Cic::default_environment();
