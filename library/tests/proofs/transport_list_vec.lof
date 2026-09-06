@@ -1,0 +1,131 @@
+# MVP target 2: transport between a plain `List(T)` and a list carrying its
+# length at the type level - a `Vec(T,n)` packaged with that length,
+# `PackedVec(T)`. This is the paper's "list <-> sigma n. vector n" example
+# (PUMPKIN Pi, arXiv:2010.00774, S3.1); the sigma is spelled here as an
+# ordinary one-constructor inductive, since this language has no built-in
+# dependent pair.
+#
+# What this file shows: both `len` and `app`, defined by recursion over
+# `List`, transport into functions over `PackedVec` - their `match` on the
+# list is converted into an application of `dep_elim`, `nil`/`cons` become
+# their DepConstr images, and the recursive call becomes the induction
+# hypothesis. `dep_elim` here is an ordinary `global` composing the two
+# generated eliminators `e_PackedVec` and `e_Vec`, so unlike
+# transport_nat_bin.lof's derived `bin_succ_induction` it actually computes.
+#
+# Transporting a *theorem* on top of these still doesn't go through, for a
+# different reason than in the Nat/Bin case - see
+# library/tests/transport_failures/list_vec_theorem.lof.
+#
+# Self-contained (no `import`) to match the convention of this directory.
+
+!theory_block cic
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+inductive List (T:TYPE) : TYPE {
+  | nil : List(T)
+  | cons : T -> List(T) -> List(T)
+}
+inductive Vec (T:TYPE) : Nat -> TYPE {
+  | vnil : Vec(T, z)
+  | vcons : ∀n:Nat. T -> Vec(T,n) -> Vec(T, s(n))
+}
+inductive PackedVec (T:TYPE) : TYPE {
+  | pack : ∀n:Nat. Vec(T,n) -> PackedVec(T)
+}
+!end_block
+
+# --- the equivalence's DepConstr data -------------------------------------
+# `nil`'s image is the empty packed vector; `cons`'s image unpacks, grows the
+# vector by one, and repacks - note it is an ordinary function, not a
+# constructor of PackedVec, exactly as DepConstr allows.
+
+global pv_nil : ∀Tp:TYPE. PackedVec(Tp) :=
+  (\lambda Tp:TYPE. pack(Tp, z, vnil(Tp)));
+
+global pv_cons : ∀Tp:TYPE. Tp -> PackedVec(Tp) -> PackedVec(Tp) :=
+  (\lambda Tp:TYPE. \lambda h:Tp. \lambda pv:PackedVec(Tp).
+    (match pv with
+     | pack(Tp, n, v) => pack(Tp, s(n), vcons(Tp, n, h, v)),));
+
+# --- dep_elim ------------------------------------------------------------
+# Shaped exactly like `e_List`'s own recursor (params, motive, nil case,
+# cons case, instance) but over PackedVec, so the transport engine can drop
+# it in wherever the source proof eliminated a List. Defined as a `global`
+# rather than a `theorem` on purpose: globals are δ-reducible, so this - and
+# hence everything transported through it - actually computes.
+
+global packedvec_ind :
+  ∀Tp:TYPE.
+    ∀C:(PackedVec(Tp) -> TYPE).
+      C(pv_nil(Tp)) ->
+      (∀h:Tp. ∀pv:PackedVec(Tp). C(pv) -> C(pv_cons(Tp, h, pv))) ->
+      ∀pv:PackedVec(Tp). C(pv)
+  :=
+  (\lambda Tp:TYPE. \lambda C:(PackedVec(Tp) -> TYPE).
+   \lambda base:C(pv_nil(Tp)).
+   \lambda step:(∀h:Tp. ∀pv:PackedVec(Tp). C(pv) -> C(pv_cons(Tp, h, pv))).
+   \lambda target:PackedVec(Tp).
+     e_PackedVec(
+       Tp,
+       C,
+       (\lambda n:Nat. \lambda v:Vec(Tp,n).
+         e_Vec(
+           Tp,
+           (\lambda k:Nat. \lambda vx:Vec(Tp,k). C(pack(Tp, k, vx))),
+           base,
+           (\lambda k:Nat. \lambda hh:Tp. \lambda vv:Vec(Tp,k).
+             \lambda ihv:C(pack(Tp, k, vv)).
+               step(hh, pack(Tp, k, vv), ihv)),
+           n,
+           v)),
+       target));
+
+# --- the source-side functions to transport -------------------------------
+
+fun rec len (Tp:TYPE, l:List(Tp)) : Nat {
+  match l with
+  | nil(Tp) => z,
+  | cons(Tp, h, ll) => s(len(Tp, ll)),
+}
+
+fun rec app (Tp:TYPE, l:List(Tp), r:List(Tp)) : List(Tp) {
+  match l with
+  | nil(Tp) => r,
+  | cons(Tp, h, ll) => cons(Tp, h, app(Tp, ll, r)),
+}
+
+# --- the equivalence ------------------------------------------------------
+# forward/backward/section/retraction are recorded as part of the
+# equivalence witness; the engine itself only consults dep_constr, dep_elim
+# and lifted names, so the round-trip proofs are assumed here rather than
+# re-derived (see docs/language/systems/transport.md).
+
+axiom list_to_pv : ∀Tp:TYPE. List(Tp) -> PackedVec(Tp);
+axiom pv_to_list : ∀Tp:TYPE. PackedVec(Tp) -> List(Tp);
+axiom section_list_pv :
+  ∀Tp:TYPE. ∀l:List(Tp). Eq(List(Tp), pv_to_list(Tp, list_to_pv(Tp, l)), l);
+axiom retraction_list_pv :
+  ∀Tp:TYPE. ∀pv:PackedVec(Tp). Eq(PackedVec(Tp), list_to_pv(Tp, pv_to_list(Tp, pv)), pv);
+
+equivalence ListPackedVec : List <-> PackedVec {
+  forward    := list_to_pv;
+  backward   := pv_to_list;
+  section    := section_list_pv;
+  retraction := retraction_list_pv;
+  dep_elim   := packedvec_ind;
+  dep_constr {
+    | nil => pv_nil
+    | cons => pv_cons
+  }
+  iota {
+  }
+}
+
+transport len_pv : ∀Tp:TYPE. PackedVec(Tp) -> Nat from len using ListPackedVec;
+transport app_pv : ∀Tp:TYPE. PackedVec(Tp) -> PackedVec(Tp) -> PackedVec(Tp) from app using ListPackedVec;
