@@ -1,0 +1,99 @@
+# Ad hoc problem set for the SLD-vs-saturation benchmark
+# (see language/src/type_theory/sup/sld_bench.rs).
+#
+# Every problem here must be expressible as a definite Horn-clause program
+# (facts and rules with a single head atom) plus a conjunctive query, since
+# that's the fragment both the SLD engine and the saturation engine can be
+# run on and compared "apples to apples".
+#
+# ---------------------------------------------------------------------------
+# Syntax
+# ---------------------------------------------------------------------------
+# A problem is a block of directives; blocks are separated by a line
+# containing only `---`. Blank lines and lines starting with `#` are ignored.
+#
+#   name: <problem name>
+#   const: <space-separated names>          0-ary constants, repeatable/additive
+#   assume: <atom>                          a fact
+#   assume: <atom> :- <atom>, <atom>, ...   a rule: head :- body1, ..., bodyN
+#   goal: <atom>, <atom>, ...               one or more subgoals, proved together (AND)
+#   expect: proved | failed                 ground truth, default `proved` (see below)
+#
+# Terms/atoms: `name` or `name(arg, arg, ...)`, argument lists can nest.
+# A bare `name` used as a *term* (no parens) is a logic variable, UNLESS it
+# was declared in a `const:` line for this problem, in which case it's a
+# 0-ary constant symbol instead (exactly the variable-vs-constant split the
+# FOL->SUP clausifier already makes via its own `constants` set).
+#
+# There is no negation in this format: assumptions must be definite clauses
+# and goals must be plain atoms, since anything else isn't a Horn clause.
+#
+# `expect:` records whether the goal actually follows from the assumptions
+# (SLD is trusted as ground truth for this Horn fragment - see sld.rs's own
+# unit tests). The benchmark *reports* rather than fails the whole run when
+# saturation disagrees with this: saturation can time out (or, for
+# genuinely unprovable goals, run past its time budget trying to confirm
+# satisfiability - see `peano_add_unsatisfiable` below and this file's
+# sibling header comment in sld_bench.rs for why that's an inherent
+# limitation, not a bug) even where SLD is unaffected, since SLD searches
+# goal-directed downward from the query while saturation explores the
+# whole clause space. That's a real, expected capability/performance
+# difference between the two engines, not a bug in either one.
+
+name: family_facts_and_rules
+const: tom bob liz ann pat jim
+assume: parent(tom, bob)
+assume: parent(tom, liz)
+assume: parent(bob, ann)
+assume: parent(bob, pat)
+assume: parent(pat, jim)
+assume: grandparent(x, z) :- parent(x, y), parent(y, z)
+goal: grandparent(tom, ann)
+---
+name: peano_add
+const: zero s
+assume: add(zero, x, x)
+assume: add(s(n), m, s(p)) :- add(n, m, p)
+goal: add(s(s(zero)), s(s(zero)), r)
+---
+name: peano_mult
+const: zero s
+assume: add(zero, x, x)
+assume: add(s(n), m, s(p)) :- add(n, m, p)
+assume: mult(zero, m, zero)
+assume: mult(s(n), m, p) :- mult(n, m, q), add(q, m, p)
+goal: mult(s(s(zero)), s(zero), r)
+---
+name: list_append
+const: nil cons a b
+assume: append(nil, l, l)
+assume: append(cons(h, t), l, cons(h, r)) :- append(t, l, r)
+goal: append(cons(a, nil), cons(b, nil), r)
+---
+name: list_member_search
+const: nil cons a b
+assume: member(x, cons(x, rest))
+assume: member(x, cons(first, rest)) :- member(x, rest)
+goal: member(b, cons(a, cons(b, nil)))
+---
+# A genuinely unprovable goal (2+1=1 is false). SLD reports "failed" almost
+# instantly (it only searches downward from the goal, so it hits a dead end
+# fast). Saturation, which can only *confirm* unsatisfiability by deriving
+# the empty clause and has no way to short-circuit on "this is unprovable"
+# the way SLD does, may instead spend its whole time budget generating an
+# unbounded family of true-but-irrelevant consequences of the `add` rule
+# before timing out. Kept deliberately, to show that difference.
+name: peano_add_unsatisfiable
+const: zero s
+assume: add(zero, x, x)
+assume: add(s(n), m, s(p)) :- add(n, m, p)
+goal: add(s(s(zero)), s(zero), s(zero))
+expect: failed
+---
+# A deeper version of `peano_add` above, to see how the time/memory gap
+# between the two engines widens as the recursion gets deeper.
+name: peano_add_deep
+const: zero s
+assume: add(zero, x, x)
+assume: add(s(n), m, s(p)) :- add(n, m, p)
+goal: add(s(s(s(s(s(s(zero)))))), s(s(s(s(zero)))), r)
