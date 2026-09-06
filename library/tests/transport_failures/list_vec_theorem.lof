@@ -1,0 +1,135 @@
+# EXPECTED-FAILURE fixture (asserted to fail by
+# `test_transport_expected_failures` in runtime/entrypoints.rs).
+#
+# Companion to library/tests/proofs/transport_list_vec.lof, which shows
+# `len` and `app` transporting successfully from `List(T)` to `PackedVec(T)`.
+# Transporting a *theorem* about them does not go through, and the reason is
+# the third of the paper's four configuration components - Eta.
+#
+# On the List side, `len(cons(h,ll))` reduces to `s(len(ll))` definitionally:
+# `cons` is a real constructor, so the `match` inside `len` fires. On the
+# PackedVec side the corresponding step is `len_pv(pv_cons(h,pv))`, and
+# `pv_cons` is an ordinary *function* that has to destructure its argument
+# (`match pv with pack(n,v) => ...`). For a universally quantified `pv` that
+# match is stuck, so the step never computes and the transported step case
+# has no proof.
+#
+# What would fix it is exactly Eta: `PackedVec` has a single constructor, so
+# every `pv` *is* `pack(n,v)` - but making that a definitional equality needs
+# an eta rule for single-constructor inductives (Coq gets this from
+# primitive projections / record eta), which this kernel does not have. The
+# `EquivConfig` records an `eta` slot for this reason; the MVP engine does
+# not consume it. See docs/language/systems/transport.md.
+
+!theory_block cic
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+inductive List (T:TYPE) : TYPE {
+  | nil : List(T)
+  | cons : T -> List(T) -> List(T)
+}
+inductive Vec (T:TYPE) : Nat -> TYPE {
+  | vnil : Vec(T, z)
+  | vcons : ∀n:Nat. T -> Vec(T,n) -> Vec(T, s(n))
+}
+inductive PackedVec (T:TYPE) : TYPE {
+  | pack : ∀n:Nat. Vec(T,n) -> PackedVec(T)
+}
+!end_block
+
+theorem eq_cong_s : ∀a:Nat. ∀b:Nat. Eq(Nat,a,b) -> Eq(Nat,s(a),s(b)) :=
+  (\lambda a:Nat. \lambda b:Nat. \lambda h:Eq(Nat,a,b).
+    e_Eq(Nat, a, (\lambda y:Nat. \lambda hh:Eq(Nat,a,y). Eq(Nat,s(a),s(y))), refl(Nat,s(a)), b, h))
+
+global pv_nil : ∀Tp:TYPE. PackedVec(Tp) :=
+  (\lambda Tp:TYPE. pack(Tp, z, vnil(Tp)));
+
+global pv_cons : ∀Tp:TYPE. Tp -> PackedVec(Tp) -> PackedVec(Tp) :=
+  (\lambda Tp:TYPE. \lambda h:Tp. \lambda pv:PackedVec(Tp).
+    (match pv with
+     | pack(Tp, n, v) => pack(Tp, s(n), vcons(Tp, n, h, v)),));
+
+global packedvec_ind :
+  ∀Tp:TYPE.
+    ∀C:(PackedVec(Tp) -> TYPE).
+      C(pv_nil(Tp)) ->
+      (∀h:Tp. ∀pv:PackedVec(Tp). C(pv) -> C(pv_cons(Tp, h, pv))) ->
+      ∀pv:PackedVec(Tp). C(pv)
+  :=
+  (\lambda Tp:TYPE. \lambda C:(PackedVec(Tp) -> TYPE).
+   \lambda base:C(pv_nil(Tp)).
+   \lambda step:(∀h:Tp. ∀pv:PackedVec(Tp). C(pv) -> C(pv_cons(Tp, h, pv))).
+   \lambda target:PackedVec(Tp).
+     e_PackedVec(
+       Tp,
+       C,
+       (\lambda n:Nat. \lambda v:Vec(Tp,n).
+         e_Vec(
+           Tp,
+           (\lambda k:Nat. \lambda vx:Vec(Tp,k). C(pack(Tp, k, vx))),
+           base,
+           (\lambda k:Nat. \lambda hh:Tp. \lambda vv:Vec(Tp,k).
+             \lambda ihv:C(pack(Tp, k, vv)).
+               step(hh, pack(Tp, k, vv), ihv)),
+           n,
+           v)),
+       target));
+
+fun rec len (Tp:TYPE, l:List(Tp)) : Nat {
+  match l with
+  | nil(Tp) => z,
+  | cons(Tp, h, ll) => s(len(Tp, ll)),
+}
+
+fun rec app (Tp:TYPE, l:List(Tp), r:List(Tp)) : List(Tp) {
+  match l with
+  | nil(Tp) => r,
+  | cons(Tp, h, ll) => cons(Tp, h, app(Tp, ll, r)),
+}
+
+theorem len_app_nil : ∀Tp:TYPE. ∀l:List(Tp). Eq(Nat, len(Tp, app(Tp, l, nil(Tp))), len(Tp, l)) :=
+  (\lambda Tp:TYPE.
+    e_List(
+      Tp,
+      (\lambda l:List(Tp). Eq(Nat, len(Tp, app(Tp, l, nil(Tp))), len(Tp, l))),
+      refl(Nat, z),
+      (\lambda hd:Tp. \lambda tl:List(Tp).
+        \lambda ih:Eq(Nat, len(Tp, app(Tp, tl, nil(Tp))), len(Tp, tl)).
+          eq_cong_s(len(Tp, app(Tp, tl, nil(Tp))), len(Tp, tl), ih))))
+
+axiom list_to_pv : ∀Tp:TYPE. List(Tp) -> PackedVec(Tp);
+axiom pv_to_list : ∀Tp:TYPE. PackedVec(Tp) -> List(Tp);
+axiom section_list_pv :
+  ∀Tp:TYPE. ∀l:List(Tp). Eq(List(Tp), pv_to_list(Tp, list_to_pv(Tp, l)), l);
+axiom retraction_list_pv :
+  ∀Tp:TYPE. ∀pv:PackedVec(Tp). Eq(PackedVec(Tp), list_to_pv(Tp, pv_to_list(Tp, pv)), pv);
+
+equivalence ListPackedVec : List <-> PackedVec {
+  forward    := list_to_pv;
+  backward   := pv_to_list;
+  section    := section_list_pv;
+  retraction := retraction_list_pv;
+  dep_elim   := packedvec_ind;
+  dep_constr {
+    | nil => pv_nil
+    | cons => pv_cons
+  }
+  iota {
+  }
+}
+
+# these two succeed (see the passing fixture)
+transport len_pv : ∀Tp:TYPE. PackedVec(Tp) -> Nat from len using ListPackedVec;
+transport app_pv : ∀Tp:TYPE. PackedVec(Tp) -> PackedVec(Tp) -> PackedVec(Tp) from app using ListPackedVec;
+
+# THIS is the statement expected to fail: its step case needs
+# len_pv(pv_cons(h,pv)) to reduce, which needs eta for PackedVec.
+transport len_app_nil_pv :
+  ∀Tp:TYPE. ∀pv:PackedVec(Tp).
+    Eq(Nat, len_pv(Tp, app_pv(Tp, pv, pv_nil(Tp))), len_pv(Tp, pv))
+  from len_app_nil using ListPackedVec;
