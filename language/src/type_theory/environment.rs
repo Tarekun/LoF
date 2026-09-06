@@ -278,10 +278,12 @@ impl<T: TypeTheory> Environment<T> {
         self.inductive_store.get(name).map(|(list, _)| list)
     }
 
-    /// Reverse lookup: which inductive type a constructor belongs to.
-    /// Needed when a `match`'s scrutinee type is only known indirectly -
-    /// eg through one of its own branch patterns, whose head is a
-    /// constructor name rather than the type itself.
+    /// Reverse of `get_constructors_for`: which inductive type declares
+    /// `constructor_name`. Needed when a `match`'s scrutinee type is only
+    /// known indirectly - eg through one of its own branch patterns, whose
+    /// head is a constructor name rather than the type itself - notably by
+    /// the reducer, which only holds `&Environment` and so cannot type
+    /// check to recover it another way.
     pub fn constructor_type_of(&self, constructor_name: &str) -> Option<String> {
         self.inductive_store.iter().find_map(|(type_name, (constructors, _))| {
             constructors
