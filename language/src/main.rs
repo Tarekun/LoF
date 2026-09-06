@@ -47,6 +47,7 @@ pub mod type_theory {
         mod metavariables;
         mod refiner;
         mod tactics;
+        mod transport;
         mod type_check;
         mod unification;
     }
