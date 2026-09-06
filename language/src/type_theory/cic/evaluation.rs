@@ -17,7 +17,7 @@ use crate::type_theory::commons::evaluation::{
 };
 use crate::type_theory::commons::transport::EquivConfig;
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::{Kernel, Reducer, Refiner};
+use crate::type_theory::interface::{Kernel, Refiner};
 use std::collections::HashMap;
 
 //########################### TERM βδ-REDUCTION
@@ -210,7 +210,10 @@ fn reduce_proj(
     field_index: usize,
     target: &CicTerm,
 ) -> CicTerm {
-    let normalized_target = Cic::normalize_term(environment, target);
+    // A single step, not a full normalization: `one_step_reduction`'s
+    // caller already iterates to a fixed point, so normalizing here would
+    // redo the whole sub-term's reduction on every one of those rounds.
+    let normalized_target = one_step_reduction(environment, target);
 
     let rebuilt = || {
         Proj(
@@ -388,7 +391,12 @@ fn reduce_match(
     matched_term: &CicTerm,
     branches: &Vec<(CicTerm, CicTerm)>,
 ) -> CicTerm {
-    let normalized_term = Cic::normalize_term(environment, matched_term);
+    // As in `reduce_proj`: one step per round, letting the caller's
+    // fixed-point loop do the iterating. Fully normalizing the scrutinee
+    // here re-walks it once per round of that loop, which turns a term
+    // with matches nested n deep into n-fold repeated work - and eta
+    // expansion (below) produces exactly such nesting.
+    let normalized_term = one_step_reduction(environment, matched_term);
     for (pattern, body) in branches {
         if matches_pattern(&normalized_term, pattern) {
             return substitute_pattern_variables(
