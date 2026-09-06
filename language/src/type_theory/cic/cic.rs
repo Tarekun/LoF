@@ -14,7 +14,8 @@ use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
 };
 use crate::type_theory::cic::type_check::{
-    type_check_inductive, type_check_match,
+    type_check_equivalence, type_check_inductive, type_check_match,
+    type_check_transport,
 };
 use crate::type_theory::cic::unification::{
     cic_apply_unifier, cic_collect_unifications, cic_solve_unifications,
@@ -78,6 +79,23 @@ pub enum CicStm {
         Box<CicTerm>,
         Vec<(String, CicTerm)>,
     ),
+    /// (equivalence_name, type_a, type_b, forward, backward, section,
+    /// retraction, dep_elim, optional eta, dep_constr entries, iota entries)
+    Equivalence(
+        String,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Option<Box<CicTerm>>,
+        Vec<(String, CicTerm)>,
+        Vec<(String, CicTerm)>,
+    ),
+    /// (new_name, new_type_or_formula, old_name, equivalence_name)
+    Transport(String, Box<CicTerm>, String, String),
     // Auto(CicTerm),
 }
 
@@ -255,6 +273,41 @@ impl Kernel for Cic {
                     theorem_name,
                     formula,
                     proof,
+                )
+            }
+            CicStm::Equivalence(
+                name,
+                type_a,
+                type_b,
+                forward,
+                backward,
+                section,
+                retraction,
+                dep_elim,
+                eta,
+                dep_constr,
+                iota,
+            ) => type_check_equivalence(
+                environment,
+                name,
+                type_a,
+                type_b,
+                forward,
+                backward,
+                section,
+                retraction,
+                dep_elim,
+                eta,
+                dep_constr,
+                iota,
+            ),
+            CicStm::Transport(new_name, new_type, old_name, equiv_name) => {
+                type_check_transport(
+                    environment,
+                    new_name,
+                    new_type,
+                    old_name,
+                    equiv_name,
                 )
             } // CicStm::Auto(formula) => {
               //     type_check_auto::<Cic>(environment, formula)

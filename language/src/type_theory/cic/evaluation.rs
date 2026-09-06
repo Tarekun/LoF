@@ -287,7 +287,172 @@ pub fn evaluate_statement(
                 constructors,
             )
         }
+        CicStm::Equivalence(
+            name,
+            type_a,
+            type_b,
+            forward,
+            backward,
+            section,
+            retraction,
+            dep_elim,
+            eta,
+            dep_constr,
+            iota,
+        ) => evaluate_equivalence(
+            environment,
+            name,
+            type_a,
+            type_b,
+            forward,
+            backward,
+            section,
+            retraction,
+            dep_elim,
+            eta,
+            dep_constr,
+            iota,
+        ),
+        CicStm::Transport(new_name, new_type, old_name, equiv_name) => {
+            evaluate_transport(
+                environment,
+                new_name,
+                new_type,
+                old_name,
+                equiv_name,
+            )
+        }
     }
+}
+//
+//
+/// Registers a hand-authored type equivalence (see `EquivConfig`) into the
+/// environment, so later `transport` statements in the same file can find
+/// it by name.
+#[allow(clippy::too_many_arguments)]
+pub fn evaluate_equivalence(
+    environment: &mut Environment<Cic>,
+    name: &str,
+    type_a: &CicTerm,
+    type_b: &CicTerm,
+    forward: &CicTerm,
+    backward: &CicTerm,
+    section: &CicTerm,
+    retraction: &CicTerm,
+    dep_elim: &CicTerm,
+    eta: &Option<Box<CicTerm>>,
+    dep_constr: &Vec<(String, CicTerm)>,
+    iota: &Vec<(String, CicTerm)>,
+) -> Result<(), LofError> {
+    let type_a_name = match type_a {
+        Variable(type_name, _) => type_name.to_owned(),
+        _ => {
+            return Err(LofError::custom(format!(
+                "equivalence '{}': type_a must be a bare type name",
+                name
+            )))
+        }
+    };
+    let type_b_name = match type_b {
+        Variable(type_name, _) => type_name.to_owned(),
+        _ => {
+            return Err(LofError::custom(format!(
+                "equivalence '{}': type_b must be a bare type name",
+                name
+            )))
+        }
+    };
+
+    let config = EquivConfig {
+        name: name.to_string(),
+        type_a: type_a_name,
+        type_b: type_b_name,
+        forward: forward.to_owned(),
+        backward: backward.to_owned(),
+        section: section.to_owned(),
+        retraction: retraction.to_owned(),
+        dep_constr: dep_constr.iter().cloned().collect(),
+        dep_elim: dep_elim.to_owned(),
+        eta: eta.as_ref().map(|term| (**term).to_owned()),
+        iota: iota.iter().cloned().collect(),
+        lifted_names: HashMap::new(),
+    };
+
+    environment.add_equivalence(name, config);
+    Ok(())
+}
+//
+//
+/// Performs the actual transport: retrieves `old_name`'s proof/definition
+/// term, walks it via `transport_term`, validates the result type-checks
+/// against the declared `new_type`, and registers `new_name` - as a new
+/// theorem if `new_type` is `PROP`-sorted, as a new computational
+/// definition otherwise (in which case `old_name -> new_name` is recorded
+/// in the equivalence's `lifted_names`, so later transports of proofs
+/// calling `old_name` pick up `new_name` instead).
+pub fn evaluate_transport(
+    environment: &mut Environment<Cic>,
+    new_name: &str,
+    new_type: &CicTerm,
+    old_name: &str,
+    equiv_name: &str,
+) -> Result<(), LofError> {
+    let config = environment.get_equivalence(equiv_name).cloned().ok_or_else(
+        || {
+            LofError::custom(format!(
+                "transport: unknown equivalence '{}'",
+                equiv_name
+            ))
+        },
+    )?;
+
+    let old_term = environment
+        .get_theorem_proof(old_name)
+        .or_else(|| {
+            environment
+                .get_from_deltas(old_name)
+                .map(|(_, term)| term)
+        })
+        .ok_or_else(|| {
+            LofError::custom(format!(
+                "transport: '{}' has no known proof/definition term to transport (not a checked theorem, fun, or global)",
+                old_name
+            ))
+        })?;
+
+    let transported = transport_definition(
+        environment,
+        &config,
+        old_name,
+        new_type,
+        &old_term,
+    )?;
+    let transported = index_variables(&transported);
+
+    let transported_type = Cic::type_check_term(&transported, environment)?;
+    Cic::types_unify(environment, &transported_type, new_type)?;
+
+    let target_sort = Cic::type_check_term(new_type, environment)?;
+    let is_theorem = matches!(target_sort, Sort(ref s) if s == "PROP");
+
+    if is_theorem {
+        environment.add_to_context(new_name, new_type);
+        environment.add_theorem_proof(new_name, &transported);
+    } else {
+        environment.add_substitution_with_type(
+            new_name,
+            &transported,
+            new_type,
+        );
+        if let Some(config_mut) = environment.get_equivalence_mut(equiv_name)
+        {
+            config_mut
+                .lifted_names
+                .insert(old_name.to_string(), new_name.to_string());
+        }
+    }
+
+    Ok(())
 }
 //
 //

@@ -48,6 +48,13 @@ pub enum CicStm {
     Global(String, Option<CicTerm>, Box<CicTerm>),
     Fun(String, Vec<(String, CicTerm)>, Box<CicTerm>, Box<CicTerm>, bool),
     InductiveDef(String, Vec<(String, CicTerm)>, Box<CicTerm>, Vec<(String, CicTerm)>),
+    /// equivalence_name, type_a, type_b, forward, backward, section,
+    /// retraction, dep_elim, optional eta, dep_constr entries, iota entries
+    Equivalence(String, Box<CicTerm>, Box<CicTerm>, Box<CicTerm>, Box<CicTerm>,
+                Box<CicTerm>, Box<CicTerm>, Box<CicTerm>, Option<Box<CicTerm>>,
+                Vec<(String, CicTerm)>, Vec<(String, CicTerm)>),
+    /// new_name, new_type_or_formula, old_name, equivalence_name
+    Transport(String, Box<CicTerm>, String, String),
 }
 ```
 

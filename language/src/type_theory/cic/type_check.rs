@@ -15,7 +15,10 @@ use crate::{
                 index_variables, is_instance_of, make_multiarg_fun_type,
                 substitute,
             },
-            evaluation::evaluate_inductive, unification::cic_so_unification,
+            evaluation::{
+                evaluate_equivalence, evaluate_inductive, evaluate_transport,
+            },
+            unification::cic_so_unification,
         },
         commons::type_check::type_check_variable,
         environment::Environment,
@@ -490,6 +493,101 @@ pub fn inductive_eliminator(
     full_parametrization =
         make_multiarg_fun_type(&params, &full_parametrization);
     index_variables(&full_parametrization)
+}
+
+/// Sanity-checks every component of an `equivalence` declaration (each
+/// must type-check on its own terms - the engine does not attempt to
+/// verify eg that `dep_elim` is genuinely shaped like `type_a`'s own
+/// recursor, only that it is a well-typed term), then registers the
+/// resulting `EquivConfig` via `evaluate_equivalence` so later statements
+/// in the same file (including further `transport` invocations) can see
+/// it - mirroring how `type_check_inductive` registers the inductive type
+/// itself via `evaluate_inductive`, rather than deferring registration to
+/// the later `execute` phase.
+#[allow(clippy::too_many_arguments)]
+pub fn type_check_equivalence(
+    environment: &mut Environment<Cic>,
+    name: &str,
+    type_a: &CicTerm,
+    type_b: &CicTerm,
+    forward: &CicTerm,
+    backward: &CicTerm,
+    section: &CicTerm,
+    retraction: &CicTerm,
+    dep_elim: &CicTerm,
+    eta: &Option<Box<CicTerm>>,
+    dep_constr: &Vec<(String, CicTerm)>,
+    iota: &Vec<(String, CicTerm)>,
+) -> Result<CicTerm, LofError> {
+    // Both sides must be well-formed, but not necessarily *types*: a
+    // parameterized inductive is referred to by its bare name, so `List`
+    // is a type former (`TYPE -> TYPE`) rather than a type. Require only
+    // that its type ends in a sort.
+    for (label, type_former) in [("type_a", type_a), ("type_b", type_b)] {
+        let former_type = Cic::type_check_term(type_former, environment)?;
+        if !matches!(get_prod_innermost(&former_type), Sort(_)) {
+            return Err(LofError::type_mismatch(
+                &format!("equivalence '{}' {}", name, label),
+                &"a type or type former",
+                type_former,
+            ));
+        }
+    }
+    let _ = Cic::type_check_term(forward, environment)?;
+    let _ = Cic::type_check_term(backward, environment)?;
+    let _ = Cic::type_check_term(section, environment)?;
+    let _ = Cic::type_check_term(retraction, environment)?;
+    let _ = Cic::type_check_term(dep_elim, environment)?;
+    if let Some(eta_term) = eta {
+        let _ = Cic::type_check_term(eta_term, environment)?;
+    }
+    for (_, term) in dep_constr {
+        let _ = Cic::type_check_term(term, environment)?;
+    }
+    for (_, term) in iota {
+        let _ = Cic::type_check_term(term, environment)?;
+    }
+
+    evaluate_equivalence(
+        environment,
+        name,
+        type_a,
+        type_b,
+        forward,
+        backward,
+        section,
+        retraction,
+        dep_elim,
+        eta,
+        dep_constr,
+        iota,
+    )?;
+
+    Ok(Variable("Unit".to_string(), GLOBAL_INDEX))
+}
+
+/// Type-checks the declared target type/formula, then performs the actual
+/// transport (via `evaluate_transport`, which calls into
+/// `cic::transport::transport_term` and validates the result) - mirroring
+/// how `type_check_inductive` both checks and registers in one pass.
+pub fn type_check_transport(
+    environment: &mut Environment<Cic>,
+    new_name: &str,
+    new_type: &CicTerm,
+    old_name: &str,
+    equiv_name: &str,
+) -> Result<CicTerm, LofError> {
+    let _ = Cic::type_check_type(new_type, environment)?;
+
+    evaluate_transport(
+        environment,
+        new_name,
+        new_type,
+        old_name,
+        equiv_name,
+    )?;
+
+    Ok(new_type.to_owned())
 }
 
 pub fn type_check_inductive(
