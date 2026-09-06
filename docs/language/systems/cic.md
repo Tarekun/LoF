@@ -174,6 +174,7 @@ The `Refiner` flow is split into three explicit phases (`cic/unification.rs`), r
 | `evaluation.rs` | β/δ reduction, statement evaluation |
 | `unification.rs` | CIC unification and constraint solving |
 | `tactics.rs` | Interactive tactic checking |
+| `transport.rs` | Transport across type equivalences - see [transport.md](transport.md) |
 | `cic_utils.rs` | `substitute`, `substitute_meta`, indexing utilities |
 | `../tests/type_theory/cic/type_check.rs`\* | Type checking tests |
 | `../tests/type_theory/cic/evaluation.rs`\* | Reduction and pattern-matching tests |
