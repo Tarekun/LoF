@@ -1,0 +1,253 @@
+# Binary-representation naturals (mirroring Coq's own N/positive split),
+# used as the "type_b" side of the Nat<->Bin transport demo. This is the
+# paper's own flagship worked example (PUMPKIN Pi, arXiv:2010.00774, S4):
+# unary Peano `Nat` (z/s) versus a binary encoding where `s`'s DepConstr
+# image (`bin_succ`) is an ordinary function, not a raw `Bin` constructor.
+#
+# Self-contained (redeclares Nat/plus/Eq locally rather than importing
+# "nat"/"logic") to match this codebase's existing convention for
+# `library/tests/proofs/*.lof` fixtures - and so this file can be exercised
+# directly by the `test_dedicated_scripts` integration test, which runs
+# each fixture as an individual file without changing its working
+# directory, so a cross-file `import` would not resolve.
+
+!theory_block cic
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Pos: TYPE {
+  | xH: Pos
+  | xO: Pos -> Pos
+  | xI: Pos -> Pos
+}
+inductive Bin: TYPE {
+  | bz: Bin
+  | bp: Pos -> Bin
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+!end_block
+
+fun rec plus (n:Nat, m:Nat) : Nat {
+  match n with
+  | z => m,
+  | s(nn) => s(plus(nn, m)),
+}
+
+fun rec pos_succ (p: Pos) : Pos {
+  match p with
+  | xH => xO(xH),
+  | xO(pp) => xI(pp),
+  | xI(pp) => xO(pos_succ(pp)),
+}
+
+fun bin_succ (b: Bin) : Bin {
+  match b with
+  | bz => bp(xH),
+  | bp(p) => bp(pos_succ(p)),
+}
+
+fun rec nat_to_bin (n: Nat) : Bin {
+  match n with
+  | z => bz,
+  | s(nn) => bin_succ(nat_to_bin(nn)),
+}
+
+fun rec pos_to_nat (p: Pos) : Nat {
+  match p with
+  | xH => s(z),
+  | xO(pp) => plus(pos_to_nat(pp), pos_to_nat(pp)),
+  | xI(pp) => s(plus(pos_to_nat(pp), pos_to_nat(pp))),
+}
+
+fun bin_to_nat (b: Bin) : Nat {
+  match b with
+  | bz => z,
+  | bp(p) => pos_to_nat(p),
+}
+
+# --- small, reusable equality helpers, built via e_Eq (this kernel's J/eq_rect) ---
+
+theorem eq_sym : ∀T:TYPE. ∀a:T. ∀b:T. Eq(T,a,b) -> Eq(T,b,a) :=
+  (\lambda T:TYPE. \lambda a:T. \lambda b:T. \lambda h:Eq(T,a,b).
+    e_Eq(T, a, (\lambda y:T. \lambda hh:Eq(T,a,y). Eq(T,y,a)), refl(T,a), b, h))
+
+theorem eq_cong_s : ∀a:Nat. ∀b:Nat. Eq(Nat,a,b) -> Eq(Nat,s(a),s(b)) :=
+  (\lambda a:Nat. \lambda b:Nat. \lambda h:Eq(Nat,a,b).
+    e_Eq(Nat, a, (\lambda y:Nat. \lambda hh:Eq(Nat,a,y). Eq(Nat,s(a),s(y))), refl(Nat,s(a)), b, h))
+
+theorem eq_trans : ∀T:TYPE. ∀a:T. ∀b:T. ∀c:T. Eq(T,a,b) -> Eq(T,b,c) -> Eq(T,a,c) :=
+  (\lambda T:TYPE. \lambda a:T. \lambda b:T. \lambda c:T. \lambda h1:Eq(T,a,b). \lambda h2:Eq(T,b,c).
+    e_Eq(T, b, (\lambda y:T. \lambda hh:Eq(T,b,y). Eq(T,a,y)), h1, c, h2))
+
+# forall a b:Nat. a + s(b) = s(a + b) - needed to push a successor through
+# `plus`'s left-recursive structure, itself needed by pos_succ_correct's
+# xI case.
+theorem plus_s_r : ∀a:Nat. ∀b:Nat. Eq(Nat, plus(a,s(b)), s(plus(a,b))) :=
+  (e_Nat(
+    (\lambda a:Nat. ∀b:Nat. Eq(Nat, plus(a,s(b)), s(plus(a,b)))),
+    (\lambda bx:Nat. refl(Nat, s(bx))),
+    (\lambda aa:Nat. \lambda ih:(∀b:Nat. Eq(Nat,plus(aa,s(b)),s(plus(aa,b)))). \lambda bx:Nat.
+      eq_cong_s(plus(aa,s(bx)), s(plus(aa,bx)), ih(bx)))
+  ))
+
+# forall a:Nat. s(a) + s(a) = s(s(a + a)) - the doubling step behind
+# pos_succ_correct's xI case. Extracted as its own lemma (rather than
+# inlined there) to keep each individual proof term shallow: normalization
+# recurses through a term's structure, so a deeply nested proof costs
+# proportionally more stack.
+theorem double_s : ∀a:Nat. Eq(Nat, plus(s(a),s(a)), s(s(plus(a,a)))) :=
+  (\lambda a:Nat. eq_cong_s(plus(a,s(a)), s(plus(a,a)), plus_s_r(a,a)))
+
+# The xI case of pos_succ_correct below, extracted for the same reason:
+# rewrite `pos_to_nat(pos_succ(pp))` to `s(pos_to_nat(pp))` (via the
+# induction hypothesis, flipped by eq_sym) inside `plus(-,-)`, then apply
+# the doubling step.
+theorem pos_succ_correct_xI :
+  ∀p:Pos.
+    Eq(Nat, pos_to_nat(pos_succ(p)), s(pos_to_nat(p))) ->
+    Eq(Nat,
+       plus(pos_to_nat(pos_succ(p)), pos_to_nat(pos_succ(p))),
+       s(s(plus(pos_to_nat(p), pos_to_nat(p))))) :=
+  (\lambda p:Pos. \lambda ih:Eq(Nat,pos_to_nat(pos_succ(p)),s(pos_to_nat(p))).
+    e_Eq(Nat, s(pos_to_nat(p)),
+         (\lambda y:Nat. \lambda hh:Eq(Nat,s(pos_to_nat(p)),y).
+           Eq(Nat, plus(y,y), s(s(plus(pos_to_nat(p),pos_to_nat(p)))))),
+         double_s(pos_to_nat(p)),
+         pos_to_nat(pos_succ(p)),
+         eq_sym(Nat, pos_to_nat(pos_succ(p)), s(pos_to_nat(p)), ih)))
+
+# forall p:Pos. pos_to_nat(pos_succ(p)) = s(pos_to_nat(p)) - the Pos-level
+# analogue of `plus_z_r`'s step case, needed to bridge `bin_succ`'s
+# DepConstr gap (see the `NatBin` equivalence's `iota` table below).
+theorem pos_succ_correct : ∀p:Pos. Eq(Nat, pos_to_nat(pos_succ(p)), s(pos_to_nat(p))) :=
+  (e_Pos(
+    (\lambda p:Pos. Eq(Nat, pos_to_nat(pos_succ(p)), s(pos_to_nat(p)))),
+    refl(Nat, s(s(z))),
+    (\lambda pp:Pos. \lambda ih:Eq(Nat,pos_to_nat(pos_succ(pp)),s(pos_to_nat(pp))).
+      refl(Nat, s(plus(pos_to_nat(pp),pos_to_nat(pp))))),
+    (\lambda pp:Pos. \lambda ih:Eq(Nat,pos_to_nat(pos_succ(pp)),s(pos_to_nat(pp))).
+      pos_succ_correct_xI(pp, ih))
+  ))
+
+# forall b:Bin. bin_to_nat(bin_succ(b)) = s(bin_to_nat(b)) - bridges
+# `bin_succ`'s DepConstr gap directly (the `iota` entry for `s`).
+theorem bin_succ_correct : ∀b:Bin. Eq(Nat, bin_to_nat(bin_succ(b)), s(bin_to_nat(b))) :=
+  (e_Bin(
+    (\lambda b:Bin. Eq(Nat, bin_to_nat(bin_succ(b)), s(bin_to_nat(b)))),
+    refl(Nat, s(z)),
+    (\lambda p:Pos. pos_succ_correct(p))
+  ))
+
+# forall n:Nat. bin_to_nat(nat_to_bin(n)) = n ("section": backward after
+# forward is the identity on Nat).
+theorem section_nat_bin : ∀n:Nat. Eq(Nat, bin_to_nat(nat_to_bin(n)), n) :=
+  (e_Nat(
+    (\lambda n:Nat. Eq(Nat, bin_to_nat(nat_to_bin(n)), n)),
+    refl(Nat, z),
+    (\lambda nn:Nat. \lambda ih:Eq(Nat,bin_to_nat(nat_to_bin(nn)),nn).
+      eq_trans(Nat,
+        bin_to_nat(bin_succ(nat_to_bin(nn))),
+        s(bin_to_nat(nat_to_bin(nn))),
+        s(nn),
+        bin_succ_correct(nat_to_bin(nn)),
+        eq_cong_s(bin_to_nat(nat_to_bin(nn)), nn, ih)))
+  ))
+
+# Nat-indexed bootstrap toward `bin_succ_induction` (below): induction on
+# `n:Nat` via `e_Nat` gives it for free, since `nat_to_bin(z)=bz` and
+# `nat_to_bin(s(nn))=bin_succ(nat_to_bin(nn))` are both definitional -
+# unlike the full Bin-indexed version, which needs `bin_succ`'s own
+# recursor (`e_Bin`) to line up with `bin_succ`, and it doesn't (see the
+# module doc comment / docs/language/systems/transport.md).
+theorem bin_succ_induction_via_nat :
+  ∀C:(Bin -> TYPE).
+    C(bz) ->
+    (∀b:Bin. C(b) -> C(bin_succ(b))) ->
+    ∀n:Nat. C(nat_to_bin(n)) :=
+  (\lambda C:(Bin -> TYPE). \lambda base:C(bz). \lambda step:(∀b:Bin. C(b) -> C(bin_succ(b))).
+    e_Nat(
+      (\lambda n:Nat. C(nat_to_bin(n))),
+      base,
+      (\lambda nn:Nat. \lambda ih:C(nat_to_bin(nn)). step(nat_to_bin(nn), ih))
+    ))
+
+# TRUE fact (nat_to_bin/bin_to_nat form a genuine equivalence - this is
+# exactly what `test_dedicated_scripts`/the transport fixtures below
+# exercise), but its full derivation from Pos's own induction principle
+# needs an extended chain of binary-arithmetic lemmas (a `bin_double`/
+# `bin_plus` operation and its own correctness proof, a homomorphism lemma
+# connecting `plus` to doubling, etc.) whose depth mirrors what Coq's own
+# standard library needs for `Pos.of_nat`/`Pos.pred_double`-style
+# reasoning - orthogonal to demonstrating the transport mechanism itself,
+# so it is axiomatized here rather than re-derived from scratch. See
+# docs/language/systems/transport.md for the fuller discussion of this
+# scope boundary.
+axiom retraction_nat_bin : ∀b:Bin. Eq(Bin, nat_to_bin(bin_to_nat(b)), b);
+
+# Full Bin-indexed induction principle for `bin_succ`, bootstrapped from
+# the Nat-indexed version above via `retraction_nat_bin`: this is what
+# `transport` needs as `dep_elim` for the `NatBin` equivalence, since
+# `e_Bin` alone can't express "prove C(bin_succ(b)) from C(b))" (its `bp`
+# case takes a `Pos`, not a recursive `Bin`, argument).
+theorem bin_succ_induction :
+  ∀C:(Bin -> TYPE).
+    C(bz) ->
+    (∀b:Bin. C(b) -> C(bin_succ(b))) ->
+    ∀b:Bin. C(b) :=
+  (\lambda C:(Bin -> TYPE). \lambda base:C(bz). \lambda step:(∀b:Bin. C(b) -> C(bin_succ(b))). \lambda bb:Bin.
+    e_Eq(Bin, nat_to_bin(bin_to_nat(bb)),
+         (\lambda y:Bin. \lambda h:Eq(Bin,nat_to_bin(bin_to_nat(bb)),y). C(y)),
+         bin_succ_induction_via_nat(C, base, step, bin_to_nat(bb)),
+         bb,
+         retraction_nat_bin(bb)))
+
+# The MVP theorem to transport: proved by genuine induction (not
+# reflexivity - plus(n,z) doesn't reduce for unspecified n), so it
+# actually exercises DepElim + Iota rather than only DepConstr.
+theorem plus_z_r : ∀n:Nat. Eq(Nat, plus(n,z), n) :=
+  (e_Nat(
+    (\lambda n:Nat. Eq(Nat, plus(n,z), n)),
+    refl(Nat, z),
+    (\lambda r:Nat. \lambda ih: Eq(Nat, plus(r,z), r).
+      e_Eq(Nat, plus(r,z),
+           (\lambda y:Nat. \lambda h: Eq(Nat, plus(r,z), y). Eq(Nat, s(plus(r,z)), s(y))),
+           refl(Nat, s(plus(r,z))),
+           r,
+           ih))
+  ))
+
+equivalence NatBin : Nat <-> Bin {
+  forward    := nat_to_bin;
+  backward   := bin_to_nat;
+  section    := section_nat_bin;
+  retraction := retraction_nat_bin;
+  dep_elim   := bin_succ_induction;
+  dep_constr {
+    | z => bz
+    | s => bin_succ
+  }
+  iota {
+    | z => refl(Bin, bz)
+    | s => bin_succ_correct
+  }
+}
+
+# Transporting the *definition* works: `plus`'s `match` on its Nat-typed
+# recursion parameter is converted into an application of `dep_elim`
+# (`bin_succ_induction`), with `z`/`s` replaced by their DepConstr images
+# `bz`/`bin_succ` and the recursive call `plus(nn,m)` replaced by the
+# induction hypothesis.
+transport plus_bin : Bin -> Bin -> Bin from plus using NatBin;
+
+# Transporting the *theorem* `plus_z_r` on top of it does NOT work here,
+# and the reason is instructive rather than incidental - see
+# `library/tests/transport_failures/nat_bin_theorem.lof`, which pins the
+# failure down, and docs/language/systems/transport.md for the analysis.
+# In short: `plus_z_r`'s base case is `refl`, which is only a proof because
+# `plus(z,z)` *computes* to `z`. Its transported counterpart needs
+# `plus_bin(bz,bz)` to compute to `bz`, but `plus_bin` is built from
+# `bin_succ_induction` - a derived theorem, hence opaque to reduction -
+# so it has no computational behaviour at all.
