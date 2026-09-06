@@ -441,4 +441,44 @@ mod unit_tests {
             "FOL solve execution failed",
         );
     }
+
+    /// The transport engine's documented boundaries, pinned as fixtures
+    /// that must FAIL. They live outside `library/tests/proofs` so
+    /// `test_dedicated_scripts` (which requires success) doesn't pick them
+    /// up. Each one is expected to fail for its own specific reason - a
+    /// fixture that started passing, or that failed with a different
+    /// error, would mean the documented boundary moved.
+    #[test]
+    fn test_transport_expected_failures() {
+        let expectations = [
+            (
+                "../library/tests/transport_failures/nat_bin_theorem.lof",
+                "bin_succ_induction",
+            ),
+            (
+                "../library/tests/transport_failures/raw_match.lof",
+                "cannot transport a raw `match`",
+            ),
+            (
+                "../library/tests/transport_failures/list_vec_theorem.lof",
+                "e_PackedVec",
+            ),
+        ];
+
+        for (path, expected_fragment) in expectations {
+            let result = execute::<Cic>(&Config::new(TypeSystem::Cic), path);
+            let error = result.expect_err(&format!(
+                "{} is an expected-failure fixture but it succeeded - if the engine now handles this case, move it into library/tests/proofs and update docs/language/systems/transport.md",
+                path
+            ));
+            let rendered = format!("{:?}", error);
+            assert!(
+                rendered.contains(expected_fragment),
+                "{} failed, but not for the documented reason (expected something mentioning {:?}): {}",
+                path,
+                expected_fragment,
+                rendered
+            );
+        }
+    }
 }
