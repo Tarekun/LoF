@@ -3,7 +3,8 @@ use super::cic::{
     CicStm::{self},
     CicTerm,
     CicTerm::{
-        Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+        Abstraction, Application, Let, Match, Meta, Proj, Product, Sort,
+        Variable,
     },
 };
 use crate::error::LofError;
@@ -41,6 +42,11 @@ pub fn index_variables_in_store(term: &CicTerm, store: &ElabStore) -> CicTerm {
             Sort(_) => term.to_owned(),
             Meta(_) => term.to_owned(),
             Variable(_, NameKind::Local()) => term.to_owned(),
+            Proj(type_name, field_index, target) => Proj(
+                type_name.to_string(),
+                *field_index,
+                Box::new(solver(target, store)),
+            ),
             Variable(name, _) => match store.lookup_dbi(name) {
                 Some(dbi) => Variable(name.to_string(), NameKind::Bound(dbi)),
                 // unbound variables in the term get the global variable index

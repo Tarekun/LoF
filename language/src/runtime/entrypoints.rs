@@ -459,10 +459,6 @@ mod unit_tests {
                 "../library/tests/transport_failures/raw_match.lof",
                 "cannot transport a raw `match`",
             ),
-            (
-                "../library/tests/transport_failures/list_vec_theorem.lof",
-                "e_PackedVec",
-            ),
         ];
 
         for (path, expected_fragment) in expectations {
