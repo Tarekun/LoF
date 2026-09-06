@@ -80,6 +80,19 @@ impl<T: Debug + Clone + PartialEq> Substitution<T> {
                 (var_name.to_string(), body.to_owned())
             };
 
+        // Re-check the trivial x=x case (already guarded above for the
+        // pre-redirect names): redirecting through an existing substitution
+        // just above can turn a pair that was NOT self-referential into one
+        // that is - eg re-deriving `r_0 == r` a second time (from a
+        // different occurrence of `r_0` in the same term), once `r_0`
+        // already maps to `r`, redirects this call to `r == r`, which is
+        // trivially true rather than a genuine occurs-check failure.
+        if let Some(other_variable) = is_variable(&body) {
+            if var_name == other_variable {
+                return Ok(());
+            }
+        }
+
         // occurs check
         if occurs(&body, &var_name) {
             return Err(LofError::occurs_check_in_term(var_name, &body));
