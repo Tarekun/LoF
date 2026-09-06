@@ -225,6 +225,7 @@ impl Kernel for Cic {
                     Application(Box::new(l.to_owned()), Box::new(r.to_owned()))
                 },
                 Cic::substitute,
+                |cic_type| cic_type.to_owned(),
             ),
             CicTerm::Match(matched_term, branches) => {
                 type_check_match(environment, matched_term, branches)
@@ -456,6 +457,13 @@ impl Refiner for Cic {
 impl Reducer for Cic {
     fn substitute(term: &CicTerm, var_name: &str, body: &CicTerm) -> CicTerm {
         substitute_and_lift(term, var_name, body)
+    }
+
+    fn normalize_type(
+        environment: &Environment<Cic>,
+        typee: &CicTerm,
+    ) -> CicTerm {
+        Cic::normalize_term(environment, typee)
     }
 
     fn normalize_expression(
