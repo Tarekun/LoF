@@ -6,7 +6,7 @@ use crate::error::LofError;
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function, get_arg_types, is_constant,
-    substitute_meta,
+    substitute, substitute_meta,
 };
 use crate::type_theory::commons::unification::{ucs, Substitution};
 use crate::type_theory::environment::Environment;
@@ -236,8 +236,18 @@ fn solve_unifications_unnormalized(
         occurs,
     )?
     .reduce(|term, idx, arg| {
-        let stripped_idx = idx.strip_prefix("metavariable_").unwrap_or(idx);
-        substitute_meta(term, &stripped_idx.parse().unwrap(), arg)
+        // Same metavariable_/variable_ dispatch as `cic_apply_unifier`: a
+        // substitution key from `is_substitutable` is either a `Meta`
+        // (substituted by index) or an ordinary bound `Variable`
+        // (substituted by name) - the two need different substitution
+        // functions.
+        if let Some(meta_idx) = idx.strip_prefix("metavariable_") {
+            substitute_meta(term, &meta_idx.parse().unwrap(), arg)
+        } else if let Some(var_name) = idx.strip_prefix("variable_") {
+            substitute(term, var_name, arg)
+        } else {
+            term.clone()
+        }
     }))
 }
 
@@ -301,10 +311,55 @@ pub fn cic_collect_unifications(
                 cic_collect_unifications(matched_term, environment)?;
             let mut branch_cons = vec![];
             for (pattern, body) in branches {
-                branch_cons
-                    .extend(cic_collect_unifications(pattern, environment)?);
-                branch_cons
-                    .extend(cic_collect_unifications(body, environment)?);
+                // NOTE: the pattern itself is a binding form (`s(nn)`
+                // introduces `nn`), not an ordinary expression - it must
+                // not be fed through `cic_collect_unifications` (which
+                // would try to type-check `nn` as a reference before it's
+                // bound). Only its bound variables (collected below) and
+                // the branch body need constraints collected.
+
+                // Bind the pattern's own variables (eg `nn` in `s(nn)`)
+                // before recursing into the branch body, exactly like
+                // `type_check_match` already does via `type_constr_vars` -
+                // otherwise a body referencing a pattern variable (eg a
+                // recursive call `plus(nn, m)`) fails with an unbound-
+                // variable error the moment this collection pass is
+                // triggered on a term containing the match (which ordinary
+                // `fun` type-checking never does, since it checks a fun's
+                // un-wrapped body with its own parameters already bound
+                // manually - but validating an already-evaluated,
+                // lambda-wrapped definition, as `transport` does, goes
+                // through `i_type_check_abstraction` and hits this path).
+                // Best-effort: if the pattern's head isn't a resolvable
+                // constructor (eg a test exercising this in isolation,
+                // without registering one), fall back to no assumptions
+                // rather than aborting constraint collection entirely -
+                // this pass collects whatever constraints it safely can,
+                // it isn't the authoritative pattern type-checker (that's
+                // `type_check_match`/`type_constr_vars` itself).
+                let constructor = get_applied_function(pattern);
+                let pattern_assumptions = match &constructor {
+                    Variable(_, _) => Cic::type_check_term(
+                        &constructor,
+                        environment,
+                    )
+                    .ok()
+                    .and_then(|constr_type| {
+                        crate::type_theory::cic::type_check::type_constr_vars(
+                            environment,
+                            pattern,
+                            &constr_type,
+                        )
+                        .ok()
+                    })
+                    .unwrap_or_default(),
+                    _ => vec![],
+                };
+                let body_cons = environment.with_local_assumptions(
+                    &pattern_assumptions,
+                    |local_env| cic_collect_unifications(body, local_env),
+                )?;
+                branch_cons.extend(body_cons);
             }
 
             Ok([matched_cons, branch_cons].concat())
@@ -312,21 +367,28 @@ pub fn cic_collect_unifications(
         _ => Ok(vec![]),
     }
 }
+/// Folds a solved `substitution` back into `exp`. Substitution keys are
+/// tagged by `is_substitutable` as either `metavariable_<idx>` (a `Meta`
+/// placeholder, folded via `substitute_meta`) or `variable_<name>` (an
+/// ordinary non-constant `Variable`, folded via the name-based `substitute`)
+/// - the two kinds need different substitution functions, since a `Meta`
+/// is addressed by index and an ordinary variable by name.
 pub fn cic_apply_unifier(
     exp: &CicTerm,
     substitution: &Substitution<CicTerm>,
 ) -> CicTerm {
     let mut solved_exp = exp.to_owned();
     for index in substitution.names() {
-        solved_exp = substitute_meta(
-            &solved_exp,
-            &index
-                .strip_prefix("metavariable_")
-                .unwrap_or(index)
-                .parse()
-                .unwrap(),
-            substitution.get(index).unwrap(),
-        )
+        let value = substitution.get(index).unwrap();
+        solved_exp = if let Some(meta_idx) =
+            index.strip_prefix("metavariable_")
+        {
+            substitute_meta(&solved_exp, &meta_idx.parse().unwrap(), value)
+        } else if let Some(var_name) = index.strip_prefix("variable_") {
+            substitute(&solved_exp, var_name, value)
+        } else {
+            solved_exp
+        };
     }
     solved_exp
 }
