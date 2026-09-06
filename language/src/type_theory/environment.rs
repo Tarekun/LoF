@@ -1,3 +1,4 @@
+use crate::type_theory::commons::transport::EquivConfig;
 use crate::type_theory::interface::TypeTheory;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -12,6 +13,20 @@ pub struct Environment<T: TypeTheory> {
     pub predicates: HashMap<String, Vec<T::Type>>,
     /// type_name, constructors_vec
     pub constructor_store: HashMap<String, Vec<(String, T::Type)>>,
+    /// theorem_name, proof term. Unlike `deltas`, this is never consulted
+    /// by δ-reduction or unification - theorems stay opaque for reduction,
+    /// exactly like an axiom. It exists purely so a tool (eg `transport`)
+    /// can retrieve an already-checked theorem's witness term by name.
+    pub theorem_proofs: HashMap<String, Vec<T::Term>>,
+    /// equivalence_name, registered configuration. Populated by the
+    /// `equivalence` statement, consulted by `transport`.
+    pub equivalences: HashMap<String, EquivConfig<T>>,
+    /// type_name, number of left parameters (the inductive's own params,
+    /// excluding right/index parameters) - needed to locate the motive
+    /// and per-constructor cases inside an `e_<type_name>` application by
+    /// position, so that application can be ι-reduced when its final
+    /// (instance) argument is a concrete constructor.
+    pub inductive_param_counts: HashMap<String, usize>,
 }
 impl<T: TypeTheory> Clone for Environment<T>
 where
@@ -24,6 +39,9 @@ where
             deltas: self.deltas.clone(),
             predicates: self.predicates.clone(),
             constructor_store: self.constructor_store.clone(),
+            theorem_proofs: self.theorem_proofs.clone(),
+            equivalences: self.equivalences.clone(),
+            inductive_param_counts: self.inductive_param_counts.clone(),
         }
     }
 }
@@ -246,6 +264,60 @@ impl<T: TypeTheory> Environment<T> {
     }
 }
 
+// theorem proofs
+impl<T: TypeTheory> Environment<T> {
+    /// Records `theorem_name`'s proof term for later introspection (eg by
+    /// `transport`). Does not affect δ-reduction/unification - a
+    /// theorem's name still only carries its formula in `context`, exactly
+    /// as before; this is a separate, read-only channel.
+    pub fn add_theorem_proof(&mut self, theorem_name: &str, proof: &T::Term) {
+        self.theorem_proofs
+            .entry(theorem_name.to_string())
+            .or_insert_with(Vec::new)
+            .push(proof.to_owned());
+    }
+
+    pub fn get_theorem_proof(&self, theorem_name: &str) -> Option<T::Term> {
+        self.theorem_proofs
+            .get(theorem_name)
+            .and_then(|stack| stack.last())
+            .map(|proof| proof.to_owned())
+    }
+}
+
+// type equivalences
+impl<T: TypeTheory> Environment<T> {
+    pub fn add_equivalence(&mut self, name: &str, config: EquivConfig<T>) {
+        self.equivalences.insert(name.to_string(), config);
+    }
+
+    pub fn get_equivalence(&self, name: &str) -> Option<&EquivConfig<T>> {
+        self.equivalences.get(name)
+    }
+
+    /// Mutable access to a registered equivalence, needed to grow
+    /// `EquivConfig::lifted_names` as `transport` lifts more auxiliary
+    /// `fun`/`global` definitions under it.
+    pub fn get_equivalence_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut EquivConfig<T>> {
+        self.equivalences.get_mut(name)
+    }
+}
+
+// inductive parameter counts (for eliminator ι-reduction)
+impl<T: TypeTheory> Environment<T> {
+    pub fn add_inductive_param_count(&mut self, type_name: &str, count: usize) {
+        self.inductive_param_counts
+            .insert(type_name.to_string(), count);
+    }
+
+    pub fn get_inductive_param_count(&self, type_name: &str) -> Option<usize> {
+        self.inductive_param_counts.get(type_name).copied()
+    }
+}
+
 // other utilities
 impl<T: TypeTheory> Environment<T> {
     pub fn with_defaults(
@@ -275,6 +347,9 @@ impl<T: TypeTheory> Environment<T> {
             deltas: deltas_map,
             predicates: predicates_map,
             constructor_store: HashMap::new(),
+            theorem_proofs: HashMap::new(),
+            equivalences: HashMap::new(),
+            inductive_param_counts: HashMap::new(),
         }
     }
 

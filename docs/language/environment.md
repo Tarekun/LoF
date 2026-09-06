@@ -12,6 +12,9 @@ pub struct Environment<T: TypeTheory> {
     pub deltas:            HashMap<String, Vec<T::Term>>,
     pub predicates:        HashMap<String, Vec<T::Type>>,
     pub constructor_store: HashMap<String, Vec<(String, T::Type)>>,
+    pub theorem_proofs:    HashMap<String, Vec<T::Term>>,
+    pub equivalences:      HashMap<String, EquivConfig<T>>,
+    pub inductive_param_counts: HashMap<String, usize>,
 }
 ```
 
@@ -32,6 +35,18 @@ Maps predicate symbol names to their argument type lists. Used by SUP and FOL to
 ### `constructor_store`
 
 Maps an inductive type name to its list of `(constructor_name, constructor_type)` pairs. Populated when an inductive type is checked, and used to look up the constructors available for a given type (e.g. for exhaustiveness/pattern checks in `match`).
+
+### `theorem_proofs`
+
+Maps a theorem name to its proof term. Unlike `deltas` this is never consulted by δ-reduction or unification - a theorem stays opaque for reduction, exactly like an axiom. It exists so a tool can retrieve an already-checked theorem's witness by name, which is what [`transport`](systems/transport.md) needs in order to rewrite an existing proof.
+
+### `equivalences`
+
+Maps an equivalence name to its registered `EquivConfig` (`commons/transport.rs`): the forward/backward functions, section/retraction proofs, and the DepConstr/DepElim/Eta/Iota data. Populated by the `equivalence` statement, consulted by `transport`.
+
+### `inductive_param_counts`
+
+Maps an inductive type name to its number of left parameters. Needed to locate the motive and per-constructor cases by position inside an `e_<Type>` application, so that application can be ι-reduced when its instance argument is a concrete constructor.
 
 Note: metavariable unification constraints are no longer accumulated on the environment. The `Refiner` trait now threads them explicitly as a `Vec<(Exp, Exp)>` collected by `term_collect_unifications`/`type_collect_unifications` and consumed directly by `solve_unifications` — see [systems/type-theory-interface.md](systems/type-theory-interface.md).
 
