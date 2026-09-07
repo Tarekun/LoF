@@ -1,3 +1,4 @@
+use crate::type_theory::commons::transport::EquivConfig;
 use crate::type_theory::interface::TypeTheory;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -12,6 +13,9 @@ pub struct Environment<T: TypeTheory> {
     predicates: HashMap<String, Vec<T::Type>>,
     /// type_name, (constructors_vec, left_params_count)
     inductive_store: HashMap<String, (Vec<(String, T::Type)>, usize)>,
+    /// equivalence_name, registered configuration. Populated by the
+    /// `equivalence` statement, consulted by `transport`.
+    equivalences: HashMap<String, EquivConfig<T>>,
 }
 impl<T: TypeTheory> Clone for Environment<T>
 where
@@ -24,6 +28,7 @@ where
             deltas: self.deltas.clone(),
             predicates: self.predicates.clone(),
             inductive_store: self.inductive_store.clone(),
+            equivalences: self.equivalences.clone(),
         }
     }
 }
@@ -281,6 +286,27 @@ impl<T: TypeTheory> Environment<T> {
     }
 }
 
+// type equivalences
+impl<T: TypeTheory> Environment<T> {
+    pub fn add_equivalence(&mut self, name: &str, config: EquivConfig<T>) {
+        self.equivalences.insert(name.to_string(), config);
+    }
+
+    pub fn get_equivalence(&self, name: &str) -> Option<&EquivConfig<T>> {
+        self.equivalences.get(name)
+    }
+
+    /// Mutable access to a registered equivalence, needed to grow
+    /// `EquivConfig::lifted_names` as `transport` lifts more auxiliary
+    /// `fun`/`global` definitions under it.
+    pub fn get_equivalence_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut EquivConfig<T>> {
+        self.equivalences.get_mut(name)
+    }
+}
+
 // other utilities
 impl<T: TypeTheory> Environment<T> {
     pub fn with_defaults(
@@ -310,6 +336,7 @@ impl<T: TypeTheory> Environment<T> {
             deltas: deltas_map,
             predicates: predicates_map,
             inductive_store: HashMap::new(),
+            equivalences: HashMap::new(),
         }
     }
 
