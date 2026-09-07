@@ -16,6 +16,12 @@ pub struct Environment<T: TypeTheory> {
     /// equivalence_name, registered configuration. Populated by the
     /// `equivalence` statement, consulted by `transport`.
     equivalences: HashMap<String, EquivConfig<T>>,
+    /// theorem_name, proof term. Unlike `deltas`, this is never consulted
+    /// by δ-reduction or unification - a theorem stays opaque for
+    /// reduction, exactly like an axiom. It exists purely so a tool (eg
+    /// `transport`) can retrieve an already-checked theorem's witness term
+    /// by name.
+    theorem_proofs: HashMap<String, Vec<T::Term>>,
 }
 impl<T: TypeTheory> Clone for Environment<T>
 where
@@ -29,6 +35,7 @@ where
             predicates: self.predicates.clone(),
             inductive_store: self.inductive_store.clone(),
             equivalences: self.equivalences.clone(),
+            theorem_proofs: self.theorem_proofs.clone(),
         }
     }
 }
@@ -306,6 +313,27 @@ impl<T: TypeTheory> Environment<T> {
     }
 }
 
+// theorem proofs
+impl<T: TypeTheory> Environment<T> {
+    /// Records `theorem_name`'s proof term for later introspection (eg by
+    /// `transport`). Does not affect δ-reduction/unification - a
+    /// theorem's name still only carries its formula in `context`, exactly
+    /// as before; this is a separate, read-only channel.
+    pub fn add_theorem_proof(&mut self, theorem_name: &str, proof: &T::Term) {
+        self.theorem_proofs
+            .entry(theorem_name.to_string())
+            .or_insert_with(Vec::new)
+            .push(proof.to_owned());
+    }
+
+    pub fn get_theorem_proof(&self, theorem_name: &str) -> Option<T::Term> {
+        self.theorem_proofs
+            .get(theorem_name)
+            .and_then(|stack| stack.last())
+            .map(|proof| proof.to_owned())
+    }
+}
+
 // other utilities
 impl<T: TypeTheory> Environment<T> {
     pub fn with_defaults(
@@ -336,6 +364,7 @@ impl<T: TypeTheory> Environment<T> {
             predicates: predicates_map,
             inductive_store: HashMap::new(),
             equivalences: HashMap::new(),
+            theorem_proofs: HashMap::new(),
         }
     }
 
