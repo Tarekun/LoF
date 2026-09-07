@@ -1,0 +1,448 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "indented_by_block",
+      "proof": {
+        "kind": "by",
+        "span": {
+          "col": 33,
+          "end": 205,
+          "endCol": 13,
+          "endLine": 5,
+          "line": 3,
+          "start": 179
+        },
+        "tactics": [
+          {
+            "kind": "intro",
+            "names": [
+              "n"
+            ],
+            "span": {
+              "col": 2,
+              "end": 191,
+              "endCol": 9,
+              "endLine": 4,
+              "line": 4,
+              "start": 184
+            }
+          },
+          {
+            "kind": "exact",
+            "span": {
+              "col": 2,
+              "end": 205,
+              "endCol": 13,
+              "endLine": 5,
+              "line": 5,
+              "start": 194
+            },
+            "term": {
+              "args": [
+                {
+                  "kind": "var",
+                  "name": "n",
+                  "span": {
+                    "col": 12,
+                    "end": 205,
+                    "endCol": 13,
+                    "endLine": 5,
+                    "line": 5,
+                    "start": 204
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "foo",
+                "span": {
+                  "col": 8,
+                  "end": 203,
+                  "endCol": 9,
+                  "endLine": 5,
+                  "line": 5,
+                  "start": 200
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 8,
+                "end": 205,
+                "endCol": 13,
+                "endLine": 5,
+                "line": 5,
+                "start": 200
+              }
+            }
+          }
+        ]
+      },
+      "span": {
+        "col": 0,
+        "end": 205,
+        "endCol": 13,
+        "endLine": 5,
+        "line": 3,
+        "start": 146
+      },
+      "ty": {
+        "kind": "var",
+        "name": "P",
+        "span": {
+          "col": 28,
+          "end": 175,
+          "endCol": 29,
+          "endLine": 3,
+          "line": 3,
+          "start": 174
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "nat",
+        "raw": "1",
+        "span": {
+          "col": 16,
+          "end": 224,
+          "endCol": 17,
+          "endLine": 7,
+          "line": 7,
+          "start": 223
+        },
+        "value": 1
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "after_by",
+      "span": {
+        "col": 0,
+        "end": 224,
+        "endCol": 17,
+        "endLine": 7,
+        "line": 7,
+        "start": 207
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "match_inside_by",
+      "proof": {
+        "kind": "by",
+        "span": {
+          "col": 31,
+          "end": 352,
+          "endCol": 15,
+          "endLine": 14,
+          "line": 10,
+          "start": 296
+        },
+        "tactics": [
+          {
+            "kind": "exact",
+            "span": {
+              "col": 2,
+              "end": 352,
+              "endCol": 15,
+              "endLine": 14,
+              "line": 11,
+              "start": 301
+            },
+            "term": {
+              "alts": [
+                {
+                  "patterns": [
+                    {
+                      "kind": "var",
+                      "name": "z",
+                      "span": {
+                        "col": 6,
+                        "end": 331,
+                        "endCol": 7,
+                        "endLine": 13,
+                        "line": 13,
+                        "start": 330
+                      }
+                    }
+                  ],
+                  "rhs": {
+                    "kind": "var",
+                    "name": "a",
+                    "span": {
+                      "col": 11,
+                      "end": 336,
+                      "endCol": 12,
+                      "endLine": 13,
+                      "line": 13,
+                      "start": 335
+                    }
+                  },
+                  "span": {
+                    "col": 4,
+                    "end": 336,
+                    "endCol": 12,
+                    "endLine": 13,
+                    "line": 13,
+                    "start": 328
+                  }
+                },
+                {
+                  "patterns": [
+                    {
+                      "args": [
+                        {
+                          "kind": "var",
+                          "name": "nn",
+                          "span": {
+                            "col": 8,
+                            "end": 347,
+                            "endCol": 9,
+                            "endLine": 14,
+                            "line": 14,
+                            "start": 345
+                          }
+                        }
+                      ],
+                      "dotted": false,
+                      "kind": "ctor",
+                      "name": "s",
+                      "span": {
+                        "col": 6,
+                        "end": 347,
+                        "endCol": 9,
+                        "endLine": 14,
+                        "line": 14,
+                        "start": 343
+                      }
+                    }
+                  ],
+                  "rhs": {
+                    "kind": "var",
+                    "name": "b",
+                    "span": {
+                      "col": 14,
+                      "end": 352,
+                      "endCol": 15,
+                      "endLine": 14,
+                      "line": 14,
+                      "start": 351
+                    }
+                  },
+                  "span": {
+                    "col": 4,
+                    "end": 352,
+                    "endCol": 15,
+                    "endLine": 14,
+                    "line": 14,
+                    "start": 341
+                  }
+                }
+              ],
+              "kind": "match",
+              "scrutinees": [
+                {
+                  "kind": "var",
+                  "name": "n",
+                  "span": {
+                    "col": 10,
+                    "end": 318,
+                    "endCol": 11,
+                    "endLine": 12,
+                    "line": 12,
+                    "start": 317
+                  }
+                }
+              ],
+              "span": {
+                "col": 4,
+                "end": 352,
+                "endCol": 15,
+                "endLine": 14,
+                "line": 12,
+                "start": 311
+              }
+            }
+          }
+        ]
+      },
+      "span": {
+        "col": 0,
+        "end": 352,
+        "endCol": 15,
+        "endLine": 14,
+        "line": 10,
+        "start": 265
+      },
+      "ty": {
+        "kind": "var",
+        "name": "P",
+        "span": {
+          "col": 26,
+          "end": 292,
+          "endCol": 27,
+          "endLine": 10,
+          "line": 10,
+          "start": 291
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "body": {
+          "body": {
+            "kind": "binOp",
+            "lhs": {
+              "kind": "var",
+              "name": "a",
+              "span": {
+                "col": 2,
+                "end": 400,
+                "endCol": 3,
+                "endLine": 19,
+                "line": 19,
+                "start": 399
+              }
+            },
+            "op": "+",
+            "rhs": {
+              "kind": "var",
+              "name": "b",
+              "span": {
+                "col": 6,
+                "end": 404,
+                "endCol": 7,
+                "endLine": 19,
+                "line": 19,
+                "start": 403
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 404,
+              "endCol": 7,
+              "endLine": 19,
+              "line": 19,
+              "start": 399
+            }
+          },
+          "is_have": false,
+          "kind": "let",
+          "name": "b",
+          "span": {
+            "col": 2,
+            "end": 404,
+            "endCol": 7,
+            "endLine": 19,
+            "line": 18,
+            "start": 386
+          },
+          "ty": null,
+          "value": {
+            "kind": "nat",
+            "raw": "2",
+            "span": {
+              "col": 11,
+              "end": 396,
+              "endCol": 12,
+              "endLine": 18,
+              "line": 18,
+              "start": 395
+            },
+            "value": 2
+          }
+        },
+        "is_have": false,
+        "kind": "let",
+        "name": "a",
+        "span": {
+          "col": 2,
+          "end": 404,
+          "endCol": 7,
+          "endLine": 19,
+          "line": 17,
+          "start": 373
+        },
+        "ty": null,
+        "value": {
+          "kind": "nat",
+          "raw": "1",
+          "span": {
+            "col": 11,
+            "end": 383,
+            "endCol": 12,
+            "endLine": 17,
+            "line": 17,
+            "start": 382
+          },
+          "value": 1
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "let_chain",
+      "span": {
+        "col": 0,
+        "end": 404,
+        "endCol": 7,
+        "endLine": 19,
+        "line": 16,
+        "start": 354
+      },
+      "ty": null
+    }
+  ],
+  "doc": null,
+  "path": "lean/indentation.lean",
+  "span": {
+    "col": 0,
+    "end": 404,
+    "endCol": 7,
+    "endLine": 19,
+    "line": 3,
+    "start": 146
+  }
+}

@@ -1,0 +1,1130 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "doc": null,
+      "kind": "import",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "module": "Unit'",
+      "span": {
+        "col": 0,
+        "end": 48,
+        "endCol": 8,
+        "endLine": 2,
+        "line": 2,
+        "start": 36
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "true",
+          "span": {
+            "col": 2,
+            "end": 95,
+            "endCol": 12,
+            "endLine": 5,
+            "line": 5,
+            "start": 81
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Bool'",
+            "span": {
+              "col": 11,
+              "end": 95,
+              "endCol": 12,
+              "endLine": 5,
+              "line": 5,
+              "start": 90
+            }
+          }
+        },
+        {
+          "binders": [],
+          "doc": null,
+          "name": "false",
+          "span": {
+            "col": 2,
+            "end": 113,
+            "endCol": 13,
+            "endLine": 6,
+            "line": 6,
+            "start": 98
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Bool'",
+            "span": {
+              "col": 12,
+              "end": 113,
+              "endCol": 13,
+              "endLine": 6,
+              "line": 6,
+              "start": 108
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "Bool'",
+      "span": {
+        "col": 0,
+        "end": 113,
+        "endCol": 13,
+        "endLine": 6,
+        "line": 4,
+        "start": 50
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "type"
+        },
+        "span": {
+          "col": 18,
+          "end": 72,
+          "endCol": 19,
+          "endLine": 4,
+          "line": 4,
+          "start": 68
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "b"
+          ],
+          "span": {
+            "col": 8,
+            "end": 134,
+            "endCol": 19,
+            "endLine": 8,
+            "line": 8,
+            "start": 123
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Bool'",
+            "span": {
+              "col": 13,
+              "end": 133,
+              "endCol": 14,
+              "endLine": 8,
+              "line": 8,
+              "start": 128
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "true",
+                "span": {
+                  "col": 4,
+                  "end": 170,
+                  "endCol": 5,
+                  "endLine": 10,
+                  "line": 10,
+                  "start": 165
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "dotIdent",
+              "name": "false",
+              "span": {
+                "col": 13,
+                "end": 180,
+                "endCol": 14,
+                "endLine": 10,
+                "line": 10,
+                "start": 174
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 180,
+              "endCol": 14,
+              "endLine": 10,
+              "line": 10,
+              "start": 163
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "false",
+                "span": {
+                  "col": 4,
+                  "end": 191,
+                  "endCol": 5,
+                  "endLine": 11,
+                  "line": 11,
+                  "start": 185
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "dotIdent",
+              "name": "true",
+              "span": {
+                "col": 14,
+                "end": 200,
+                "endCol": 15,
+                "endLine": 11,
+                "line": 11,
+                "start": 195
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 200,
+              "endCol": 15,
+              "endLine": 11,
+              "line": 11,
+              "start": 183
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "b",
+            "span": {
+              "col": 8,
+              "end": 155,
+              "endCol": 9,
+              "endLine": 9,
+              "line": 9,
+              "start": 154
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 200,
+          "endCol": 15,
+          "endLine": 11,
+          "line": 9,
+          "start": 148
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "not",
+      "span": {
+        "col": 0,
+        "end": 200,
+        "endCol": 15,
+        "endLine": 11,
+        "line": 8,
+        "start": 115
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Bool'",
+        "span": {
+          "col": 22,
+          "end": 142,
+          "endCol": 23,
+          "endLine": 8,
+          "line": 8,
+          "start": 137
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "l",
+            "r"
+          ],
+          "span": {
+            "col": 8,
+            "end": 223,
+            "endCol": 21,
+            "endLine": 13,
+            "line": 13,
+            "start": 210
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Bool'",
+            "span": {
+              "col": 15,
+              "end": 222,
+              "endCol": 16,
+              "endLine": 13,
+              "line": 13,
+              "start": 217
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "true",
+                "span": {
+                  "col": 4,
+                  "end": 259,
+                  "endCol": 5,
+                  "endLine": 15,
+                  "line": 15,
+                  "start": 254
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "var",
+              "name": "r",
+              "span": {
+                "col": 13,
+                "end": 264,
+                "endCol": 14,
+                "endLine": 15,
+                "line": 15,
+                "start": 263
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 264,
+              "endCol": 14,
+              "endLine": 15,
+              "line": 15,
+              "start": 252
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "false",
+                "span": {
+                  "col": 4,
+                  "end": 275,
+                  "endCol": 5,
+                  "endLine": 16,
+                  "line": 16,
+                  "start": 269
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "dotIdent",
+              "name": "false",
+              "span": {
+                "col": 14,
+                "end": 285,
+                "endCol": 15,
+                "endLine": 16,
+                "line": 16,
+                "start": 279
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 285,
+              "endCol": 15,
+              "endLine": 16,
+              "line": 16,
+              "start": 267
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "l",
+            "span": {
+              "col": 8,
+              "end": 244,
+              "endCol": 9,
+              "endLine": 14,
+              "line": 14,
+              "start": 243
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 285,
+          "endCol": 15,
+          "endLine": 16,
+          "line": 14,
+          "start": 237
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "and",
+      "span": {
+        "col": 0,
+        "end": 285,
+        "endCol": 15,
+        "endLine": 16,
+        "line": 13,
+        "start": 202
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Bool'",
+        "span": {
+          "col": 24,
+          "end": 231,
+          "endCol": 25,
+          "endLine": 13,
+          "line": 13,
+          "start": 226
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "l",
+            "r"
+          ],
+          "span": {
+            "col": 7,
+            "end": 307,
+            "endCol": 20,
+            "endLine": 18,
+            "line": 18,
+            "start": 294
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Bool'",
+            "span": {
+              "col": 14,
+              "end": 306,
+              "endCol": 15,
+              "endLine": 18,
+              "line": 18,
+              "start": 301
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "true",
+                "span": {
+                  "col": 4,
+                  "end": 343,
+                  "endCol": 5,
+                  "endLine": 20,
+                  "line": 20,
+                  "start": 338
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "dotIdent",
+              "name": "true",
+              "span": {
+                "col": 13,
+                "end": 352,
+                "endCol": 14,
+                "endLine": 20,
+                "line": 20,
+                "start": 347
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 352,
+              "endCol": 14,
+              "endLine": 20,
+              "line": 20,
+              "start": 336
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "false",
+                "span": {
+                  "col": 4,
+                  "end": 363,
+                  "endCol": 5,
+                  "endLine": 21,
+                  "line": 21,
+                  "start": 357
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "var",
+              "name": "r",
+              "span": {
+                "col": 14,
+                "end": 368,
+                "endCol": 15,
+                "endLine": 21,
+                "line": 21,
+                "start": 367
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 368,
+              "endCol": 15,
+              "endLine": 21,
+              "line": 21,
+              "start": 355
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "l",
+            "span": {
+              "col": 8,
+              "end": 328,
+              "endCol": 9,
+              "endLine": 19,
+              "line": 19,
+              "start": 327
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 368,
+          "endCol": 15,
+          "endLine": 21,
+          "line": 19,
+          "start": 321
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "or",
+      "span": {
+        "col": 0,
+        "end": 368,
+        "endCol": 15,
+        "endLine": 21,
+        "line": 18,
+        "start": 287
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Bool'",
+        "span": {
+          "col": 23,
+          "end": 315,
+          "endCol": 24,
+          "endLine": 18,
+          "line": 18,
+          "start": 310
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "l",
+            "r"
+          ],
+          "span": {
+            "col": 9,
+            "end": 392,
+            "endCol": 22,
+            "endLine": 23,
+            "line": 23,
+            "start": 379
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Bool'",
+            "span": {
+              "col": 16,
+              "end": 391,
+              "endCol": 17,
+              "endLine": 23,
+              "line": 23,
+              "start": 386
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "true",
+                "span": {
+                  "col": 4,
+                  "end": 428,
+                  "endCol": 5,
+                  "endLine": 25,
+                  "line": 25,
+                  "start": 423
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "var",
+              "name": "r",
+              "span": {
+                "col": 13,
+                "end": 433,
+                "endCol": 14,
+                "endLine": 25,
+                "line": 25,
+                "start": 432
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 433,
+              "endCol": 14,
+              "endLine": 25,
+              "line": 25,
+              "start": 421
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "false",
+                "span": {
+                  "col": 4,
+                  "end": 444,
+                  "endCol": 5,
+                  "endLine": 26,
+                  "line": 26,
+                  "start": 438
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "dotIdent",
+              "name": "true",
+              "span": {
+                "col": 14,
+                "end": 453,
+                "endCol": 15,
+                "endLine": 26,
+                "line": 26,
+                "start": 448
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 453,
+              "endCol": 15,
+              "endLine": 26,
+              "line": 26,
+              "start": 436
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "l",
+            "span": {
+              "col": 8,
+              "end": 413,
+              "endCol": 9,
+              "endLine": 24,
+              "line": 24,
+              "start": 412
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 453,
+          "endCol": 15,
+          "endLine": 26,
+          "line": 24,
+          "start": 406
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "impl",
+      "span": {
+        "col": 0,
+        "end": 453,
+        "endCol": 15,
+        "endLine": 26,
+        "line": 23,
+        "start": 370
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Bool'",
+        "span": {
+          "col": 25,
+          "end": 400,
+          "endCol": 26,
+          "endLine": 23,
+          "line": 23,
+          "start": 395
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "T"
+          ],
+          "span": {
+            "col": 9,
+            "end": 612,
+            "endCol": 19,
+            "endLine": 30,
+            "line": 30,
+            "start": 602
+          },
+          "ty": {
+            "kind": "sort",
+            "level": null,
+            "sort": {
+              "kind": "type"
+            },
+            "span": {
+              "col": 14,
+              "end": 611,
+              "endCol": 15,
+              "endLine": 30,
+              "line": 30,
+              "start": 607
+            }
+          }
+        },
+        {
+          "info": "explicit",
+          "names": [
+            "exp"
+          ],
+          "span": {
+            "col": 20,
+            "end": 626,
+            "endCol": 33,
+            "endLine": 30,
+            "line": 30,
+            "start": 613
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Bool'",
+            "span": {
+              "col": 27,
+              "end": 625,
+              "endCol": 28,
+              "endLine": 30,
+              "line": 30,
+              "start": 620
+            }
+          }
+        },
+        {
+          "info": "explicit",
+          "names": [
+            "ifTrue"
+          ],
+          "span": {
+            "col": 34,
+            "end": 648,
+            "endCol": 55,
+            "endLine": 30,
+            "line": 30,
+            "start": 627
+          },
+          "ty": {
+            "codomain": {
+              "kind": "var",
+              "name": "T",
+              "span": {
+                "col": 53,
+                "end": 647,
+                "endCol": 54,
+                "endLine": 30,
+                "line": 30,
+                "start": 646
+              }
+            },
+            "domain": {
+              "kind": "var",
+              "name": "Unit'",
+              "span": {
+                "col": 44,
+                "end": 642,
+                "endCol": 45,
+                "endLine": 30,
+                "line": 30,
+                "start": 637
+              }
+            },
+            "kind": "arrow",
+            "span": {
+              "col": 44,
+              "end": 647,
+              "endCol": 54,
+              "endLine": 30,
+              "line": 30,
+              "start": 637
+            }
+          }
+        },
+        {
+          "info": "explicit",
+          "names": [
+            "ifFalse"
+          ],
+          "span": {
+            "col": 56,
+            "end": 671,
+            "endCol": 78,
+            "endLine": 30,
+            "line": 30,
+            "start": 649
+          },
+          "ty": {
+            "codomain": {
+              "kind": "var",
+              "name": "T",
+              "span": {
+                "col": 76,
+                "end": 670,
+                "endCol": 77,
+                "endLine": 30,
+                "line": 30,
+                "start": 669
+              }
+            },
+            "domain": {
+              "kind": "var",
+              "name": "Unit'",
+              "span": {
+                "col": 67,
+                "end": 665,
+                "endCol": 68,
+                "endLine": 30,
+                "line": 30,
+                "start": 660
+              }
+            },
+            "kind": "arrow",
+            "span": {
+              "col": 67,
+              "end": 670,
+              "endCol": 77,
+              "endLine": 30,
+              "line": 30,
+              "start": 660
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "true",
+                "span": {
+                  "col": 4,
+                  "end": 705,
+                  "endCol": 5,
+                  "endLine": 32,
+                  "line": 32,
+                  "start": 700
+                }
+              }
+            ],
+            "rhs": {
+              "args": [
+                {
+                  "kind": "var",
+                  "name": "it",
+                  "span": {
+                    "col": 20,
+                    "end": 718,
+                    "endCol": 21,
+                    "endLine": 32,
+                    "line": 32,
+                    "start": 716
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "ifTrue",
+                "span": {
+                  "col": 13,
+                  "end": 715,
+                  "endCol": 14,
+                  "endLine": 32,
+                  "line": 32,
+                  "start": 709
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 13,
+                "end": 718,
+                "endCol": 21,
+                "endLine": 32,
+                "line": 32,
+                "start": 709
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 718,
+              "endCol": 21,
+              "endLine": 32,
+              "line": 32,
+              "start": 698
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "false",
+                "span": {
+                  "col": 4,
+                  "end": 729,
+                  "endCol": 5,
+                  "endLine": 33,
+                  "line": 33,
+                  "start": 723
+                }
+              }
+            ],
+            "rhs": {
+              "args": [
+                {
+                  "kind": "var",
+                  "name": "it",
+                  "span": {
+                    "col": 22,
+                    "end": 743,
+                    "endCol": 23,
+                    "endLine": 33,
+                    "line": 33,
+                    "start": 741
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "ifFalse",
+                "span": {
+                  "col": 14,
+                  "end": 740,
+                  "endCol": 15,
+                  "endLine": 33,
+                  "line": 33,
+                  "start": 733
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 14,
+                "end": 743,
+                "endCol": 23,
+                "endLine": 33,
+                "line": 33,
+                "start": 733
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 743,
+              "endCol": 23,
+              "endLine": 33,
+              "line": 33,
+              "start": 721
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "exp",
+            "span": {
+              "col": 8,
+              "end": 690,
+              "endCol": 9,
+              "endLine": 31,
+              "line": 31,
+              "start": 687
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 743,
+          "endCol": 23,
+          "endLine": 33,
+          "line": 31,
+          "start": 681
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "ite'",
+      "span": {
+        "col": 0,
+        "end": 743,
+        "endCol": 23,
+        "endLine": 33,
+        "line": 30,
+        "start": 593
+      },
+      "ty": {
+        "kind": "var",
+        "name": "T",
+        "span": {
+          "col": 81,
+          "end": 675,
+          "endCol": 82,
+          "endLine": 30,
+          "line": 30,
+          "start": 674
+        }
+      }
+    }
+  ],
+  "doc": null,
+  "path": "lof/bool.lean",
+  "span": {
+    "col": 0,
+    "end": 743,
+    "endCol": 23,
+    "endLine": 33,
+    "line": 2,
+    "start": 36
+  }
+}

@@ -17,3 +17,16 @@ jobs:
       - name: Run tests
         run: cargo test
         working-directory: language
+
+  lean-parser-tests:
+    runs-on: ubuntu-latest
+    container:
+      image: cimg/rust:1.83.0-node
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Run lean_parser tests
+        run: cargo test
+        working-directory: lean_parser

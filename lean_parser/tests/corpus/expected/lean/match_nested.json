@@ -1,0 +1,330 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "n",
+            "m"
+          ],
+          "span": {
+            "col": 20,
+            "end": 167,
+            "endCol": 31,
+            "endLine": 3,
+            "line": 3,
+            "start": 156
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat",
+            "span": {
+              "col": 27,
+              "end": 166,
+              "endCol": 28,
+              "endLine": 3,
+              "line": 3,
+              "start": 163
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "kind": "var",
+                "name": "z",
+                "span": {
+                  "col": 4,
+                  "end": 197,
+                  "endCol": 5,
+                  "endLine": 5,
+                  "line": 5,
+                  "start": 196
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "var",
+              "name": "m",
+              "span": {
+                "col": 9,
+                "end": 202,
+                "endCol": 10,
+                "endLine": 5,
+                "line": 5,
+                "start": 201
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 202,
+              "endCol": 10,
+              "endLine": 5,
+              "line": 5,
+              "start": 194
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "nn",
+                    "span": {
+                      "col": 6,
+                      "end": 211,
+                      "endCol": 7,
+                      "endLine": 6,
+                      "line": 6,
+                      "start": 209
+                    }
+                  }
+                ],
+                "dotted": false,
+                "kind": "ctor",
+                "name": "s",
+                "span": {
+                  "col": 4,
+                  "end": 211,
+                  "endCol": 7,
+                  "endLine": 6,
+                  "line": 6,
+                  "start": 207
+                }
+              }
+            ],
+            "rhs": {
+              "alts": [
+                {
+                  "patterns": [
+                    {
+                      "kind": "var",
+                      "name": "z",
+                      "span": {
+                        "col": 6,
+                        "end": 239,
+                        "endCol": 7,
+                        "endLine": 8,
+                        "line": 8,
+                        "start": 238
+                      }
+                    }
+                  ],
+                  "rhs": {
+                    "kind": "var",
+                    "name": "n",
+                    "span": {
+                      "col": 11,
+                      "end": 244,
+                      "endCol": 12,
+                      "endLine": 8,
+                      "line": 8,
+                      "start": 243
+                    }
+                  },
+                  "span": {
+                    "col": 4,
+                    "end": 244,
+                    "endCol": 12,
+                    "endLine": 8,
+                    "line": 8,
+                    "start": 236
+                  }
+                },
+                {
+                  "patterns": [
+                    {
+                      "args": [
+                        {
+                          "kind": "var",
+                          "name": "mm",
+                          "span": {
+                            "col": 8,
+                            "end": 255,
+                            "endCol": 9,
+                            "endLine": 9,
+                            "line": 9,
+                            "start": 253
+                          }
+                        }
+                      ],
+                      "dotted": false,
+                      "kind": "ctor",
+                      "name": "s",
+                      "span": {
+                        "col": 6,
+                        "end": 255,
+                        "endCol": 9,
+                        "endLine": 9,
+                        "line": 9,
+                        "start": 251
+                      }
+                    }
+                  ],
+                  "rhs": {
+                    "args": [
+                      {
+                        "kind": "var",
+                        "name": "nn",
+                        "span": {
+                          "col": 30,
+                          "end": 277,
+                          "endCol": 31,
+                          "endLine": 9,
+                          "line": 9,
+                          "start": 275
+                        }
+                      },
+                      {
+                        "kind": "var",
+                        "name": "mm",
+                        "span": {
+                          "col": 33,
+                          "end": 280,
+                          "endCol": 34,
+                          "endLine": 9,
+                          "line": 9,
+                          "start": 278
+                        }
+                      }
+                    ],
+                    "func": {
+                      "kind": "var",
+                      "name": "nested_match_ok",
+                      "span": {
+                        "col": 14,
+                        "end": 274,
+                        "endCol": 15,
+                        "endLine": 9,
+                        "line": 9,
+                        "start": 259
+                      }
+                    },
+                    "kind": "app",
+                    "span": {
+                      "col": 14,
+                      "end": 280,
+                      "endCol": 34,
+                      "endLine": 9,
+                      "line": 9,
+                      "start": 259
+                    }
+                  },
+                  "span": {
+                    "col": 4,
+                    "end": 280,
+                    "endCol": 34,
+                    "endLine": 9,
+                    "line": 9,
+                    "start": 249
+                  }
+                }
+              ],
+              "kind": "match",
+              "scrutinees": [
+                {
+                  "kind": "var",
+                  "name": "m",
+                  "span": {
+                    "col": 10,
+                    "end": 226,
+                    "endCol": 11,
+                    "endLine": 7,
+                    "line": 7,
+                    "start": 225
+                  }
+                }
+              ],
+              "span": {
+                "col": 4,
+                "end": 280,
+                "endCol": 34,
+                "endLine": 9,
+                "line": 7,
+                "start": 219
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 280,
+              "endCol": 34,
+              "endLine": 9,
+              "line": 6,
+              "start": 205
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "n",
+            "span": {
+              "col": 8,
+              "end": 186,
+              "endCol": 9,
+              "endLine": 4,
+              "line": 4,
+              "start": 185
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 280,
+          "endCol": 34,
+          "endLine": 9,
+          "line": 4,
+          "start": 179
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "nested_match_ok",
+      "span": {
+        "col": 0,
+        "end": 280,
+        "endCol": 34,
+        "endLine": 9,
+        "line": 3,
+        "start": 136
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat",
+        "span": {
+          "col": 34,
+          "end": 173,
+          "endCol": 35,
+          "endLine": 3,
+          "line": 3,
+          "start": 170
+        }
+      }
+    }
+  ],
+  "doc": null,
+  "path": "lean/match_nested.lean",
+  "span": {
+    "col": 0,
+    "end": 280,
+    "endCol": 34,
+    "endLine": 9,
+    "line": 3,
+    "start": 136
+  }
+}

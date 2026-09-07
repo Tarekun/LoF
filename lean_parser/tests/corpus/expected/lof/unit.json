@@ -1,0 +1,79 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "it",
+          "span": {
+            "col": 2,
+            "end": 79,
+            "endCol": 10,
+            "endLine": 3,
+            "line": 3,
+            "start": 67
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Unit'",
+            "span": {
+              "col": 9,
+              "end": 79,
+              "endCol": 10,
+              "endLine": 3,
+              "line": 3,
+              "start": 74
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "Unit'",
+      "span": {
+        "col": 0,
+        "end": 79,
+        "endCol": 10,
+        "endLine": 3,
+        "line": 2,
+        "start": 36
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "type"
+        },
+        "span": {
+          "col": 18,
+          "end": 58,
+          "endCol": 19,
+          "endLine": 2,
+          "line": 2,
+          "start": 54
+        }
+      }
+    }
+  ],
+  "doc": null,
+  "path": "lof/unit.lean",
+  "span": {
+    "col": 0,
+    "end": 79,
+    "endCol": 10,
+    "endLine": 3,
+    "line": 2,
+    "start": 36
+  }
+}

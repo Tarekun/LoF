@@ -1,0 +1,876 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "binOp",
+        "lhs": {
+          "kind": "var",
+          "name": "a",
+          "span": {
+            "col": 20,
+            "end": 21,
+            "endCol": 21,
+            "endLine": 1,
+            "line": 1,
+            "start": 20
+          }
+        },
+        "op": "+",
+        "rhs": {
+          "kind": "binOp",
+          "lhs": {
+            "kind": "var",
+            "name": "b",
+            "span": {
+              "col": 24,
+              "end": 25,
+              "endCol": 25,
+              "endLine": 1,
+              "line": 1,
+              "start": 24
+            }
+          },
+          "op": "*",
+          "rhs": {
+            "kind": "var",
+            "name": "c",
+            "span": {
+              "col": 28,
+              "end": 29,
+              "endCol": 29,
+              "endLine": 1,
+              "line": 1,
+              "start": 28
+            }
+          },
+          "span": {
+            "col": 24,
+            "end": 29,
+            "endCol": 29,
+            "endLine": 1,
+            "line": 1,
+            "start": 24
+          }
+        },
+        "span": {
+          "col": 20,
+          "end": 29,
+          "endCol": 29,
+          "endLine": 1,
+          "line": 1,
+          "start": 20
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "add_mul_prec",
+      "span": {
+        "col": 0,
+        "end": 29,
+        "endCol": 29,
+        "endLine": 1,
+        "line": 1,
+        "start": 0
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "codomain": {
+          "codomain": {
+            "kind": "var",
+            "name": "c",
+            "span": {
+              "col": 38,
+              "end": 69,
+              "endCol": 39,
+              "endLine": 2,
+              "line": 2,
+              "start": 68
+            }
+          },
+          "domain": {
+            "kind": "var",
+            "name": "b",
+            "span": {
+              "col": 33,
+              "end": 64,
+              "endCol": 34,
+              "endLine": 2,
+              "line": 2,
+              "start": 63
+            }
+          },
+          "kind": "arrow",
+          "span": {
+            "col": 33,
+            "end": 69,
+            "endCol": 39,
+            "endLine": 2,
+            "line": 2,
+            "start": 63
+          }
+        },
+        "domain": {
+          "kind": "var",
+          "name": "a",
+          "span": {
+            "col": 28,
+            "end": 59,
+            "endCol": 29,
+            "endLine": 2,
+            "line": 2,
+            "start": 58
+          }
+        },
+        "kind": "arrow",
+        "span": {
+          "col": 28,
+          "end": 69,
+          "endCol": 39,
+          "endLine": 2,
+          "line": 2,
+          "start": 58
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "arrow_is_right_assoc",
+      "span": {
+        "col": 0,
+        "end": 69,
+        "endCol": 39,
+        "endLine": 2,
+        "line": 2,
+        "start": 30
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "binOp",
+        "lhs": {
+          "kind": "binOp",
+          "lhs": {
+            "kind": "var",
+            "name": "a",
+            "span": {
+              "col": 25,
+              "end": 96,
+              "endCol": 26,
+              "endLine": 3,
+              "line": 3,
+              "start": 95
+            }
+          },
+          "op": "-",
+          "rhs": {
+            "kind": "var",
+            "name": "b",
+            "span": {
+              "col": 29,
+              "end": 100,
+              "endCol": 30,
+              "endLine": 3,
+              "line": 3,
+              "start": 99
+            }
+          },
+          "span": {
+            "col": 25,
+            "end": 100,
+            "endCol": 30,
+            "endLine": 3,
+            "line": 3,
+            "start": 95
+          }
+        },
+        "op": "-",
+        "rhs": {
+          "kind": "var",
+          "name": "c",
+          "span": {
+            "col": 33,
+            "end": 104,
+            "endCol": 34,
+            "endLine": 3,
+            "line": 3,
+            "start": 103
+          }
+        },
+        "span": {
+          "col": 25,
+          "end": 104,
+          "endCol": 34,
+          "endLine": 3,
+          "line": 3,
+          "start": 95
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "sub_is_left_assoc",
+      "span": {
+        "col": 0,
+        "end": 104,
+        "endCol": 34,
+        "endLine": 3,
+        "line": 3,
+        "start": 70
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "binOp",
+        "lhs": {
+          "kind": "var",
+          "name": "a",
+          "span": {
+            "col": 26,
+            "end": 132,
+            "endCol": 27,
+            "endLine": 4,
+            "line": 4,
+            "start": 131
+          }
+        },
+        "op": "^",
+        "rhs": {
+          "kind": "binOp",
+          "lhs": {
+            "kind": "var",
+            "name": "b",
+            "span": {
+              "col": 30,
+              "end": 136,
+              "endCol": 31,
+              "endLine": 4,
+              "line": 4,
+              "start": 135
+            }
+          },
+          "op": "^",
+          "rhs": {
+            "kind": "var",
+            "name": "c",
+            "span": {
+              "col": 34,
+              "end": 140,
+              "endCol": 35,
+              "endLine": 4,
+              "line": 4,
+              "start": 139
+            }
+          },
+          "span": {
+            "col": 30,
+            "end": 140,
+            "endCol": 35,
+            "endLine": 4,
+            "line": 4,
+            "start": 135
+          }
+        },
+        "span": {
+          "col": 26,
+          "end": 140,
+          "endCol": 35,
+          "endLine": 4,
+          "line": 4,
+          "start": 131
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "pow_is_right_assoc",
+      "span": {
+        "col": 0,
+        "end": 140,
+        "endCol": 35,
+        "endLine": 4,
+        "line": 4,
+        "start": 105
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "binOp",
+        "lhs": {
+          "kind": "var",
+          "name": "a",
+          "span": {
+            "col": 20,
+            "end": 162,
+            "endCol": 21,
+            "endLine": 5,
+            "line": 5,
+            "start": 161
+          }
+        },
+        "op": "=",
+        "rhs": {
+          "kind": "var",
+          "name": "b",
+          "span": {
+            "col": 24,
+            "end": 166,
+            "endCol": 25,
+            "endLine": 5,
+            "line": 5,
+            "start": 165
+          }
+        },
+        "span": {
+          "col": 20,
+          "end": 166,
+          "endCol": 25,
+          "endLine": 5,
+          "line": 5,
+          "start": 161
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "a_comparison",
+      "span": {
+        "col": 0,
+        "end": 166,
+        "endCol": 25,
+        "endLine": 5,
+        "line": 5,
+        "start": 141
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "binOp",
+        "lhs": {
+          "kind": "var",
+          "name": "a",
+          "span": {
+            "col": 23,
+            "end": 191,
+            "endCol": 24,
+            "endLine": 6,
+            "line": 6,
+            "start": 190
+          }
+        },
+        "op": "++",
+        "rhs": {
+          "kind": "binOp",
+          "lhs": {
+            "kind": "var",
+            "name": "b",
+            "span": {
+              "col": 28,
+              "end": 196,
+              "endCol": 29,
+              "endLine": 6,
+              "line": 6,
+              "start": 195
+            }
+          },
+          "op": "::",
+          "rhs": {
+            "kind": "var",
+            "name": "cs",
+            "span": {
+              "col": 33,
+              "end": 202,
+              "endCol": 34,
+              "endLine": 6,
+              "line": 6,
+              "start": 200
+            }
+          },
+          "span": {
+            "col": 28,
+            "end": 202,
+            "endCol": 34,
+            "endLine": 6,
+            "line": 6,
+            "start": 195
+          }
+        },
+        "span": {
+          "col": 23,
+          "end": 202,
+          "endCol": 34,
+          "endLine": 6,
+          "line": 6,
+          "start": 190
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "append_and_cons",
+      "span": {
+        "col": 0,
+        "end": 202,
+        "endCol": 34,
+        "endLine": 6,
+        "line": 6,
+        "start": 167
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "binOp",
+        "lhs": {
+          "kind": "binOp",
+          "lhs": {
+            "kind": "var",
+            "name": "p",
+            "span": {
+              "col": 17,
+              "end": 221,
+              "endCol": 18,
+              "endLine": 7,
+              "line": 7,
+              "start": 220
+            }
+          },
+          "op": "and",
+          "rhs": {
+            "kind": "var",
+            "name": "q",
+            "span": {
+              "col": 22,
+              "end": 226,
+              "endCol": 23,
+              "endLine": 7,
+              "line": 7,
+              "start": 225
+            }
+          },
+          "span": {
+            "col": 17,
+            "end": 226,
+            "endCol": 23,
+            "endLine": 7,
+            "line": 7,
+            "start": 220
+          }
+        },
+        "op": "or",
+        "rhs": {
+          "kind": "var",
+          "name": "not_p",
+          "span": {
+            "col": 27,
+            "end": 235,
+            "endCol": 28,
+            "endLine": 7,
+            "line": 7,
+            "start": 230
+          }
+        },
+        "span": {
+          "col": 17,
+          "end": 235,
+          "endCol": 28,
+          "endLine": 7,
+          "line": 7,
+          "start": 220
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "logic_ops",
+      "span": {
+        "col": 0,
+        "end": 235,
+        "endCol": 28,
+        "endLine": 7,
+        "line": 7,
+        "start": 203
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "binOp",
+        "lhs": {
+          "kind": "var",
+          "name": "f",
+          "span": {
+            "col": 15,
+            "end": 252,
+            "endCol": 16,
+            "endLine": 8,
+            "line": 8,
+            "start": 251
+          }
+        },
+        "op": "circ",
+        "rhs": {
+          "kind": "var",
+          "name": "g",
+          "span": {
+            "col": 19,
+            "end": 258,
+            "endCol": 20,
+            "endLine": 8,
+            "line": 8,
+            "start": 257
+          }
+        },
+        "span": {
+          "col": 15,
+          "end": 258,
+          "endCol": 20,
+          "endLine": 8,
+          "line": 8,
+          "start": 251
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "compose",
+      "span": {
+        "col": 0,
+        "end": 258,
+        "endCol": 20,
+        "endLine": 8,
+        "line": 8,
+        "start": 236
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "binOp",
+        "lhs": {
+          "kind": "var",
+          "name": "a",
+          "span": {
+            "col": 23,
+            "end": 283,
+            "endCol": 24,
+            "endLine": 9,
+            "line": 9,
+            "start": 282
+          }
+        },
+        "op": "prod",
+        "rhs": {
+          "kind": "var",
+          "name": "b",
+          "span": {
+            "col": 27,
+            "end": 288,
+            "endCol": 28,
+            "endLine": 9,
+            "line": 9,
+            "start": 287
+          }
+        },
+        "span": {
+          "col": 23,
+          "end": 288,
+          "endCol": 28,
+          "endLine": 9,
+          "line": 9,
+          "start": 282
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "product_and_sum",
+      "span": {
+        "col": 0,
+        "end": 288,
+        "endCol": 28,
+        "endLine": 9,
+        "line": 9,
+        "start": 259
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "unOp",
+        "op": "neg",
+        "operand": {
+          "kind": "binOp",
+          "lhs": {
+            "kind": "var",
+            "name": "a",
+            "span": {
+              "col": 32,
+              "end": 322,
+              "endCol": 33,
+              "endLine": 10,
+              "line": 10,
+              "start": 321
+            }
+          },
+          "op": "^",
+          "rhs": {
+            "kind": "var",
+            "name": "b",
+            "span": {
+              "col": 36,
+              "end": 326,
+              "endCol": 37,
+              "endLine": 10,
+              "line": 10,
+              "start": 325
+            }
+          },
+          "span": {
+            "col": 32,
+            "end": 326,
+            "endCol": 37,
+            "endLine": 10,
+            "line": 10,
+            "start": 321
+          }
+        },
+        "span": {
+          "col": 31,
+          "end": 326,
+          "endCol": 37,
+          "endLine": 10,
+          "line": 10,
+          "start": 320
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "unary_minus_binds_tight",
+      "span": {
+        "col": 0,
+        "end": 326,
+        "endCol": 37,
+        "endLine": 10,
+        "line": 10,
+        "start": 289
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "unOp",
+        "op": "not",
+        "operand": {
+          "kind": "var",
+          "name": "p",
+          "span": {
+            "col": 18,
+            "end": 347,
+            "endCol": 19,
+            "endLine": 11,
+            "line": 11,
+            "start": 346
+          }
+        },
+        "span": {
+          "col": 16,
+          "end": 347,
+          "endCol": 19,
+          "endLine": 11,
+          "line": 11,
+          "start": 343
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "negation",
+      "span": {
+        "col": 0,
+        "end": 347,
+        "endCol": 19,
+        "endLine": 11,
+        "line": 11,
+        "start": 327
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "binOp",
+        "lhs": {
+          "kind": "var",
+          "name": "p",
+          "span": {
+            "col": 16,
+            "end": 365,
+            "endCol": 17,
+            "endLine": 12,
+            "line": 12,
+            "start": 364
+          }
+        },
+        "op": "<->",
+        "rhs": {
+          "kind": "var",
+          "name": "q",
+          "span": {
+            "col": 22,
+            "end": 371,
+            "endCol": 23,
+            "endLine": 12,
+            "line": 12,
+            "start": 370
+          }
+        },
+        "span": {
+          "col": 16,
+          "end": 371,
+          "endCol": 23,
+          "endLine": 12,
+          "line": 12,
+          "start": 364
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "iff_form",
+      "span": {
+        "col": 0,
+        "end": 371,
+        "endCol": 23,
+        "endLine": 12,
+        "line": 12,
+        "start": 348
+      },
+      "ty": null
+    }
+  ],
+  "doc": null,
+  "path": "lean/operators.lean",
+  "span": {
+    "col": 0,
+    "end": 371,
+    "endCol": 23,
+    "endLine": 12,
+    "line": 1,
+    "start": 0
+  }
+}

@@ -1,0 +1,414 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "modeled_tactics",
+      "proof": {
+        "kind": "by",
+        "span": {
+          "col": 31,
+          "end": 67,
+          "endCol": 9,
+          "endLine": 4,
+          "line": 1,
+          "start": 31
+        },
+        "tactics": [
+          {
+            "kind": "intro",
+            "names": [
+              "n"
+            ],
+            "span": {
+              "col": 2,
+              "end": 43,
+              "endCol": 9,
+              "endLine": 2,
+              "line": 2,
+              "start": 36
+            }
+          },
+          {
+            "kind": "apply",
+            "span": {
+              "col": 2,
+              "end": 55,
+              "endCol": 9,
+              "endLine": 3,
+              "line": 3,
+              "start": 46
+            },
+            "term": {
+              "kind": "var",
+              "name": "foo",
+              "span": {
+                "col": 8,
+                "end": 55,
+                "endCol": 9,
+                "endLine": 3,
+                "line": 3,
+                "start": 52
+              }
+            }
+          },
+          {
+            "kind": "exact",
+            "span": {
+              "col": 2,
+              "end": 67,
+              "endCol": 9,
+              "endLine": 4,
+              "line": 4,
+              "start": 58
+            },
+            "term": {
+              "kind": "var",
+              "name": "bar",
+              "span": {
+                "col": 8,
+                "end": 67,
+                "endCol": 9,
+                "endLine": 4,
+                "line": 4,
+                "start": 64
+              }
+            }
+          }
+        ]
+      },
+      "span": {
+        "col": 0,
+        "end": 67,
+        "endCol": 9,
+        "endLine": 4,
+        "line": 1,
+        "start": 0
+      },
+      "ty": {
+        "kind": "var",
+        "name": "P",
+        "span": {
+          "col": 26,
+          "end": 27,
+          "endCol": 27,
+          "endLine": 1,
+          "line": 1,
+          "start": 26
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "seq_focus_tactic",
+      "proof": {
+        "kind": "by",
+        "span": {
+          "col": 32,
+          "end": 127,
+          "endCol": 21,
+          "endLine": 7,
+          "line": 6,
+          "start": 101
+        },
+        "tactics": [
+          {
+            "kind": "seqFocus",
+            "lhs": {
+              "kind": "intro",
+              "names": [
+                "n"
+              ],
+              "span": {
+                "col": 2,
+                "end": 113,
+                "endCol": 9,
+                "endLine": 7,
+                "line": 7,
+                "start": 106
+              }
+            },
+            "rhs": {
+              "kind": "exact",
+              "span": {
+                "col": 14,
+                "end": 127,
+                "endCol": 21,
+                "endLine": 7,
+                "line": 7,
+                "start": 118
+              },
+              "term": {
+                "kind": "var",
+                "name": "bar",
+                "span": {
+                  "col": 20,
+                  "end": 127,
+                  "endCol": 21,
+                  "endLine": 7,
+                  "line": 7,
+                  "start": 124
+                }
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 127,
+              "endCol": 21,
+              "endLine": 7,
+              "line": 7,
+              "start": 106
+            }
+          }
+        ]
+      },
+      "span": {
+        "col": 0,
+        "end": 127,
+        "endCol": 21,
+        "endLine": 7,
+        "line": 6,
+        "start": 69
+      },
+      "ty": {
+        "kind": "var",
+        "name": "P",
+        "span": {
+          "col": 27,
+          "end": 97,
+          "endCol": 28,
+          "endLine": 6,
+          "line": 6,
+          "start": 96
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "unknown_tactics_are_captured",
+      "proof": {
+        "kind": "by",
+        "span": {
+          "col": 44,
+          "end": 188,
+          "endCol": 3,
+          "endLine": 11,
+          "line": 9,
+          "start": 173
+        },
+        "tactics": [
+          {
+            "kind": "unknown",
+            "name": "simp",
+            "span": {
+              "col": 2,
+              "end": 182,
+              "endCol": 3,
+              "endLine": 10,
+              "line": 10,
+              "start": 178
+            },
+            "text": "simp"
+          },
+          {
+            "kind": "unknown",
+            "name": "rfl",
+            "span": {
+              "col": 2,
+              "end": 188,
+              "endCol": 3,
+              "endLine": 11,
+              "line": 11,
+              "start": 185
+            },
+            "text": "rfl"
+          }
+        ]
+      },
+      "span": {
+        "col": 0,
+        "end": 188,
+        "endCol": 3,
+        "endLine": 11,
+        "line": 9,
+        "start": 129
+      },
+      "ty": {
+        "kind": "var",
+        "name": "P",
+        "span": {
+          "col": 39,
+          "end": 169,
+          "endCol": 40,
+          "endLine": 9,
+          "line": 9,
+          "start": 168
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "unknown_tactic_with_brackets",
+      "proof": {
+        "kind": "by",
+        "span": {
+          "col": 44,
+          "end": 254,
+          "endCol": 17,
+          "endLine": 14,
+          "line": 13,
+          "start": 234
+        },
+        "tactics": [
+          {
+            "kind": "unknown",
+            "name": "simp",
+            "span": {
+              "col": 2,
+              "end": 254,
+              "endCol": 17,
+              "endLine": 14,
+              "line": 14,
+              "start": 239
+            },
+            "text": "simp [foo, bar]"
+          }
+        ]
+      },
+      "span": {
+        "col": 0,
+        "end": 254,
+        "endCol": 17,
+        "endLine": 14,
+        "line": 13,
+        "start": 190
+      },
+      "ty": {
+        "kind": "var",
+        "name": "P",
+        "span": {
+          "col": 39,
+          "end": 230,
+          "endCol": 40,
+          "endLine": 13,
+          "line": 13,
+          "start": 229
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "constructor_tactic",
+      "proof": {
+        "kind": "by",
+        "span": {
+          "col": 34,
+          "end": 306,
+          "endCol": 3,
+          "endLine": 17,
+          "line": 16,
+          "start": 290
+        },
+        "tactics": [
+          {
+            "kind": "unknown",
+            "name": "constructor",
+            "span": {
+              "col": 2,
+              "end": 306,
+              "endCol": 3,
+              "endLine": 17,
+              "line": 17,
+              "start": 295
+            },
+            "text": "constructor"
+          }
+        ]
+      },
+      "span": {
+        "col": 0,
+        "end": 306,
+        "endCol": 3,
+        "endLine": 17,
+        "line": 16,
+        "start": 256
+      },
+      "ty": {
+        "kind": "var",
+        "name": "P",
+        "span": {
+          "col": 29,
+          "end": 286,
+          "endCol": 30,
+          "endLine": 16,
+          "line": 16,
+          "start": 285
+        }
+      }
+    }
+  ],
+  "doc": null,
+  "path": "lean/tactics.lean",
+  "span": {
+    "col": 0,
+    "end": 306,
+    "endCol": 3,
+    "endLine": 17,
+    "line": 1,
+    "start": 0
+  }
+}

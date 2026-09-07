@@ -1,0 +1,800 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "x",
+            "y"
+          ],
+          "span": {
+            "col": 20,
+            "end": 31,
+            "endCol": 31,
+            "endLine": 1,
+            "line": 1,
+            "start": 20
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat",
+            "span": {
+              "col": 27,
+              "end": 30,
+              "endCol": 28,
+              "endLine": 1,
+              "line": 1,
+              "start": 27
+            }
+          }
+        }
+      ],
+      "body": {
+        "kind": "var",
+        "name": "x",
+        "span": {
+          "col": 41,
+          "end": 42,
+          "endCol": 42,
+          "endLine": 1,
+          "line": 1,
+          "start": 41
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "explicit_binder",
+      "span": {
+        "col": 0,
+        "end": 42,
+        "endCol": 42,
+        "endLine": 1,
+        "line": 1,
+        "start": 0
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat",
+        "span": {
+          "col": 34,
+          "end": 37,
+          "endCol": 35,
+          "endLine": 1,
+          "line": 1,
+          "start": 34
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "implicit",
+          "names": [
+            "x"
+          ],
+          "span": {
+            "col": 20,
+            "end": 73,
+            "endCol": 29,
+            "endLine": 3,
+            "line": 3,
+            "start": 64
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat",
+            "span": {
+              "col": 25,
+              "end": 72,
+              "endCol": 26,
+              "endLine": 3,
+              "line": 3,
+              "start": 69
+            }
+          }
+        }
+      ],
+      "body": {
+        "kind": "var",
+        "name": "x",
+        "span": {
+          "col": 39,
+          "end": 84,
+          "endCol": 40,
+          "endLine": 3,
+          "line": 3,
+          "start": 83
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "implicit_binder",
+      "span": {
+        "col": 0,
+        "end": 84,
+        "endCol": 40,
+        "endLine": 3,
+        "line": 3,
+        "start": 44
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat",
+        "span": {
+          "col": 32,
+          "end": 79,
+          "endCol": 33,
+          "endLine": 3,
+          "line": 3,
+          "start": 76
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "strictImplicit",
+          "names": [
+            "x"
+          ],
+          "span": {
+            "col": 27,
+            "end": 126,
+            "endCol": 36,
+            "endLine": 5,
+            "line": 5,
+            "start": 113
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat",
+            "span": {
+              "col": 32,
+              "end": 123,
+              "endCol": 33,
+              "endLine": 5,
+              "line": 5,
+              "start": 120
+            }
+          }
+        }
+      ],
+      "body": {
+        "kind": "var",
+        "name": "x",
+        "span": {
+          "col": 46,
+          "end": 137,
+          "endCol": 47,
+          "endLine": 5,
+          "line": 5,
+          "start": 136
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "strict_implicit_binder",
+      "span": {
+        "col": 0,
+        "end": 137,
+        "endCol": 47,
+        "endLine": 5,
+        "line": 5,
+        "start": 86
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat",
+        "span": {
+          "col": 39,
+          "end": 132,
+          "endCol": 40,
+          "endLine": 5,
+          "line": 5,
+          "start": 129
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "instImplicit",
+          "names": [],
+          "span": {
+            "col": 25,
+            "end": 169,
+            "endCol": 30,
+            "endLine": 7,
+            "line": 7,
+            "start": 164
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Foo",
+            "span": {
+              "col": 26,
+              "end": 168,
+              "endCol": 27,
+              "endLine": 7,
+              "line": 7,
+              "start": 165
+            }
+          }
+        }
+      ],
+      "body": {
+        "kind": "var",
+        "name": "zero",
+        "span": {
+          "col": 40,
+          "end": 183,
+          "endCol": 41,
+          "endLine": 7,
+          "line": 7,
+          "start": 179
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "inst_implicit_binder",
+      "span": {
+        "col": 0,
+        "end": 183,
+        "endCol": 41,
+        "endLine": 7,
+        "line": 7,
+        "start": 139
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat",
+        "span": {
+          "col": 33,
+          "end": 175,
+          "endCol": 34,
+          "endLine": 7,
+          "line": 7,
+          "start": 172
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "x"
+          ],
+          "span": {
+            "col": 18,
+            "end": 212,
+            "endCol": 27,
+            "endLine": 9,
+            "line": 9,
+            "start": 203
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat",
+            "span": {
+              "col": 23,
+              "end": 211,
+              "endCol": 24,
+              "endLine": 9,
+              "line": 9,
+              "start": 208
+            }
+          }
+        },
+        {
+          "info": "implicit",
+          "names": [
+            "y"
+          ],
+          "span": {
+            "col": 28,
+            "end": 222,
+            "endCol": 37,
+            "endLine": 9,
+            "line": 9,
+            "start": 213
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat",
+            "span": {
+              "col": 33,
+              "end": 221,
+              "endCol": 34,
+              "endLine": 9,
+              "line": 9,
+              "start": 218
+            }
+          }
+        },
+        {
+          "info": "instImplicit",
+          "names": [],
+          "span": {
+            "col": 38,
+            "end": 229,
+            "endCol": 44,
+            "endLine": 9,
+            "line": 9,
+            "start": 223
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Inst",
+            "span": {
+              "col": 39,
+              "end": 228,
+              "endCol": 40,
+              "endLine": 9,
+              "line": 9,
+              "start": 224
+            }
+          }
+        }
+      ],
+      "body": {
+        "kind": "var",
+        "name": "x",
+        "span": {
+          "col": 54,
+          "end": 240,
+          "endCol": 55,
+          "endLine": 9,
+          "line": 9,
+          "start": 239
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "mixed_binders",
+      "span": {
+        "col": 0,
+        "end": 240,
+        "endCol": 55,
+        "endLine": 9,
+        "line": 9,
+        "start": 185
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat",
+        "span": {
+          "col": 47,
+          "end": 235,
+          "endCol": 48,
+          "endLine": 9,
+          "line": 9,
+          "start": 232
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "shared_type_binder",
+      "proof": {
+        "kind": "by",
+        "span": {
+          "col": 56,
+          "end": 397,
+          "endCol": 9,
+          "endLine": 14,
+          "line": 12,
+          "start": 364
+        },
+        "tactics": [
+          {
+            "kind": "intro",
+            "names": [
+              "x",
+              "y"
+            ],
+            "span": {
+              "col": 2,
+              "end": 378,
+              "endCol": 11,
+              "endLine": 13,
+              "line": 13,
+              "start": 369
+            }
+          },
+          {
+            "kind": "exact",
+            "span": {
+              "col": 2,
+              "end": 397,
+              "endCol": 9,
+              "endLine": 14,
+              "line": 14,
+              "start": 381
+            },
+            "term": {
+              "kind": "var",
+              "name": "rfl_marker",
+              "span": {
+                "col": 8,
+                "end": 397,
+                "endCol": 9,
+                "endLine": 14,
+                "line": 14,
+                "start": 387
+              }
+            }
+          }
+        ]
+      },
+      "span": {
+        "col": 0,
+        "end": 397,
+        "endCol": 9,
+        "endLine": 14,
+        "line": 12,
+        "start": 308
+      },
+      "ty": {
+        "binders": [
+          {
+            "info": "explicit",
+            "names": [
+              "x",
+              "y"
+            ],
+            "span": {
+              "col": 36,
+              "end": 353,
+              "endCol": 43,
+              "endLine": 12,
+              "line": 12,
+              "start": 344
+            },
+            "ty": {
+              "kind": "var",
+              "name": "Nat",
+              "span": {
+                "col": 42,
+                "end": 353,
+                "endCol": 43,
+                "endLine": 12,
+                "line": 12,
+                "start": 350
+              }
+            }
+          }
+        ],
+        "body": {
+          "kind": "binOp",
+          "lhs": {
+            "kind": "var",
+            "name": "x",
+            "span": {
+              "col": 47,
+              "end": 356,
+              "endCol": 48,
+              "endLine": 12,
+              "line": 12,
+              "start": 355
+            }
+          },
+          "op": "=",
+          "rhs": {
+            "kind": "var",
+            "name": "x",
+            "span": {
+              "col": 51,
+              "end": 360,
+              "endCol": 52,
+              "endLine": 12,
+              "line": 12,
+              "start": 359
+            }
+          },
+          "span": {
+            "col": 47,
+            "end": 360,
+            "endCol": 52,
+            "endLine": 12,
+            "line": 12,
+            "start": 355
+          }
+        },
+        "kind": "forall",
+        "span": {
+          "col": 29,
+          "end": 360,
+          "endCol": 52,
+          "endLine": 12,
+          "line": 12,
+          "start": 337
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "binders": [
+          {
+            "info": "explicit",
+            "names": [
+              "x",
+              "y"
+            ],
+            "span": {
+              "col": 27,
+              "end": 435,
+              "endCol": 34,
+              "endLine": 16,
+              "line": 16,
+              "start": 426
+            },
+            "ty": {
+              "kind": "var",
+              "name": "Nat",
+              "span": {
+                "col": 33,
+                "end": 435,
+                "endCol": 34,
+                "endLine": 16,
+                "line": 16,
+                "start": 432
+              }
+            }
+          }
+        ],
+        "body": {
+          "kind": "var",
+          "name": "x",
+          "span": {
+            "col": 40,
+            "end": 440,
+            "endCol": 41,
+            "endLine": 16,
+            "line": 16,
+            "start": 439
+          }
+        },
+        "kind": "fun",
+        "span": {
+          "col": 23,
+          "end": 440,
+          "endCol": 41,
+          "endLine": 16,
+          "line": 16,
+          "start": 422
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "fun_shared_type",
+      "span": {
+        "col": 0,
+        "end": 440,
+        "endCol": 41,
+        "endLine": 16,
+        "line": 16,
+        "start": 399
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "n"
+          ],
+          "span": {
+            "col": 20,
+            "end": 471,
+            "endCol": 29,
+            "endLine": 18,
+            "line": 18,
+            "start": 462
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat",
+            "span": {
+              "col": 25,
+              "end": 470,
+              "endCol": 26,
+              "endLine": 18,
+              "line": 18,
+              "start": 467
+            }
+          }
+        }
+      ],
+      "body": {
+        "binders": [
+          {
+            "info": "explicit",
+            "names": [
+              "m"
+            ],
+            "span": {
+              "col": 56,
+              "end": 499,
+              "endCol": 57,
+              "endLine": 18,
+              "line": 18,
+              "start": 498
+            },
+            "ty": null
+          }
+        ],
+        "body": {
+          "kind": "var",
+          "name": "m",
+          "span": {
+            "col": 61,
+            "end": 504,
+            "endCol": 62,
+            "endLine": 18,
+            "line": 18,
+            "start": 503
+          }
+        },
+        "kind": "fun",
+        "span": {
+          "col": 52,
+          "end": 504,
+          "endCol": 62,
+          "endLine": 18,
+          "line": 18,
+          "start": 494
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "dependent_arrow",
+      "span": {
+        "col": 0,
+        "end": 504,
+        "endCol": 62,
+        "endLine": 18,
+        "line": 18,
+        "start": 442
+      },
+      "ty": {
+        "binders": [
+          {
+            "info": "explicit",
+            "names": [
+              "m"
+            ],
+            "span": {
+              "col": 32,
+              "end": 483,
+              "endCol": 41,
+              "endLine": 18,
+              "line": 18,
+              "start": 474
+            },
+            "ty": {
+              "kind": "var",
+              "name": "Nat",
+              "span": {
+                "col": 37,
+                "end": 482,
+                "endCol": 38,
+                "endLine": 18,
+                "line": 18,
+                "start": 479
+              }
+            }
+          }
+        ],
+        "body": {
+          "kind": "var",
+          "name": "Nat",
+          "span": {
+            "col": 45,
+            "end": 490,
+            "endCol": 46,
+            "endLine": 18,
+            "line": 18,
+            "start": 487
+          }
+        },
+        "kind": "forall",
+        "span": {
+          "col": 32,
+          "end": 490,
+          "endCol": 46,
+          "endLine": 18,
+          "line": 18,
+          "start": 474
+        }
+      }
+    }
+  ],
+  "doc": null,
+  "path": "lean/binders.lean",
+  "span": {
+    "col": 0,
+    "end": 504,
+    "endCol": 62,
+    "endLine": 18,
+    "line": 1,
+    "start": 0
+  }
+}

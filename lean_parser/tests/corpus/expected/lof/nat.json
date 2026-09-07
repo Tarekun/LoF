@@ -1,0 +1,2249 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "z",
+          "span": {
+            "col": 2,
+            "end": 75,
+            "endCol": 9,
+            "endLine": 3,
+            "line": 3,
+            "start": 65
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 8,
+              "end": 75,
+              "endCol": 9,
+              "endLine": 3,
+              "line": 3,
+              "start": 71
+            }
+          }
+        },
+        {
+          "binders": [],
+          "doc": null,
+          "name": "s",
+          "span": {
+            "col": 2,
+            "end": 96,
+            "endCol": 17,
+            "endLine": 4,
+            "line": 4,
+            "start": 78
+          },
+          "ty": {
+            "codomain": {
+              "kind": "var",
+              "name": "Nat'",
+              "span": {
+                "col": 16,
+                "end": 96,
+                "endCol": 17,
+                "endLine": 4,
+                "line": 4,
+                "start": 92
+              }
+            },
+            "domain": {
+              "kind": "var",
+              "name": "Nat'",
+              "span": {
+                "col": 8,
+                "end": 88,
+                "endCol": 9,
+                "endLine": 4,
+                "line": 4,
+                "start": 84
+              }
+            },
+            "kind": "arrow",
+            "span": {
+              "col": 8,
+              "end": 96,
+              "endCol": 17,
+              "endLine": 4,
+              "line": 4,
+              "start": 84
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "Nat'",
+      "span": {
+        "col": 0,
+        "end": 96,
+        "endCol": 17,
+        "endLine": 4,
+        "line": 2,
+        "start": 35
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "type"
+        },
+        "span": {
+          "col": 17,
+          "end": 56,
+          "endCol": 18,
+          "endLine": 2,
+          "line": 2,
+          "start": 52
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "lez",
+          "span": {
+            "col": 2,
+            "end": 198,
+            "endCol": 34,
+            "endLine": 8,
+            "line": 8,
+            "start": 166
+          },
+          "ty": {
+            "binders": [
+              {
+                "info": "explicit",
+                "names": [
+                  "n"
+                ],
+                "span": {
+                  "col": 17,
+                  "end": 189,
+                  "endCol": 22,
+                  "endLine": 8,
+                  "line": 8,
+                  "start": 181
+                },
+                "ty": {
+                  "kind": "var",
+                  "name": "Nat'",
+                  "span": {
+                    "col": 21,
+                    "end": 189,
+                    "endCol": 22,
+                    "endLine": 8,
+                    "line": 8,
+                    "start": 185
+                  }
+                }
+              }
+            ],
+            "body": {
+              "args": [
+                {
+                  "kind": "var",
+                  "name": "z",
+                  "span": {
+                    "col": 31,
+                    "end": 196,
+                    "endCol": 32,
+                    "endLine": 8,
+                    "line": 8,
+                    "start": 195
+                  }
+                },
+                {
+                  "kind": "var",
+                  "name": "n",
+                  "span": {
+                    "col": 33,
+                    "end": 198,
+                    "endCol": 34,
+                    "endLine": 8,
+                    "line": 8,
+                    "start": 197
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "le'",
+                "span": {
+                  "col": 27,
+                  "end": 194,
+                  "endCol": 28,
+                  "endLine": 8,
+                  "line": 8,
+                  "start": 191
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 27,
+                "end": 198,
+                "endCol": 34,
+                "endLine": 8,
+                "line": 8,
+                "start": 191
+              }
+            },
+            "kind": "forall",
+            "span": {
+              "col": 10,
+              "end": 198,
+              "endCol": 34,
+              "endLine": 8,
+              "line": 8,
+              "start": 174
+            }
+          }
+        },
+        {
+          "binders": [],
+          "doc": null,
+          "name": "les",
+          "span": {
+            "col": 2,
+            "end": 269,
+            "endCol": 70,
+            "endLine": 9,
+            "line": 9,
+            "start": 201
+          },
+          "ty": {
+            "binders": [
+              {
+                "info": "explicit",
+                "names": [
+                  "n"
+                ],
+                "span": {
+                  "col": 17,
+                  "end": 224,
+                  "endCol": 22,
+                  "endLine": 9,
+                  "line": 9,
+                  "start": 216
+                },
+                "ty": {
+                  "kind": "var",
+                  "name": "Nat'",
+                  "span": {
+                    "col": 21,
+                    "end": 224,
+                    "endCol": 22,
+                    "endLine": 9,
+                    "line": 9,
+                    "start": 220
+                  }
+                }
+              }
+            ],
+            "body": {
+              "binders": [
+                {
+                  "info": "explicit",
+                  "names": [
+                    "m"
+                  ],
+                  "span": {
+                    "col": 34,
+                    "end": 241,
+                    "endCol": 39,
+                    "endLine": 9,
+                    "line": 9,
+                    "start": 233
+                  },
+                  "ty": {
+                    "kind": "var",
+                    "name": "Nat'",
+                    "span": {
+                      "col": 38,
+                      "end": 241,
+                      "endCol": 39,
+                      "endLine": 9,
+                      "line": 9,
+                      "start": 237
+                    }
+                  }
+                }
+              ],
+              "body": {
+                "codomain": {
+                  "args": [
+                    {
+                      "args": [
+                        {
+                          "kind": "var",
+                          "name": "n",
+                          "span": {
+                            "col": 62,
+                            "end": 262,
+                            "endCol": 63,
+                            "endLine": 9,
+                            "line": 9,
+                            "start": 261
+                          }
+                        }
+                      ],
+                      "func": {
+                        "kind": "var",
+                        "name": "s",
+                        "span": {
+                          "col": 60,
+                          "end": 260,
+                          "endCol": 61,
+                          "endLine": 9,
+                          "line": 9,
+                          "start": 259
+                        }
+                      },
+                      "kind": "app",
+                      "span": {
+                        "col": 59,
+                        "end": 263,
+                        "endCol": 64,
+                        "endLine": 9,
+                        "line": 9,
+                        "start": 258
+                      }
+                    },
+                    {
+                      "args": [
+                        {
+                          "kind": "var",
+                          "name": "m",
+                          "span": {
+                            "col": 68,
+                            "end": 268,
+                            "endCol": 69,
+                            "endLine": 9,
+                            "line": 9,
+                            "start": 267
+                          }
+                        }
+                      ],
+                      "func": {
+                        "kind": "var",
+                        "name": "s",
+                        "span": {
+                          "col": 66,
+                          "end": 266,
+                          "endCol": 67,
+                          "endLine": 9,
+                          "line": 9,
+                          "start": 265
+                        }
+                      },
+                      "kind": "app",
+                      "span": {
+                        "col": 65,
+                        "end": 269,
+                        "endCol": 70,
+                        "endLine": 9,
+                        "line": 9,
+                        "start": 264
+                      }
+                    }
+                  ],
+                  "func": {
+                    "kind": "var",
+                    "name": "le'",
+                    "span": {
+                      "col": 55,
+                      "end": 257,
+                      "endCol": 56,
+                      "endLine": 9,
+                      "line": 9,
+                      "start": 254
+                    }
+                  },
+                  "kind": "app",
+                  "span": {
+                    "col": 55,
+                    "end": 269,
+                    "endCol": 70,
+                    "endLine": 9,
+                    "line": 9,
+                    "start": 254
+                  }
+                },
+                "domain": {
+                  "args": [
+                    {
+                      "kind": "var",
+                      "name": "n",
+                      "span": {
+                        "col": 48,
+                        "end": 248,
+                        "endCol": 49,
+                        "endLine": 9,
+                        "line": 9,
+                        "start": 247
+                      }
+                    },
+                    {
+                      "kind": "var",
+                      "name": "m",
+                      "span": {
+                        "col": 50,
+                        "end": 250,
+                        "endCol": 51,
+                        "endLine": 9,
+                        "line": 9,
+                        "start": 249
+                      }
+                    }
+                  ],
+                  "func": {
+                    "kind": "var",
+                    "name": "le'",
+                    "span": {
+                      "col": 44,
+                      "end": 246,
+                      "endCol": 45,
+                      "endLine": 9,
+                      "line": 9,
+                      "start": 243
+                    }
+                  },
+                  "kind": "app",
+                  "span": {
+                    "col": 44,
+                    "end": 250,
+                    "endCol": 51,
+                    "endLine": 9,
+                    "line": 9,
+                    "start": 243
+                  }
+                },
+                "kind": "arrow",
+                "span": {
+                  "col": 44,
+                  "end": 269,
+                  "endCol": 70,
+                  "endLine": 9,
+                  "line": 9,
+                  "start": 243
+                }
+              },
+              "kind": "forall",
+              "span": {
+                "col": 27,
+                "end": 269,
+                "endCol": 70,
+                "endLine": 9,
+                "line": 9,
+                "start": 226
+              }
+            },
+            "kind": "forall",
+            "span": {
+              "col": 10,
+              "end": 269,
+              "endCol": 70,
+              "endLine": 9,
+              "line": 9,
+              "start": 209
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "le'",
+      "span": {
+        "col": 0,
+        "end": 269,
+        "endCol": 70,
+        "endLine": 9,
+        "line": 7,
+        "start": 121
+      },
+      "ty": {
+        "codomain": {
+          "codomain": {
+            "kind": "sort",
+            "level": null,
+            "sort": {
+              "kind": "prop"
+            },
+            "span": {
+              "col": 32,
+              "end": 157,
+              "endCol": 33,
+              "endLine": 7,
+              "line": 7,
+              "start": 153
+            }
+          },
+          "domain": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 24,
+              "end": 149,
+              "endCol": 25,
+              "endLine": 7,
+              "line": 7,
+              "start": 145
+            }
+          },
+          "kind": "arrow",
+          "span": {
+            "col": 24,
+            "end": 157,
+            "endCol": 33,
+            "endLine": 7,
+            "line": 7,
+            "start": 145
+          }
+        },
+        "domain": {
+          "kind": "var",
+          "name": "Nat'",
+          "span": {
+            "col": 16,
+            "end": 141,
+            "endCol": 17,
+            "endLine": 7,
+            "line": 7,
+            "start": 137
+          }
+        },
+        "kind": "arrow",
+        "span": {
+          "col": 16,
+          "end": 157,
+          "endCol": 33,
+          "endLine": 7,
+          "line": 7,
+          "start": 137
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "n"
+          ],
+          "span": {
+            "col": 9,
+            "end": 345,
+            "endCol": 19,
+            "endLine": 12,
+            "line": 12,
+            "start": 335
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 14,
+              "end": 344,
+              "endCol": 15,
+              "endLine": 12,
+              "line": 12,
+              "start": 340
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "z",
+                "span": {
+                  "col": 4,
+                  "end": 377,
+                  "endCol": 5,
+                  "endLine": 14,
+                  "line": 14,
+                  "start": 375
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "dotIdent",
+              "name": "z",
+              "span": {
+                "col": 10,
+                "end": 383,
+                "endCol": 11,
+                "endLine": 14,
+                "line": 14,
+                "start": 381
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 383,
+              "endCol": 11,
+              "endLine": 14,
+              "line": 14,
+              "start": 373
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "nn",
+                    "span": {
+                      "col": 7,
+                      "end": 393,
+                      "endCol": 8,
+                      "endLine": 15,
+                      "line": 15,
+                      "start": 391
+                    }
+                  }
+                ],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "s",
+                "span": {
+                  "col": 4,
+                  "end": 393,
+                  "endCol": 8,
+                  "endLine": 15,
+                  "line": 15,
+                  "start": 388
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "var",
+              "name": "nn",
+              "span": {
+                "col": 13,
+                "end": 399,
+                "endCol": 14,
+                "endLine": 15,
+                "line": 15,
+                "start": 397
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 399,
+              "endCol": 14,
+              "endLine": 15,
+              "line": 15,
+              "start": 386
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "n",
+            "span": {
+              "col": 8,
+              "end": 365,
+              "endCol": 9,
+              "endLine": 13,
+              "line": 13,
+              "start": 364
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 399,
+          "endCol": 14,
+          "endLine": 15,
+          "line": 13,
+          "start": 358
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "pred",
+      "span": {
+        "col": 0,
+        "end": 399,
+        "endCol": 14,
+        "endLine": 15,
+        "line": 12,
+        "start": 326
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat'",
+        "span": {
+          "col": 22,
+          "end": 352,
+          "endCol": 23,
+          "endLine": 12,
+          "line": 12,
+          "start": 348
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "n",
+            "m"
+          ],
+          "span": {
+            "col": 9,
+            "end": 422,
+            "endCol": 21,
+            "endLine": 17,
+            "line": 17,
+            "start": 410
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 16,
+              "end": 421,
+              "endCol": 17,
+              "endLine": 17,
+              "line": 17,
+              "start": 417
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "z",
+                "span": {
+                  "col": 4,
+                  "end": 454,
+                  "endCol": 5,
+                  "endLine": 19,
+                  "line": 19,
+                  "start": 452
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "var",
+              "name": "m",
+              "span": {
+                "col": 10,
+                "end": 459,
+                "endCol": 11,
+                "endLine": 19,
+                "line": 19,
+                "start": 458
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 459,
+              "endCol": 11,
+              "endLine": 19,
+              "line": 19,
+              "start": 450
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "nn",
+                    "span": {
+                      "col": 7,
+                      "end": 469,
+                      "endCol": 8,
+                      "endLine": 20,
+                      "line": 20,
+                      "start": 467
+                    }
+                  }
+                ],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "s",
+                "span": {
+                  "col": 4,
+                  "end": 469,
+                  "endCol": 8,
+                  "endLine": 20,
+                  "line": 20,
+                  "start": 464
+                }
+              }
+            ],
+            "rhs": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "kind": "var",
+                      "name": "nn",
+                      "span": {
+                        "col": 22,
+                        "end": 484,
+                        "endCol": 23,
+                        "endLine": 20,
+                        "line": 20,
+                        "start": 482
+                      }
+                    },
+                    {
+                      "kind": "var",
+                      "name": "m",
+                      "span": {
+                        "col": 25,
+                        "end": 486,
+                        "endCol": 26,
+                        "endLine": 20,
+                        "line": 20,
+                        "start": 485
+                      }
+                    }
+                  ],
+                  "func": {
+                    "kind": "var",
+                    "name": "plus",
+                    "span": {
+                      "col": 17,
+                      "end": 481,
+                      "endCol": 18,
+                      "endLine": 20,
+                      "line": 20,
+                      "start": 477
+                    }
+                  },
+                  "kind": "app",
+                  "span": {
+                    "col": 16,
+                    "end": 487,
+                    "endCol": 27,
+                    "endLine": 20,
+                    "line": 20,
+                    "start": 476
+                  }
+                }
+              ],
+              "func": {
+                "kind": "dotIdent",
+                "name": "s",
+                "span": {
+                  "col": 13,
+                  "end": 475,
+                  "endCol": 14,
+                  "endLine": 20,
+                  "line": 20,
+                  "start": 473
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 13,
+                "end": 487,
+                "endCol": 27,
+                "endLine": 20,
+                "line": 20,
+                "start": 473
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 487,
+              "endCol": 27,
+              "endLine": 20,
+              "line": 20,
+              "start": 462
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "n",
+            "span": {
+              "col": 8,
+              "end": 442,
+              "endCol": 9,
+              "endLine": 18,
+              "line": 18,
+              "start": 441
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 487,
+          "endCol": 27,
+          "endLine": 20,
+          "line": 18,
+          "start": 435
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "plus",
+      "span": {
+        "col": 0,
+        "end": 487,
+        "endCol": 27,
+        "endLine": 20,
+        "line": 17,
+        "start": 401
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat'",
+        "span": {
+          "col": 24,
+          "end": 429,
+          "endCol": 25,
+          "endLine": 17,
+          "line": 17,
+          "start": 425
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "n",
+            "m"
+          ],
+          "span": {
+            "col": 10,
+            "end": 753,
+            "endCol": 22,
+            "endLine": 27,
+            "line": 27,
+            "start": 741
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 17,
+              "end": 752,
+              "endCol": 18,
+              "endLine": 27,
+              "line": 27,
+              "start": 748
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "z",
+                "span": {
+                  "col": 4,
+                  "end": 785,
+                  "endCol": 5,
+                  "endLine": 29,
+                  "line": 29,
+                  "start": 783
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "dotIdent",
+              "name": "z",
+              "span": {
+                "col": 10,
+                "end": 791,
+                "endCol": 11,
+                "endLine": 29,
+                "line": 29,
+                "start": 789
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 791,
+              "endCol": 11,
+              "endLine": 29,
+              "line": 29,
+              "start": 781
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "nn",
+                    "span": {
+                      "col": 7,
+                      "end": 801,
+                      "endCol": 8,
+                      "endLine": 30,
+                      "line": 30,
+                      "start": 799
+                    }
+                  }
+                ],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "s",
+                "span": {
+                  "col": 4,
+                  "end": 801,
+                  "endCol": 8,
+                  "endLine": 30,
+                  "line": 30,
+                  "start": 796
+                }
+              }
+            ],
+            "rhs": {
+              "alts": [
+                {
+                  "patterns": [
+                    {
+                      "args": [],
+                      "dotted": true,
+                      "kind": "ctor",
+                      "name": "z",
+                      "span": {
+                        "col": 6,
+                        "end": 830,
+                        "endCol": 7,
+                        "endLine": 32,
+                        "line": 32,
+                        "start": 828
+                      }
+                    }
+                  ],
+                  "rhs": {
+                    "kind": "var",
+                    "name": "n",
+                    "span": {
+                      "col": 12,
+                      "end": 835,
+                      "endCol": 13,
+                      "endLine": 32,
+                      "line": 32,
+                      "start": 834
+                    }
+                  },
+                  "span": {
+                    "col": 4,
+                    "end": 835,
+                    "endCol": 13,
+                    "endLine": 32,
+                    "line": 32,
+                    "start": 826
+                  }
+                },
+                {
+                  "patterns": [
+                    {
+                      "args": [
+                        {
+                          "kind": "var",
+                          "name": "mm",
+                          "span": {
+                            "col": 9,
+                            "end": 847,
+                            "endCol": 10,
+                            "endLine": 33,
+                            "line": 33,
+                            "start": 845
+                          }
+                        }
+                      ],
+                      "dotted": true,
+                      "kind": "ctor",
+                      "name": "s",
+                      "span": {
+                        "col": 6,
+                        "end": 847,
+                        "endCol": 10,
+                        "endLine": 33,
+                        "line": 33,
+                        "start": 842
+                      }
+                    }
+                  ],
+                  "rhs": {
+                    "args": [
+                      {
+                        "kind": "var",
+                        "name": "nn",
+                        "span": {
+                          "col": 21,
+                          "end": 859,
+                          "endCol": 22,
+                          "endLine": 33,
+                          "line": 33,
+                          "start": 857
+                        }
+                      },
+                      {
+                        "kind": "var",
+                        "name": "mm",
+                        "span": {
+                          "col": 24,
+                          "end": 862,
+                          "endCol": 25,
+                          "endLine": 33,
+                          "line": 33,
+                          "start": 860
+                        }
+                      }
+                    ],
+                    "func": {
+                      "kind": "var",
+                      "name": "minus",
+                      "span": {
+                        "col": 15,
+                        "end": 856,
+                        "endCol": 16,
+                        "endLine": 33,
+                        "line": 33,
+                        "start": 851
+                      }
+                    },
+                    "kind": "app",
+                    "span": {
+                      "col": 15,
+                      "end": 862,
+                      "endCol": 25,
+                      "endLine": 33,
+                      "line": 33,
+                      "start": 851
+                    }
+                  },
+                  "span": {
+                    "col": 4,
+                    "end": 862,
+                    "endCol": 25,
+                    "endLine": 33,
+                    "line": 33,
+                    "start": 840
+                  }
+                }
+              ],
+              "kind": "match",
+              "scrutinees": [
+                {
+                  "kind": "var",
+                  "name": "m",
+                  "span": {
+                    "col": 10,
+                    "end": 816,
+                    "endCol": 11,
+                    "endLine": 31,
+                    "line": 31,
+                    "start": 815
+                  }
+                }
+              ],
+              "span": {
+                "col": 4,
+                "end": 862,
+                "endCol": 25,
+                "endLine": 33,
+                "line": 31,
+                "start": 809
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 862,
+              "endCol": 25,
+              "endLine": 33,
+              "line": 30,
+              "start": 794
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "n",
+            "span": {
+              "col": 8,
+              "end": 773,
+              "endCol": 9,
+              "endLine": 28,
+              "line": 28,
+              "start": 772
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 862,
+          "endCol": 25,
+          "endLine": 33,
+          "line": 28,
+          "start": 766
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "minus",
+      "span": {
+        "col": 0,
+        "end": 862,
+        "endCol": 25,
+        "endLine": 33,
+        "line": 27,
+        "start": 731
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat'",
+        "span": {
+          "col": 25,
+          "end": 760,
+          "endCol": 26,
+          "endLine": 27,
+          "line": 27,
+          "start": 756
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "n",
+            "m"
+          ],
+          "span": {
+            "col": 10,
+            "end": 886,
+            "endCol": 22,
+            "endLine": 35,
+            "line": 35,
+            "start": 874
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 17,
+              "end": 885,
+              "endCol": 18,
+              "endLine": 35,
+              "line": 35,
+              "start": 881
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "z",
+                "span": {
+                  "col": 4,
+                  "end": 918,
+                  "endCol": 5,
+                  "endLine": 37,
+                  "line": 37,
+                  "start": 916
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "dotIdent",
+              "name": "z",
+              "span": {
+                "col": 10,
+                "end": 924,
+                "endCol": 11,
+                "endLine": 37,
+                "line": 37,
+                "start": 922
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 924,
+              "endCol": 11,
+              "endLine": 37,
+              "line": 37,
+              "start": 914
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "nn",
+                    "span": {
+                      "col": 7,
+                      "end": 934,
+                      "endCol": 8,
+                      "endLine": 38,
+                      "line": 38,
+                      "start": 932
+                    }
+                  }
+                ],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "s",
+                "span": {
+                  "col": 4,
+                  "end": 934,
+                  "endCol": 8,
+                  "endLine": 38,
+                  "line": 38,
+                  "start": 929
+                }
+              }
+            ],
+            "rhs": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "kind": "var",
+                      "name": "nn",
+                      "span": {
+                        "col": 25,
+                        "end": 952,
+                        "endCol": 26,
+                        "endLine": 38,
+                        "line": 38,
+                        "start": 950
+                      }
+                    },
+                    {
+                      "kind": "var",
+                      "name": "m",
+                      "span": {
+                        "col": 28,
+                        "end": 954,
+                        "endCol": 29,
+                        "endLine": 38,
+                        "line": 38,
+                        "start": 953
+                      }
+                    }
+                  ],
+                  "func": {
+                    "kind": "var",
+                    "name": "times",
+                    "span": {
+                      "col": 19,
+                      "end": 949,
+                      "endCol": 20,
+                      "endLine": 38,
+                      "line": 38,
+                      "start": 944
+                    }
+                  },
+                  "kind": "app",
+                  "span": {
+                    "col": 18,
+                    "end": 955,
+                    "endCol": 30,
+                    "endLine": 38,
+                    "line": 38,
+                    "start": 943
+                  }
+                },
+                {
+                  "kind": "var",
+                  "name": "m",
+                  "span": {
+                    "col": 31,
+                    "end": 957,
+                    "endCol": 32,
+                    "endLine": 38,
+                    "line": 38,
+                    "start": 956
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "plus",
+                "span": {
+                  "col": 13,
+                  "end": 942,
+                  "endCol": 14,
+                  "endLine": 38,
+                  "line": 38,
+                  "start": 938
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 13,
+                "end": 957,
+                "endCol": 32,
+                "endLine": 38,
+                "line": 38,
+                "start": 938
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 957,
+              "endCol": 32,
+              "endLine": 38,
+              "line": 38,
+              "start": 927
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "n",
+            "span": {
+              "col": 8,
+              "end": 906,
+              "endCol": 9,
+              "endLine": 36,
+              "line": 36,
+              "start": 905
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 957,
+          "endCol": 32,
+          "endLine": 38,
+          "line": 36,
+          "start": 899
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "times",
+      "span": {
+        "col": 0,
+        "end": 957,
+        "endCol": 32,
+        "endLine": 38,
+        "line": 35,
+        "start": 864
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat'",
+        "span": {
+          "col": 25,
+          "end": 893,
+          "endCol": 26,
+          "endLine": 35,
+          "line": 35,
+          "start": 889
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "n",
+            "m",
+            "acc"
+          ],
+          "span": {
+            "col": 15,
+            "end": 999,
+            "endCol": 31,
+            "endLine": 41,
+            "line": 41,
+            "start": 983
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 26,
+              "end": 998,
+              "endCol": 27,
+              "endLine": 41,
+              "line": 41,
+              "start": 994
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "z",
+                "span": {
+                  "col": 4,
+                  "end": 1031,
+                  "endCol": 5,
+                  "endLine": 43,
+                  "line": 43,
+                  "start": 1029
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "var",
+              "name": "acc",
+              "span": {
+                "col": 10,
+                "end": 1038,
+                "endCol": 11,
+                "endLine": 43,
+                "line": 43,
+                "start": 1035
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 1038,
+              "endCol": 11,
+              "endLine": 43,
+              "line": 43,
+              "start": 1027
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "nn",
+                    "span": {
+                      "col": 7,
+                      "end": 1048,
+                      "endCol": 8,
+                      "endLine": 44,
+                      "line": 44,
+                      "start": 1046
+                    }
+                  }
+                ],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "s",
+                "span": {
+                  "col": 4,
+                  "end": 1048,
+                  "endCol": 8,
+                  "endLine": 44,
+                  "line": 44,
+                  "start": 1043
+                }
+              }
+            ],
+            "rhs": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "kind": "var",
+                      "name": "n",
+                      "span": {
+                        "col": 31,
+                        "end": 1071,
+                        "endCol": 32,
+                        "endLine": 44,
+                        "line": 44,
+                        "start": 1070
+                      }
+                    },
+                    {
+                      "kind": "var",
+                      "name": "m",
+                      "span": {
+                        "col": 33,
+                        "end": 1073,
+                        "endCol": 34,
+                        "endLine": 44,
+                        "line": 44,
+                        "start": 1072
+                      }
+                    }
+                  ],
+                  "func": {
+                    "kind": "var",
+                    "name": "minus",
+                    "span": {
+                      "col": 25,
+                      "end": 1069,
+                      "endCol": 26,
+                      "endLine": 44,
+                      "line": 44,
+                      "start": 1064
+                    }
+                  },
+                  "kind": "app",
+                  "span": {
+                    "col": 24,
+                    "end": 1074,
+                    "endCol": 35,
+                    "endLine": 44,
+                    "line": 44,
+                    "start": 1063
+                  }
+                },
+                {
+                  "kind": "var",
+                  "name": "m",
+                  "span": {
+                    "col": 36,
+                    "end": 1076,
+                    "endCol": 37,
+                    "endLine": 44,
+                    "line": 44,
+                    "start": 1075
+                  }
+                },
+                {
+                  "args": [
+                    {
+                      "kind": "var",
+                      "name": "acc",
+                      "span": {
+                        "col": 41,
+                        "end": 1083,
+                        "endCol": 42,
+                        "endLine": 44,
+                        "line": 44,
+                        "start": 1080
+                      }
+                    }
+                  ],
+                  "func": {
+                    "kind": "var",
+                    "name": "s",
+                    "span": {
+                      "col": 39,
+                      "end": 1079,
+                      "endCol": 40,
+                      "endLine": 44,
+                      "line": 44,
+                      "start": 1078
+                    }
+                  },
+                  "kind": "app",
+                  "span": {
+                    "col": 38,
+                    "end": 1084,
+                    "endCol": 45,
+                    "endLine": 44,
+                    "line": 44,
+                    "start": 1077
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "divwithacc",
+                "span": {
+                  "col": 13,
+                  "end": 1062,
+                  "endCol": 14,
+                  "endLine": 44,
+                  "line": 44,
+                  "start": 1052
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 13,
+                "end": 1084,
+                "endCol": 45,
+                "endLine": 44,
+                "line": 44,
+                "start": 1052
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 1084,
+              "endCol": 45,
+              "endLine": 44,
+              "line": 44,
+              "start": 1041
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "n",
+            "span": {
+              "col": 8,
+              "end": 1019,
+              "endCol": 9,
+              "endLine": 42,
+              "line": 42,
+              "start": 1018
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 1084,
+          "endCol": 45,
+          "endLine": 44,
+          "line": 42,
+          "start": 1012
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "divwithacc",
+      "span": {
+        "col": 0,
+        "end": 1084,
+        "endCol": 45,
+        "endLine": 44,
+        "line": 41,
+        "start": 968
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat'",
+        "span": {
+          "col": 34,
+          "end": 1006,
+          "endCol": 35,
+          "endLine": 41,
+          "line": 41,
+          "start": 1002
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "n",
+            "m"
+          ],
+          "span": {
+            "col": 8,
+            "end": 1106,
+            "endCol": 20,
+            "endLine": 46,
+            "line": 46,
+            "start": 1094
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 15,
+              "end": 1105,
+              "endCol": 16,
+              "endLine": 46,
+              "line": 46,
+              "start": 1101
+            }
+          }
+        }
+      ],
+      "body": {
+        "args": [
+          {
+            "kind": "var",
+            "name": "n",
+            "span": {
+              "col": 13,
+              "end": 1131,
+              "endCol": 14,
+              "endLine": 47,
+              "line": 47,
+              "start": 1130
+            }
+          },
+          {
+            "kind": "var",
+            "name": "m",
+            "span": {
+              "col": 15,
+              "end": 1133,
+              "endCol": 16,
+              "endLine": 47,
+              "line": 47,
+              "start": 1132
+            }
+          },
+          {
+            "kind": "var",
+            "name": "z",
+            "span": {
+              "col": 17,
+              "end": 1135,
+              "endCol": 18,
+              "endLine": 47,
+              "line": 47,
+              "start": 1134
+            }
+          }
+        ],
+        "func": {
+          "kind": "var",
+          "name": "divwithacc",
+          "span": {
+            "col": 2,
+            "end": 1129,
+            "endCol": 3,
+            "endLine": 47,
+            "line": 47,
+            "start": 1119
+          }
+        },
+        "kind": "app",
+        "span": {
+          "col": 2,
+          "end": 1135,
+          "endCol": 18,
+          "endLine": 47,
+          "line": 47,
+          "start": 1119
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "div",
+      "span": {
+        "col": 0,
+        "end": 1135,
+        "endCol": 18,
+        "endLine": 47,
+        "line": 46,
+        "start": 1086
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat'",
+        "span": {
+          "col": 23,
+          "end": 1113,
+          "endCol": 24,
+          "endLine": 46,
+          "line": 46,
+          "start": 1109
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "b",
+            "e"
+          ],
+          "span": {
+            "col": 8,
+            "end": 1157,
+            "endCol": 20,
+            "endLine": 49,
+            "line": 49,
+            "start": 1145
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 15,
+              "end": 1156,
+              "endCol": 16,
+              "endLine": 49,
+              "line": 49,
+              "start": 1152
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "z",
+                "span": {
+                  "col": 4,
+                  "end": 1189,
+                  "endCol": 5,
+                  "endLine": 51,
+                  "line": 51,
+                  "start": 1187
+                }
+              }
+            ],
+            "rhs": {
+              "args": [
+                {
+                  "kind": "var",
+                  "name": "z",
+                  "span": {
+                    "col": 12,
+                    "end": 1196,
+                    "endCol": 13,
+                    "endLine": 51,
+                    "line": 51,
+                    "start": 1195
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "s",
+                "span": {
+                  "col": 10,
+                  "end": 1194,
+                  "endCol": 11,
+                  "endLine": 51,
+                  "line": 51,
+                  "start": 1193
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 10,
+                "end": 1196,
+                "endCol": 13,
+                "endLine": 51,
+                "line": 51,
+                "start": 1193
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 1196,
+              "endCol": 13,
+              "endLine": 51,
+              "line": 51,
+              "start": 1185
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "ee",
+                    "span": {
+                      "col": 7,
+                      "end": 1206,
+                      "endCol": 8,
+                      "endLine": 52,
+                      "line": 52,
+                      "start": 1204
+                    }
+                  }
+                ],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "s",
+                "span": {
+                  "col": 4,
+                  "end": 1206,
+                  "endCol": 8,
+                  "endLine": 52,
+                  "line": 52,
+                  "start": 1201
+                }
+              }
+            ],
+            "rhs": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "kind": "var",
+                      "name": "b",
+                      "span": {
+                        "col": 24,
+                        "end": 1222,
+                        "endCol": 25,
+                        "endLine": 52,
+                        "line": 52,
+                        "start": 1221
+                      }
+                    },
+                    {
+                      "kind": "var",
+                      "name": "ee",
+                      "span": {
+                        "col": 26,
+                        "end": 1225,
+                        "endCol": 27,
+                        "endLine": 52,
+                        "line": 52,
+                        "start": 1223
+                      }
+                    }
+                  ],
+                  "func": {
+                    "kind": "var",
+                    "name": "pow",
+                    "span": {
+                      "col": 20,
+                      "end": 1220,
+                      "endCol": 21,
+                      "endLine": 52,
+                      "line": 52,
+                      "start": 1217
+                    }
+                  },
+                  "kind": "app",
+                  "span": {
+                    "col": 19,
+                    "end": 1226,
+                    "endCol": 29,
+                    "endLine": 52,
+                    "line": 52,
+                    "start": 1216
+                  }
+                },
+                {
+                  "kind": "var",
+                  "name": "b",
+                  "span": {
+                    "col": 30,
+                    "end": 1228,
+                    "endCol": 31,
+                    "endLine": 52,
+                    "line": 52,
+                    "start": 1227
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "times",
+                "span": {
+                  "col": 13,
+                  "end": 1215,
+                  "endCol": 14,
+                  "endLine": 52,
+                  "line": 52,
+                  "start": 1210
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 13,
+                "end": 1228,
+                "endCol": 31,
+                "endLine": 52,
+                "line": 52,
+                "start": 1210
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 1228,
+              "endCol": 31,
+              "endLine": 52,
+              "line": 52,
+              "start": 1199
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "e",
+            "span": {
+              "col": 8,
+              "end": 1177,
+              "endCol": 9,
+              "endLine": 50,
+              "line": 50,
+              "start": 1176
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 1228,
+          "endCol": 31,
+          "endLine": 52,
+          "line": 50,
+          "start": 1170
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "pow",
+      "span": {
+        "col": 0,
+        "end": 1228,
+        "endCol": 31,
+        "endLine": 52,
+        "line": 49,
+        "start": 1137
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat'",
+        "span": {
+          "col": 23,
+          "end": 1164,
+          "endCol": 24,
+          "endLine": 49,
+          "line": 49,
+          "start": 1160
+        }
+      }
+    }
+  ],
+  "doc": null,
+  "path": "lof/nat.lean",
+  "span": {
+    "col": 0,
+    "end": 1228,
+    "endCol": 31,
+    "endLine": 52,
+    "line": 2,
+    "start": 35
+  }
+}

@@ -1,0 +1,391 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "body": {
+          "kind": "var",
+          "name": "x",
+          "span": {
+            "col": 33,
+            "end": 34,
+            "endCol": 34,
+            "endLine": 1,
+            "line": 1,
+            "start": 33
+          }
+        },
+        "is_have": false,
+        "kind": "let",
+        "name": "x",
+        "span": {
+          "col": 21,
+          "end": 34,
+          "endCol": 34,
+          "endLine": 1,
+          "line": 1,
+          "start": 21
+        },
+        "ty": null,
+        "value": {
+          "kind": "nat",
+          "raw": "1",
+          "span": {
+            "col": 30,
+            "end": 31,
+            "endCol": 31,
+            "endLine": 1,
+            "line": 1,
+            "start": 30
+          },
+          "value": 1
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "let_semicolon",
+      "span": {
+        "col": 0,
+        "end": 34,
+        "endCol": 34,
+        "endLine": 1,
+        "line": 1,
+        "start": 0
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "body": {
+          "kind": "var",
+          "name": "x",
+          "span": {
+            "col": 2,
+            "end": 71,
+            "endCol": 3,
+            "endLine": 5,
+            "line": 5,
+            "start": 70
+          }
+        },
+        "is_have": false,
+        "kind": "let",
+        "name": "x",
+        "span": {
+          "col": 2,
+          "end": 71,
+          "endCol": 3,
+          "endLine": 5,
+          "line": 4,
+          "start": 57
+        },
+        "ty": null,
+        "value": {
+          "kind": "nat",
+          "raw": "1",
+          "span": {
+            "col": 11,
+            "end": 67,
+            "endCol": 12,
+            "endLine": 4,
+            "line": 4,
+            "start": 66
+          },
+          "value": 1
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "let_newline",
+      "span": {
+        "col": 0,
+        "end": 71,
+        "endCol": 3,
+        "endLine": 5,
+        "line": 3,
+        "start": 36
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "body": {
+          "kind": "var",
+          "name": "h",
+          "span": {
+            "col": 2,
+            "end": 107,
+            "endCol": 3,
+            "endLine": 9,
+            "line": 9,
+            "start": 106
+          }
+        },
+        "is_have": true,
+        "kind": "let",
+        "name": "h",
+        "span": {
+          "col": 2,
+          "end": 107,
+          "endCol": 3,
+          "endLine": 9,
+          "line": 8,
+          "start": 92
+        },
+        "ty": null,
+        "value": {
+          "kind": "nat",
+          "raw": "1",
+          "span": {
+            "col": 12,
+            "end": 103,
+            "endCol": 13,
+            "endLine": 8,
+            "line": 8,
+            "start": 102
+          },
+          "value": 1
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "have_form",
+      "span": {
+        "col": 0,
+        "end": 107,
+        "endCol": 3,
+        "endLine": 9,
+        "line": 7,
+        "start": 73
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "body": {
+          "body": {
+            "kind": "binOp",
+            "lhs": {
+              "kind": "var",
+              "name": "a",
+              "span": {
+                "col": 2,
+                "end": 156,
+                "endCol": 3,
+                "endLine": 14,
+                "line": 14,
+                "start": 155
+              }
+            },
+            "op": "+",
+            "rhs": {
+              "kind": "var",
+              "name": "b",
+              "span": {
+                "col": 6,
+                "end": 160,
+                "endCol": 7,
+                "endLine": 14,
+                "line": 14,
+                "start": 159
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 160,
+              "endCol": 7,
+              "endLine": 14,
+              "line": 14,
+              "start": 155
+            }
+          },
+          "is_have": false,
+          "kind": "let",
+          "name": "b",
+          "span": {
+            "col": 2,
+            "end": 160,
+            "endCol": 7,
+            "endLine": 14,
+            "line": 13,
+            "start": 142
+          },
+          "ty": null,
+          "value": {
+            "kind": "nat",
+            "raw": "2",
+            "span": {
+              "col": 11,
+              "end": 152,
+              "endCol": 12,
+              "endLine": 13,
+              "line": 13,
+              "start": 151
+            },
+            "value": 2
+          }
+        },
+        "is_have": false,
+        "kind": "let",
+        "name": "a",
+        "span": {
+          "col": 2,
+          "end": 160,
+          "endCol": 7,
+          "endLine": 14,
+          "line": 12,
+          "start": 129
+        },
+        "ty": null,
+        "value": {
+          "kind": "nat",
+          "raw": "1",
+          "span": {
+            "col": 11,
+            "end": 139,
+            "endCol": 12,
+            "endLine": 12,
+            "line": 12,
+            "start": 138
+          },
+          "value": 1
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "nested_let",
+      "span": {
+        "col": 0,
+        "end": 160,
+        "endCol": 7,
+        "endLine": 14,
+        "line": 11,
+        "start": 109
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "body": {
+          "kind": "var",
+          "name": "x",
+          "span": {
+            "col": 2,
+            "end": 205,
+            "endCol": 3,
+            "endLine": 18,
+            "line": 18,
+            "start": 204
+          }
+        },
+        "is_have": false,
+        "kind": "let",
+        "name": "x",
+        "span": {
+          "col": 2,
+          "end": 205,
+          "endCol": 3,
+          "endLine": 18,
+          "line": 17,
+          "start": 185
+        },
+        "ty": {
+          "kind": "var",
+          "name": "Nat",
+          "span": {
+            "col": 10,
+            "end": 196,
+            "endCol": 11,
+            "endLine": 17,
+            "line": 17,
+            "start": 193
+          }
+        },
+        "value": {
+          "kind": "nat",
+          "raw": "1",
+          "span": {
+            "col": 17,
+            "end": 201,
+            "endCol": 18,
+            "endLine": 17,
+            "line": 17,
+            "start": 200
+          },
+          "value": 1
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "let_with_type",
+      "span": {
+        "col": 0,
+        "end": 205,
+        "endCol": 3,
+        "endLine": 18,
+        "line": 16,
+        "start": 162
+      },
+      "ty": null
+    }
+  ],
+  "doc": null,
+  "path": "lean/let_forms.lean",
+  "span": {
+    "col": 0,
+    "end": 205,
+    "endCol": 3,
+    "endLine": 18,
+    "line": 1,
+    "start": 0
+  }
+}

@@ -1,0 +1,1075 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "T"
+          ],
+          "span": {
+            "col": 14,
+            "end": 82,
+            "endCol": 24,
+            "endLine": 2,
+            "line": 2,
+            "start": 72
+          },
+          "ty": {
+            "kind": "sort",
+            "level": null,
+            "sort": {
+              "kind": "type"
+            },
+            "span": {
+              "col": 19,
+              "end": 81,
+              "endCol": 20,
+              "endLine": 2,
+              "line": 2,
+              "start": 77
+            }
+          }
+        },
+        {
+          "info": "explicit",
+          "names": [
+            "x"
+          ],
+          "span": {
+            "col": 25,
+            "end": 90,
+            "endCol": 32,
+            "endLine": 2,
+            "line": 2,
+            "start": 83
+          },
+          "ty": {
+            "kind": "var",
+            "name": "T",
+            "span": {
+              "col": 30,
+              "end": 89,
+              "endCol": 31,
+              "endLine": 2,
+              "line": 2,
+              "start": 88
+            }
+          }
+        }
+      ],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "refl",
+          "span": {
+            "col": 2,
+            "end": 129,
+            "endCol": 20,
+            "endLine": 3,
+            "line": 3,
+            "start": 111
+          },
+          "ty": {
+            "args": [
+              {
+                "kind": "var",
+                "name": "T",
+                "span": {
+                  "col": 15,
+                  "end": 125,
+                  "endCol": 16,
+                  "endLine": 3,
+                  "line": 3,
+                  "start": 124
+                }
+              },
+              {
+                "kind": "var",
+                "name": "x",
+                "span": {
+                  "col": 17,
+                  "end": 127,
+                  "endCol": 18,
+                  "endLine": 3,
+                  "line": 3,
+                  "start": 126
+                }
+              },
+              {
+                "kind": "var",
+                "name": "x",
+                "span": {
+                  "col": 19,
+                  "end": 129,
+                  "endCol": 20,
+                  "endLine": 3,
+                  "line": 3,
+                  "start": 128
+                }
+              }
+            ],
+            "func": {
+              "kind": "var",
+              "name": "Eq'",
+              "span": {
+                "col": 11,
+                "end": 123,
+                "endCol": 12,
+                "endLine": 3,
+                "line": 3,
+                "start": 120
+              }
+            },
+            "kind": "app",
+            "span": {
+              "col": 11,
+              "end": 129,
+              "endCol": 20,
+              "endLine": 3,
+              "line": 3,
+              "start": 120
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "Eq'",
+      "span": {
+        "col": 0,
+        "end": 129,
+        "endCol": 20,
+        "endLine": 3,
+        "line": 2,
+        "start": 58
+      },
+      "ty": {
+        "codomain": {
+          "kind": "sort",
+          "level": null,
+          "sort": {
+            "kind": "prop"
+          },
+          "span": {
+            "col": 40,
+            "end": 102,
+            "endCol": 41,
+            "endLine": 2,
+            "line": 2,
+            "start": 98
+          }
+        },
+        "domain": {
+          "kind": "var",
+          "name": "T",
+          "span": {
+            "col": 35,
+            "end": 94,
+            "endCol": 36,
+            "endLine": 2,
+            "line": 2,
+            "start": 93
+          }
+        },
+        "kind": "arrow",
+        "span": {
+          "col": 35,
+          "end": 102,
+          "endCol": 41,
+          "endLine": 2,
+          "line": 2,
+          "start": 93
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "z",
+          "span": {
+            "col": 2,
+            "end": 171,
+            "endCol": 9,
+            "endLine": 6,
+            "line": 6,
+            "start": 161
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 8,
+              "end": 171,
+              "endCol": 9,
+              "endLine": 6,
+              "line": 6,
+              "start": 167
+            }
+          }
+        },
+        {
+          "binders": [],
+          "doc": null,
+          "name": "s",
+          "span": {
+            "col": 2,
+            "end": 192,
+            "endCol": 17,
+            "endLine": 7,
+            "line": 7,
+            "start": 174
+          },
+          "ty": {
+            "codomain": {
+              "kind": "var",
+              "name": "Nat'",
+              "span": {
+                "col": 16,
+                "end": 192,
+                "endCol": 17,
+                "endLine": 7,
+                "line": 7,
+                "start": 188
+              }
+            },
+            "domain": {
+              "kind": "var",
+              "name": "Nat'",
+              "span": {
+                "col": 8,
+                "end": 184,
+                "endCol": 9,
+                "endLine": 7,
+                "line": 7,
+                "start": 180
+              }
+            },
+            "kind": "arrow",
+            "span": {
+              "col": 8,
+              "end": 192,
+              "endCol": 17,
+              "endLine": 7,
+              "line": 7,
+              "start": 180
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "Nat'",
+      "span": {
+        "col": 0,
+        "end": 192,
+        "endCol": 17,
+        "endLine": 7,
+        "line": 5,
+        "start": 131
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "type"
+        },
+        "span": {
+          "col": 17,
+          "end": 152,
+          "endCol": 18,
+          "endLine": 5,
+          "line": 5,
+          "start": 148
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "n",
+            "m"
+          ],
+          "span": {
+            "col": 9,
+            "end": 215,
+            "endCol": 21,
+            "endLine": 9,
+            "line": 9,
+            "start": 203
+          },
+          "ty": {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 16,
+              "end": 214,
+              "endCol": 17,
+              "endLine": 9,
+              "line": 9,
+              "start": 210
+            }
+          }
+        }
+      ],
+      "body": {
+        "alts": [
+          {
+            "patterns": [
+              {
+                "args": [],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "z",
+                "span": {
+                  "col": 4,
+                  "end": 247,
+                  "endCol": 5,
+                  "endLine": 11,
+                  "line": 11,
+                  "start": 245
+                }
+              }
+            ],
+            "rhs": {
+              "kind": "var",
+              "name": "m",
+              "span": {
+                "col": 10,
+                "end": 252,
+                "endCol": 11,
+                "endLine": 11,
+                "line": 11,
+                "start": 251
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 252,
+              "endCol": 11,
+              "endLine": 11,
+              "line": 11,
+              "start": 243
+            }
+          },
+          {
+            "patterns": [
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "nn",
+                    "span": {
+                      "col": 7,
+                      "end": 262,
+                      "endCol": 8,
+                      "endLine": 12,
+                      "line": 12,
+                      "start": 260
+                    }
+                  }
+                ],
+                "dotted": true,
+                "kind": "ctor",
+                "name": "s",
+                "span": {
+                  "col": 4,
+                  "end": 262,
+                  "endCol": 8,
+                  "endLine": 12,
+                  "line": 12,
+                  "start": 257
+                }
+              }
+            ],
+            "rhs": {
+              "args": [
+                {
+                  "args": [
+                    {
+                      "kind": "var",
+                      "name": "nn",
+                      "span": {
+                        "col": 22,
+                        "end": 277,
+                        "endCol": 23,
+                        "endLine": 12,
+                        "line": 12,
+                        "start": 275
+                      }
+                    },
+                    {
+                      "kind": "var",
+                      "name": "m",
+                      "span": {
+                        "col": 25,
+                        "end": 279,
+                        "endCol": 26,
+                        "endLine": 12,
+                        "line": 12,
+                        "start": 278
+                      }
+                    }
+                  ],
+                  "func": {
+                    "kind": "var",
+                    "name": "plus",
+                    "span": {
+                      "col": 17,
+                      "end": 274,
+                      "endCol": 18,
+                      "endLine": 12,
+                      "line": 12,
+                      "start": 270
+                    }
+                  },
+                  "kind": "app",
+                  "span": {
+                    "col": 16,
+                    "end": 280,
+                    "endCol": 27,
+                    "endLine": 12,
+                    "line": 12,
+                    "start": 269
+                  }
+                }
+              ],
+              "func": {
+                "kind": "dotIdent",
+                "name": "s",
+                "span": {
+                  "col": 13,
+                  "end": 268,
+                  "endCol": 14,
+                  "endLine": 12,
+                  "line": 12,
+                  "start": 266
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 13,
+                "end": 280,
+                "endCol": 27,
+                "endLine": 12,
+                "line": 12,
+                "start": 266
+              }
+            },
+            "span": {
+              "col": 2,
+              "end": 280,
+              "endCol": 27,
+              "endLine": 12,
+              "line": 12,
+              "start": 255
+            }
+          }
+        ],
+        "kind": "match",
+        "scrutinees": [
+          {
+            "kind": "var",
+            "name": "n",
+            "span": {
+              "col": 8,
+              "end": 235,
+              "endCol": 9,
+              "endLine": 10,
+              "line": 10,
+              "start": 234
+            }
+          }
+        ],
+        "span": {
+          "col": 2,
+          "end": 280,
+          "endCol": 27,
+          "endLine": 12,
+          "line": 10,
+          "start": 228
+        }
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "plus",
+      "span": {
+        "col": 0,
+        "end": 280,
+        "endCol": 27,
+        "endLine": 12,
+        "line": 9,
+        "start": 194
+      },
+      "ty": {
+        "kind": "var",
+        "name": "Nat'",
+        "span": {
+          "col": 24,
+          "end": 222,
+          "endCol": 25,
+          "endLine": 9,
+          "line": 9,
+          "start": 218
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "zero_plus_one_term",
+      "proof": {
+        "args": [
+          {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 11,
+              "end": 359,
+              "endCol": 12,
+              "endLine": 15,
+              "line": 15,
+              "start": 355
+            }
+          },
+          {
+            "args": [
+              {
+                "kind": "var",
+                "name": "z",
+                "span": {
+                  "col": 19,
+                  "end": 364,
+                  "endCol": 20,
+                  "endLine": 15,
+                  "line": 15,
+                  "start": 363
+                }
+              }
+            ],
+            "func": {
+              "kind": "var",
+              "name": "s",
+              "span": {
+                "col": 17,
+                "end": 362,
+                "endCol": 18,
+                "endLine": 15,
+                "line": 15,
+                "start": 361
+              }
+            },
+            "kind": "app",
+            "span": {
+              "col": 16,
+              "end": 365,
+              "endCol": 21,
+              "endLine": 15,
+              "line": 15,
+              "start": 360
+            }
+          }
+        ],
+        "func": {
+          "kind": "var",
+          "name": "Eq'.refl",
+          "span": {
+            "col": 2,
+            "end": 354,
+            "endCol": 3,
+            "endLine": 15,
+            "line": 15,
+            "start": 346
+          }
+        },
+        "kind": "app",
+        "span": {
+          "col": 2,
+          "end": 365,
+          "endCol": 21,
+          "endLine": 15,
+          "line": 15,
+          "start": 346
+        }
+      },
+      "span": {
+        "col": 0,
+        "end": 365,
+        "endCol": 21,
+        "endLine": 15,
+        "line": 14,
+        "start": 282
+      },
+      "ty": {
+        "args": [
+          {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 33,
+              "end": 319,
+              "endCol": 34,
+              "endLine": 14,
+              "line": 14,
+              "start": 315
+            }
+          },
+          {
+            "args": [
+              {
+                "kind": "var",
+                "name": "z",
+                "span": {
+                  "col": 44,
+                  "end": 327,
+                  "endCol": 45,
+                  "endLine": 14,
+                  "line": 14,
+                  "start": 326
+                }
+              },
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "z",
+                    "span": {
+                      "col": 49,
+                      "end": 332,
+                      "endCol": 50,
+                      "endLine": 14,
+                      "line": 14,
+                      "start": 331
+                    }
+                  }
+                ],
+                "func": {
+                  "kind": "var",
+                  "name": "s",
+                  "span": {
+                    "col": 47,
+                    "end": 330,
+                    "endCol": 48,
+                    "endLine": 14,
+                    "line": 14,
+                    "start": 329
+                  }
+                },
+                "kind": "app",
+                "span": {
+                  "col": 46,
+                  "end": 333,
+                  "endCol": 51,
+                  "endLine": 14,
+                  "line": 14,
+                  "start": 328
+                }
+              }
+            ],
+            "func": {
+              "kind": "var",
+              "name": "plus",
+              "span": {
+                "col": 39,
+                "end": 325,
+                "endCol": 40,
+                "endLine": 14,
+                "line": 14,
+                "start": 321
+              }
+            },
+            "kind": "app",
+            "span": {
+              "col": 38,
+              "end": 334,
+              "endCol": 52,
+              "endLine": 14,
+              "line": 14,
+              "start": 320
+            }
+          },
+          {
+            "args": [
+              {
+                "kind": "var",
+                "name": "z",
+                "span": {
+                  "col": 56,
+                  "end": 339,
+                  "endCol": 57,
+                  "endLine": 14,
+                  "line": 14,
+                  "start": 338
+                }
+              }
+            ],
+            "func": {
+              "kind": "var",
+              "name": "s",
+              "span": {
+                "col": 54,
+                "end": 337,
+                "endCol": 55,
+                "endLine": 14,
+                "line": 14,
+                "start": 336
+              }
+            },
+            "kind": "app",
+            "span": {
+              "col": 53,
+              "end": 340,
+              "endCol": 58,
+              "endLine": 14,
+              "line": 14,
+              "start": 335
+            }
+          }
+        ],
+        "func": {
+          "kind": "var",
+          "name": "Eq'",
+          "span": {
+            "col": 29,
+            "end": 314,
+            "endCol": 30,
+            "endLine": 14,
+            "line": 14,
+            "start": 311
+          }
+        },
+        "kind": "app",
+        "span": {
+          "col": 29,
+          "end": 340,
+          "endCol": 58,
+          "endLine": 14,
+          "line": 14,
+          "start": 311
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "doc": null,
+      "keyword": "theorem",
+      "kind": "theorem",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "zero_plus_one_tac",
+      "proof": {
+        "kind": "by",
+        "span": {
+          "col": 61,
+          "end": 458,
+          "endCol": 27,
+          "endLine": 18,
+          "line": 17,
+          "start": 428
+        },
+        "tactics": [
+          {
+            "kind": "exact",
+            "span": {
+              "col": 2,
+              "end": 458,
+              "endCol": 27,
+              "endLine": 18,
+              "line": 18,
+              "start": 433
+            },
+            "term": {
+              "args": [
+                {
+                  "kind": "var",
+                  "name": "Nat'",
+                  "span": {
+                    "col": 17,
+                    "end": 452,
+                    "endCol": 18,
+                    "endLine": 18,
+                    "line": 18,
+                    "start": 448
+                  }
+                },
+                {
+                  "args": [
+                    {
+                      "kind": "var",
+                      "name": "z",
+                      "span": {
+                        "col": 25,
+                        "end": 457,
+                        "endCol": 26,
+                        "endLine": 18,
+                        "line": 18,
+                        "start": 456
+                      }
+                    }
+                  ],
+                  "func": {
+                    "kind": "var",
+                    "name": "s",
+                    "span": {
+                      "col": 23,
+                      "end": 455,
+                      "endCol": 24,
+                      "endLine": 18,
+                      "line": 18,
+                      "start": 454
+                    }
+                  },
+                  "kind": "app",
+                  "span": {
+                    "col": 22,
+                    "end": 458,
+                    "endCol": 27,
+                    "endLine": 18,
+                    "line": 18,
+                    "start": 453
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "Eq'.refl",
+                "span": {
+                  "col": 8,
+                  "end": 447,
+                  "endCol": 9,
+                  "endLine": 18,
+                  "line": 18,
+                  "start": 439
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 8,
+                "end": 458,
+                "endCol": 27,
+                "endLine": 18,
+                "line": 18,
+                "start": 439
+              }
+            }
+          }
+        ]
+      },
+      "span": {
+        "col": 0,
+        "end": 458,
+        "endCol": 27,
+        "endLine": 18,
+        "line": 17,
+        "start": 367
+      },
+      "ty": {
+        "args": [
+          {
+            "kind": "var",
+            "name": "Nat'",
+            "span": {
+              "col": 32,
+              "end": 403,
+              "endCol": 33,
+              "endLine": 17,
+              "line": 17,
+              "start": 399
+            }
+          },
+          {
+            "args": [
+              {
+                "kind": "var",
+                "name": "z",
+                "span": {
+                  "col": 43,
+                  "end": 411,
+                  "endCol": 44,
+                  "endLine": 17,
+                  "line": 17,
+                  "start": 410
+                }
+              },
+              {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "z",
+                    "span": {
+                      "col": 48,
+                      "end": 416,
+                      "endCol": 49,
+                      "endLine": 17,
+                      "line": 17,
+                      "start": 415
+                    }
+                  }
+                ],
+                "func": {
+                  "kind": "var",
+                  "name": "s",
+                  "span": {
+                    "col": 46,
+                    "end": 414,
+                    "endCol": 47,
+                    "endLine": 17,
+                    "line": 17,
+                    "start": 413
+                  }
+                },
+                "kind": "app",
+                "span": {
+                  "col": 45,
+                  "end": 417,
+                  "endCol": 50,
+                  "endLine": 17,
+                  "line": 17,
+                  "start": 412
+                }
+              }
+            ],
+            "func": {
+              "kind": "var",
+              "name": "plus",
+              "span": {
+                "col": 38,
+                "end": 409,
+                "endCol": 39,
+                "endLine": 17,
+                "line": 17,
+                "start": 405
+              }
+            },
+            "kind": "app",
+            "span": {
+              "col": 37,
+              "end": 418,
+              "endCol": 51,
+              "endLine": 17,
+              "line": 17,
+              "start": 404
+            }
+          },
+          {
+            "args": [
+              {
+                "kind": "var",
+                "name": "z",
+                "span": {
+                  "col": 55,
+                  "end": 423,
+                  "endCol": 56,
+                  "endLine": 17,
+                  "line": 17,
+                  "start": 422
+                }
+              }
+            ],
+            "func": {
+              "kind": "var",
+              "name": "s",
+              "span": {
+                "col": 53,
+                "end": 421,
+                "endCol": 54,
+                "endLine": 17,
+                "line": 17,
+                "start": 420
+              }
+            },
+            "kind": "app",
+            "span": {
+              "col": 52,
+              "end": 424,
+              "endCol": 57,
+              "endLine": 17,
+              "line": 17,
+              "start": 419
+            }
+          }
+        ],
+        "func": {
+          "kind": "var",
+          "name": "Eq'",
+          "span": {
+            "col": 28,
+            "end": 398,
+            "endCol": 29,
+            "endLine": 17,
+            "line": 17,
+            "start": 395
+          }
+        },
+        "kind": "app",
+        "span": {
+          "col": 28,
+          "end": 424,
+          "endCol": 57,
+          "endLine": 17,
+          "line": 17,
+          "start": 395
+        }
+      }
+    }
+  ],
+  "doc": null,
+  "path": "lof/proofs/basic_tactics.lean",
+  "span": {
+    "col": 0,
+    "end": 458,
+    "endCol": 27,
+    "endLine": 18,
+    "line": 2,
+    "start": 58
+  }
+}

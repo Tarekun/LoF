@@ -1,0 +1,88 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "nat",
+        "raw": "1",
+        "span": {
+          "col": 18,
+          "end": 157,
+          "endCol": 19,
+          "endLine": 6,
+          "line": 6,
+          "start": 156
+        },
+        "value": 1
+      },
+      "doc": "an attached doc comment",
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "documented",
+      "span": {
+        "col": 0,
+        "end": 157,
+        "endCol": 19,
+        "endLine": 6,
+        "line": 6,
+        "start": 138
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "nat",
+        "raw": "2",
+        "span": {
+          "col": 21,
+          "end": 204,
+          "endCol": 22,
+          "endLine": 8,
+          "line": 8,
+          "start": 203
+        },
+        "value": 2
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "after_comment",
+      "span": {
+        "col": 0,
+        "end": 204,
+        "endCol": 22,
+        "endLine": 8,
+        "line": 8,
+        "start": 182
+      },
+      "ty": null
+    }
+  ],
+  "doc": null,
+  "path": "lean/comments.lean",
+  "span": {
+    "col": 0,
+    "end": 204,
+    "endCol": 22,
+    "endLine": 8,
+    "line": 5,
+    "start": 107
+  }
+}

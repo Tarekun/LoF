@@ -1,0 +1,1182 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "T"
+          ],
+          "span": {
+            "col": 14,
+            "end": 61,
+            "endCol": 24,
+            "endLine": 2,
+            "line": 2,
+            "start": 51
+          },
+          "ty": {
+            "kind": "sort",
+            "level": null,
+            "sort": {
+              "kind": "type"
+            },
+            "span": {
+              "col": 19,
+              "end": 60,
+              "endCol": 20,
+              "endLine": 2,
+              "line": 2,
+              "start": 56
+            }
+          }
+        },
+        {
+          "info": "explicit",
+          "names": [
+            "x"
+          ],
+          "span": {
+            "col": 25,
+            "end": 69,
+            "endCol": 32,
+            "endLine": 2,
+            "line": 2,
+            "start": 62
+          },
+          "ty": {
+            "kind": "var",
+            "name": "T",
+            "span": {
+              "col": 30,
+              "end": 68,
+              "endCol": 31,
+              "endLine": 2,
+              "line": 2,
+              "start": 67
+            }
+          }
+        }
+      ],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "refl",
+          "span": {
+            "col": 2,
+            "end": 108,
+            "endCol": 20,
+            "endLine": 3,
+            "line": 3,
+            "start": 90
+          },
+          "ty": {
+            "args": [
+              {
+                "kind": "var",
+                "name": "T",
+                "span": {
+                  "col": 15,
+                  "end": 104,
+                  "endCol": 16,
+                  "endLine": 3,
+                  "line": 3,
+                  "start": 103
+                }
+              },
+              {
+                "kind": "var",
+                "name": "x",
+                "span": {
+                  "col": 17,
+                  "end": 106,
+                  "endCol": 18,
+                  "endLine": 3,
+                  "line": 3,
+                  "start": 105
+                }
+              },
+              {
+                "kind": "var",
+                "name": "x",
+                "span": {
+                  "col": 19,
+                  "end": 108,
+                  "endCol": 20,
+                  "endLine": 3,
+                  "line": 3,
+                  "start": 107
+                }
+              }
+            ],
+            "func": {
+              "kind": "var",
+              "name": "Eq'",
+              "span": {
+                "col": 11,
+                "end": 102,
+                "endCol": 12,
+                "endLine": 3,
+                "line": 3,
+                "start": 99
+              }
+            },
+            "kind": "app",
+            "span": {
+              "col": 11,
+              "end": 108,
+              "endCol": 20,
+              "endLine": 3,
+              "line": 3,
+              "start": 99
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "Eq'",
+      "span": {
+        "col": 0,
+        "end": 108,
+        "endCol": 20,
+        "endLine": 3,
+        "line": 2,
+        "start": 37
+      },
+      "ty": {
+        "codomain": {
+          "kind": "sort",
+          "level": null,
+          "sort": {
+            "kind": "prop"
+          },
+          "span": {
+            "col": 40,
+            "end": 81,
+            "endCol": 41,
+            "endLine": 2,
+            "line": 2,
+            "start": 77
+          }
+        },
+        "domain": {
+          "kind": "var",
+          "name": "T",
+          "span": {
+            "col": 35,
+            "end": 73,
+            "endCol": 36,
+            "endLine": 2,
+            "line": 2,
+            "start": 72
+          }
+        },
+        "kind": "arrow",
+        "span": {
+          "col": 35,
+          "end": 81,
+          "endCol": 41,
+          "endLine": 2,
+          "line": 2,
+          "start": 72
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "it",
+          "span": {
+            "col": 2,
+            "end": 153,
+            "endCol": 10,
+            "endLine": 6,
+            "line": 6,
+            "start": 141
+          },
+          "ty": {
+            "kind": "var",
+            "name": "True'",
+            "span": {
+              "col": 9,
+              "end": 153,
+              "endCol": 10,
+              "endLine": 6,
+              "line": 6,
+              "start": 148
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "True'",
+      "span": {
+        "col": 0,
+        "end": 153,
+        "endCol": 10,
+        "endLine": 6,
+        "line": 5,
+        "start": 110
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "prop"
+        },
+        "span": {
+          "col": 18,
+          "end": 132,
+          "endCol": 19,
+          "endLine": 5,
+          "line": 5,
+          "start": 128
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "ctors": [],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "False'",
+      "span": {
+        "col": 0,
+        "end": 184,
+        "endCol": 25,
+        "endLine": 8,
+        "line": 8,
+        "start": 155
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "prop"
+        },
+        "span": {
+          "col": 19,
+          "end": 178,
+          "endCol": 20,
+          "endLine": 8,
+          "line": 8,
+          "start": 174
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "P"
+          ],
+          "span": {
+            "col": 15,
+            "end": 312,
+            "endCol": 25,
+            "endLine": 12,
+            "line": 12,
+            "start": 302
+          },
+          "ty": {
+            "kind": "sort",
+            "level": null,
+            "sort": {
+              "kind": "prop"
+            },
+            "span": {
+              "col": 20,
+              "end": 311,
+              "endCol": 21,
+              "endLine": 12,
+              "line": 12,
+              "start": 307
+            }
+          }
+        }
+      ],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "notcon",
+          "span": {
+            "col": 2,
+            "end": 362,
+            "endCol": 36,
+            "endLine": 13,
+            "line": 13,
+            "start": 328
+          },
+          "ty": {
+            "binders": [
+              {
+                "info": "explicit",
+                "names": [],
+                "span": {
+                  "col": 13,
+                  "end": 352,
+                  "endCol": 26,
+                  "endLine": 13,
+                  "line": 13,
+                  "start": 339
+                },
+                "ty": {
+                  "codomain": {
+                    "kind": "var",
+                    "name": "False'",
+                    "span": {
+                      "col": 19,
+                      "end": 351,
+                      "endCol": 20,
+                      "endLine": 13,
+                      "line": 13,
+                      "start": 345
+                    }
+                  },
+                  "domain": {
+                    "kind": "var",
+                    "name": "P",
+                    "span": {
+                      "col": 14,
+                      "end": 341,
+                      "endCol": 15,
+                      "endLine": 13,
+                      "line": 13,
+                      "start": 340
+                    }
+                  },
+                  "kind": "arrow",
+                  "span": {
+                    "col": 14,
+                    "end": 351,
+                    "endCol": 20,
+                    "endLine": 13,
+                    "line": 13,
+                    "start": 340
+                  }
+                }
+              }
+            ],
+            "body": {
+              "args": [
+                {
+                  "kind": "var",
+                  "name": "P",
+                  "span": {
+                    "col": 35,
+                    "end": 362,
+                    "endCol": 36,
+                    "endLine": 13,
+                    "line": 13,
+                    "start": 361
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "Not'",
+                "span": {
+                  "col": 30,
+                  "end": 360,
+                  "endCol": 31,
+                  "endLine": 13,
+                  "line": 13,
+                  "start": 356
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 30,
+                "end": 362,
+                "endCol": 36,
+                "endLine": 13,
+                "line": 13,
+                "start": 356
+              }
+            },
+            "kind": "forall",
+            "span": {
+              "col": 13,
+              "end": 362,
+              "endCol": 36,
+              "endLine": 13,
+              "line": 13,
+              "start": 339
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "Not'",
+      "span": {
+        "col": 0,
+        "end": 362,
+        "endCol": 36,
+        "endLine": 13,
+        "line": 12,
+        "start": 287
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "prop"
+        },
+        "span": {
+          "col": 28,
+          "end": 319,
+          "endCol": 29,
+          "endLine": 12,
+          "line": 12,
+          "start": 315
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "P",
+            "Q"
+          ],
+          "span": {
+            "col": 15,
+            "end": 475,
+            "endCol": 27,
+            "endLine": 17,
+            "line": 17,
+            "start": 463
+          },
+          "ty": {
+            "kind": "sort",
+            "level": null,
+            "sort": {
+              "kind": "prop"
+            },
+            "span": {
+              "col": 22,
+              "end": 474,
+              "endCol": 23,
+              "endLine": 17,
+              "line": 17,
+              "start": 470
+            }
+          }
+        }
+      ],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "conj",
+          "span": {
+            "col": 2,
+            "end": 518,
+            "endCol": 29,
+            "endLine": 18,
+            "line": 18,
+            "start": 491
+          },
+          "ty": {
+            "codomain": {
+              "codomain": {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "P",
+                    "span": {
+                      "col": 26,
+                      "end": 516,
+                      "endCol": 27,
+                      "endLine": 18,
+                      "line": 18,
+                      "start": 515
+                    }
+                  },
+                  {
+                    "kind": "var",
+                    "name": "Q",
+                    "span": {
+                      "col": 28,
+                      "end": 518,
+                      "endCol": 29,
+                      "endLine": 18,
+                      "line": 18,
+                      "start": 517
+                    }
+                  }
+                ],
+                "func": {
+                  "kind": "var",
+                  "name": "And'",
+                  "span": {
+                    "col": 21,
+                    "end": 514,
+                    "endCol": 22,
+                    "endLine": 18,
+                    "line": 18,
+                    "start": 510
+                  }
+                },
+                "kind": "app",
+                "span": {
+                  "col": 21,
+                  "end": 518,
+                  "endCol": 29,
+                  "endLine": 18,
+                  "line": 18,
+                  "start": 510
+                }
+              },
+              "domain": {
+                "kind": "var",
+                "name": "Q",
+                "span": {
+                  "col": 16,
+                  "end": 506,
+                  "endCol": 17,
+                  "endLine": 18,
+                  "line": 18,
+                  "start": 505
+                }
+              },
+              "kind": "arrow",
+              "span": {
+                "col": 16,
+                "end": 518,
+                "endCol": 29,
+                "endLine": 18,
+                "line": 18,
+                "start": 505
+              }
+            },
+            "domain": {
+              "kind": "var",
+              "name": "P",
+              "span": {
+                "col": 11,
+                "end": 501,
+                "endCol": 12,
+                "endLine": 18,
+                "line": 18,
+                "start": 500
+              }
+            },
+            "kind": "arrow",
+            "span": {
+              "col": 11,
+              "end": 518,
+              "endCol": 29,
+              "endLine": 18,
+              "line": 18,
+              "start": 500
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "And'",
+      "span": {
+        "col": 0,
+        "end": 518,
+        "endCol": 29,
+        "endLine": 18,
+        "line": 17,
+        "start": 448
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "prop"
+        },
+        "span": {
+          "col": 30,
+          "end": 482,
+          "endCol": 31,
+          "endLine": 17,
+          "line": 17,
+          "start": 478
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "P",
+            "Q"
+          ],
+          "span": {
+            "col": 14,
+            "end": 662,
+            "endCol": 26,
+            "endLine": 23,
+            "line": 23,
+            "start": 650
+          },
+          "ty": {
+            "kind": "sort",
+            "level": null,
+            "sort": {
+              "kind": "prop"
+            },
+            "span": {
+              "col": 21,
+              "end": 661,
+              "endCol": 22,
+              "endLine": 23,
+              "line": 23,
+              "start": 657
+            }
+          }
+        }
+      ],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "left",
+          "span": {
+            "col": 2,
+            "end": 699,
+            "endCol": 23,
+            "endLine": 24,
+            "line": 24,
+            "start": 678
+          },
+          "ty": {
+            "codomain": {
+              "args": [
+                {
+                  "kind": "var",
+                  "name": "P",
+                  "span": {
+                    "col": 20,
+                    "end": 697,
+                    "endCol": 21,
+                    "endLine": 24,
+                    "line": 24,
+                    "start": 696
+                  }
+                },
+                {
+                  "kind": "var",
+                  "name": "Q",
+                  "span": {
+                    "col": 22,
+                    "end": 699,
+                    "endCol": 23,
+                    "endLine": 24,
+                    "line": 24,
+                    "start": 698
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "Or'",
+                "span": {
+                  "col": 16,
+                  "end": 695,
+                  "endCol": 17,
+                  "endLine": 24,
+                  "line": 24,
+                  "start": 692
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 16,
+                "end": 699,
+                "endCol": 23,
+                "endLine": 24,
+                "line": 24,
+                "start": 692
+              }
+            },
+            "domain": {
+              "kind": "var",
+              "name": "P",
+              "span": {
+                "col": 11,
+                "end": 688,
+                "endCol": 12,
+                "endLine": 24,
+                "line": 24,
+                "start": 687
+              }
+            },
+            "kind": "arrow",
+            "span": {
+              "col": 11,
+              "end": 699,
+              "endCol": 23,
+              "endLine": 24,
+              "line": 24,
+              "start": 687
+            }
+          }
+        },
+        {
+          "binders": [],
+          "doc": null,
+          "name": "right",
+          "span": {
+            "col": 2,
+            "end": 724,
+            "endCol": 24,
+            "endLine": 25,
+            "line": 25,
+            "start": 702
+          },
+          "ty": {
+            "codomain": {
+              "args": [
+                {
+                  "kind": "var",
+                  "name": "P",
+                  "span": {
+                    "col": 21,
+                    "end": 722,
+                    "endCol": 22,
+                    "endLine": 25,
+                    "line": 25,
+                    "start": 721
+                  }
+                },
+                {
+                  "kind": "var",
+                  "name": "Q",
+                  "span": {
+                    "col": 23,
+                    "end": 724,
+                    "endCol": 24,
+                    "endLine": 25,
+                    "line": 25,
+                    "start": 723
+                  }
+                }
+              ],
+              "func": {
+                "kind": "var",
+                "name": "Or'",
+                "span": {
+                  "col": 17,
+                  "end": 720,
+                  "endCol": 18,
+                  "endLine": 25,
+                  "line": 25,
+                  "start": 717
+                }
+              },
+              "kind": "app",
+              "span": {
+                "col": 17,
+                "end": 724,
+                "endCol": 24,
+                "endLine": 25,
+                "line": 25,
+                "start": 717
+              }
+            },
+            "domain": {
+              "kind": "var",
+              "name": "Q",
+              "span": {
+                "col": 12,
+                "end": 713,
+                "endCol": 13,
+                "endLine": 25,
+                "line": 25,
+                "start": 712
+              }
+            },
+            "kind": "arrow",
+            "span": {
+              "col": 12,
+              "end": 724,
+              "endCol": 24,
+              "endLine": 25,
+              "line": 25,
+              "start": 712
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "Or'",
+      "span": {
+        "col": 0,
+        "end": 724,
+        "endCol": 24,
+        "endLine": 25,
+        "line": 23,
+        "start": 636
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "prop"
+        },
+        "span": {
+          "col": 29,
+          "end": 669,
+          "endCol": 30,
+          "endLine": 23,
+          "line": 23,
+          "start": 665
+        }
+      }
+    },
+    {
+      "attrs": [],
+      "binders": [
+        {
+          "info": "explicit",
+          "names": [
+            "T"
+          ],
+          "span": {
+            "col": 18,
+            "end": 864,
+            "endCol": 28,
+            "endLine": 29,
+            "line": 29,
+            "start": 854
+          },
+          "ty": {
+            "kind": "sort",
+            "level": null,
+            "sort": {
+              "kind": "type"
+            },
+            "span": {
+              "col": 23,
+              "end": 863,
+              "endCol": 24,
+              "endLine": 29,
+              "line": 29,
+              "start": 859
+            }
+          }
+        },
+        {
+          "info": "explicit",
+          "names": [
+            "P"
+          ],
+          "span": {
+            "col": 29,
+            "end": 880,
+            "endCol": 44,
+            "endLine": 29,
+            "line": 29,
+            "start": 865
+          },
+          "ty": {
+            "codomain": {
+              "kind": "sort",
+              "level": null,
+              "sort": {
+                "kind": "prop"
+              },
+              "span": {
+                "col": 39,
+                "end": 879,
+                "endCol": 40,
+                "endLine": 29,
+                "line": 29,
+                "start": 875
+              }
+            },
+            "domain": {
+              "kind": "var",
+              "name": "T",
+              "span": {
+                "col": 34,
+                "end": 871,
+                "endCol": 35,
+                "endLine": 29,
+                "line": 29,
+                "start": 870
+              }
+            },
+            "kind": "arrow",
+            "span": {
+              "col": 34,
+              "end": 879,
+              "endCol": 40,
+              "endLine": 29,
+              "line": 29,
+              "start": 870
+            }
+          }
+        }
+      ],
+      "ctors": [
+        {
+          "binders": [],
+          "doc": null,
+          "name": "excon",
+          "span": {
+            "col": 2,
+            "end": 938,
+            "endCol": 44,
+            "endLine": 30,
+            "line": 30,
+            "start": 896
+          },
+          "ty": {
+            "binders": [
+              {
+                "info": "explicit",
+                "names": [
+                  "t"
+                ],
+                "span": {
+                  "col": 19,
+                  "end": 918,
+                  "endCol": 24,
+                  "endLine": 30,
+                  "line": 30,
+                  "start": 913
+                },
+                "ty": {
+                  "kind": "var",
+                  "name": "T",
+                  "span": {
+                    "col": 23,
+                    "end": 918,
+                    "endCol": 24,
+                    "endLine": 30,
+                    "line": 30,
+                    "start": 917
+                  }
+                }
+              }
+            ],
+            "body": {
+              "codomain": {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "T",
+                    "span": {
+                      "col": 41,
+                      "end": 936,
+                      "endCol": 42,
+                      "endLine": 30,
+                      "line": 30,
+                      "start": 935
+                    }
+                  },
+                  {
+                    "kind": "var",
+                    "name": "P",
+                    "span": {
+                      "col": 43,
+                      "end": 938,
+                      "endCol": 44,
+                      "endLine": 30,
+                      "line": 30,
+                      "start": 937
+                    }
+                  }
+                ],
+                "func": {
+                  "kind": "var",
+                  "name": "Exists'",
+                  "span": {
+                    "col": 33,
+                    "end": 934,
+                    "endCol": 34,
+                    "endLine": 30,
+                    "line": 30,
+                    "start": 927
+                  }
+                },
+                "kind": "app",
+                "span": {
+                  "col": 33,
+                  "end": 938,
+                  "endCol": 44,
+                  "endLine": 30,
+                  "line": 30,
+                  "start": 927
+                }
+              },
+              "domain": {
+                "args": [
+                  {
+                    "kind": "var",
+                    "name": "t",
+                    "span": {
+                      "col": 28,
+                      "end": 923,
+                      "endCol": 29,
+                      "endLine": 30,
+                      "line": 30,
+                      "start": 922
+                    }
+                  }
+                ],
+                "func": {
+                  "kind": "var",
+                  "name": "P",
+                  "span": {
+                    "col": 26,
+                    "end": 921,
+                    "endCol": 27,
+                    "endLine": 30,
+                    "line": 30,
+                    "start": 920
+                  }
+                },
+                "kind": "app",
+                "span": {
+                  "col": 26,
+                  "end": 923,
+                  "endCol": 29,
+                  "endLine": 30,
+                  "line": 30,
+                  "start": 920
+                }
+              },
+              "kind": "arrow",
+              "span": {
+                "col": 26,
+                "end": 938,
+                "endCol": 44,
+                "endLine": 30,
+                "line": 30,
+                "start": 920
+              }
+            },
+            "kind": "forall",
+            "span": {
+              "col": 12,
+              "end": 938,
+              "endCol": 44,
+              "endLine": 30,
+              "line": 30,
+              "start": 906
+            }
+          }
+        }
+      ],
+      "deriving": [],
+      "doc": null,
+      "kind": "inductive",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "Exists'",
+      "span": {
+        "col": 0,
+        "end": 938,
+        "endCol": 44,
+        "endLine": 30,
+        "line": 29,
+        "start": 836
+      },
+      "ty": {
+        "kind": "sort",
+        "level": null,
+        "sort": {
+          "kind": "prop"
+        },
+        "span": {
+          "col": 47,
+          "end": 887,
+          "endCol": 48,
+          "endLine": 29,
+          "line": 29,
+          "start": 883
+        }
+      }
+    }
+  ],
+  "doc": null,
+  "path": "lof/logic.lean",
+  "span": {
+    "col": 0,
+    "end": 938,
+    "endCol": 44,
+    "endLine": 30,
+    "line": 2,
+    "start": 37
+  }
+}

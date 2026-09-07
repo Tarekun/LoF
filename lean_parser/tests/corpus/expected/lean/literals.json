@@ -1,0 +1,307 @@
+{
+  "decls": [
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "nat",
+        "raw": "42",
+        "span": {
+          "col": 13,
+          "end": 15,
+          "endCol": 14,
+          "endLine": 1,
+          "line": 1,
+          "start": 13
+        },
+        "value": 42
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "a_nat",
+      "span": {
+        "col": 0,
+        "end": 15,
+        "endCol": 14,
+        "endLine": 1,
+        "line": 1,
+        "start": 0
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "nat",
+        "raw": "0xFF",
+        "span": {
+          "col": 13,
+          "end": 33,
+          "endCol": 14,
+          "endLine": 2,
+          "line": 2,
+          "start": 29
+        },
+        "value": 255
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "a_hex",
+      "span": {
+        "col": 0,
+        "end": 33,
+        "endCol": 14,
+        "endLine": 2,
+        "line": 2,
+        "start": 16
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "nat",
+        "raw": "0b1010",
+        "span": {
+          "col": 13,
+          "end": 53,
+          "endCol": 14,
+          "endLine": 3,
+          "line": 3,
+          "start": 47
+        },
+        "value": 10
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "a_bin",
+      "span": {
+        "col": 0,
+        "end": 53,
+        "endCol": 14,
+        "endLine": 3,
+        "line": 3,
+        "start": 34
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "nat",
+        "raw": "0o17",
+        "span": {
+          "col": 16,
+          "end": 74,
+          "endCol": 17,
+          "endLine": 4,
+          "line": 4,
+          "start": 70
+        },
+        "value": 15
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "an_octal",
+      "span": {
+        "col": 0,
+        "end": 74,
+        "endCol": 17,
+        "endLine": 4,
+        "line": 4,
+        "start": 54
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "nat",
+        "raw": "1_000_000",
+        "span": {
+          "col": 26,
+          "end": 110,
+          "endCol": 27,
+          "endLine": 5,
+          "line": 5,
+          "start": 101
+        },
+        "value": 1000000
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "an_underscored_nat",
+      "span": {
+        "col": 0,
+        "end": 110,
+        "endCol": 27,
+        "endLine": 5,
+        "line": 5,
+        "start": 75
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "str",
+        "span": {
+          "col": 16,
+          "end": 147,
+          "endCol": 17,
+          "endLine": 6,
+          "line": 6,
+          "start": 127
+        },
+        "value": "hello, \"world\"\n"
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "a_string",
+      "span": {
+        "col": 0,
+        "end": 147,
+        "endCol": 17,
+        "endLine": 6,
+        "line": 6,
+        "start": 111
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "char",
+        "span": {
+          "col": 14,
+          "end": 165,
+          "endCol": 15,
+          "endLine": 7,
+          "line": 7,
+          "start": 162
+        },
+        "value": "x"
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "a_char",
+      "span": {
+        "col": 0,
+        "end": 165,
+        "endCol": 15,
+        "endLine": 7,
+        "line": 7,
+        "start": 148
+      },
+      "ty": null
+    },
+    {
+      "attrs": [],
+      "binders": [],
+      "body": {
+        "kind": "char",
+        "span": {
+          "col": 23,
+          "end": 193,
+          "endCol": 24,
+          "endLine": 8,
+          "line": 8,
+          "start": 189
+        },
+        "value": "\n"
+      },
+      "doc": null,
+      "is_abbrev": false,
+      "kind": "def",
+      "modifiers": {
+        "isNoncomputable": false,
+        "isPartial": false,
+        "isPrivate": false,
+        "isProtected": false,
+        "isUnsafe": false
+      },
+      "name": "an_escaped_char",
+      "span": {
+        "col": 0,
+        "end": 193,
+        "endCol": 24,
+        "endLine": 8,
+        "line": 8,
+        "start": 166
+      },
+      "ty": null
+    }
+  ],
+  "doc": null,
+  "path": "lean/literals.lean",
+  "span": {
+    "col": 0,
+    "end": 193,
+    "endCol": 24,
+    "endLine": 8,
+    "line": 1,
+    "start": 0
+  }
+}
