@@ -473,7 +473,7 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
     proof: &Union<T::Term, Vec<Tactic<T::Term, T::Type>>>,
 ) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(formula, environment)?;
-    match proof {
+    let proof_term = match proof {
         L(proof_term) => {
             let proof_type = T::type_check_term(proof_term, environment)?;
             if T::type_judgemental_equality(environment, formula, &proof_type)
@@ -485,15 +485,17 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
                     &proof_type,
                 ));
             }
+
+            proof_term.to_owned()
         }
         R(interactive_proof) => {
-            let proof = type_check_interactive_proof::<T>(
+            let proof_term = type_check_interactive_proof::<T>(
                 environment,
                 interactive_proof,
                 formula,
             )?;
             // check that the proof proves the statement
-            let proof_type = T::type_check_term(&proof, environment)?;
+            let proof_type = T::type_check_term(&proof_term, environment)?;
             if T::type_judgemental_equality(environment, formula, &proof_type)
                 .is_err()
             {
@@ -505,11 +507,22 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
                 //         proof_type, formula
                 //     ));
             }
+
+            proof_term
         }
-    }
-    // include theorem_name into the context for following script, for both
-    // term-mode and tactic-mode proofs
-    let _ = evaluate_theorem::<T>(environment, theorem_name, formula, proof);
+    };
+    // include theorem_name into the context for following script, and
+    // record its resolved proof term (`add_theorem_proof`, via
+    // `evaluate_theorem`) for both term-mode and tactic-mode proofs - a
+    // tactic-mode proof only has a concrete term once
+    // `type_check_interactive_proof` has resolved it, which is why this
+    // is done here rather than left to `evaluate_theorem` itself.
+    let _ = evaluate_theorem::<T>(
+        environment,
+        theorem_name,
+        formula,
+        &L(proof_term),
+    );
 
     Ok(formula.to_owned())
 }
