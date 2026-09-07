@@ -1,3 +1,4 @@
+use crate::type_theory::commons::transport::EquivConfig;
 use crate::type_theory::interface::TypeTheory;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -12,6 +13,9 @@ pub struct Environment<T: TypeTheory> {
     predicates: HashMap<String, Vec<T::Type>>,
     /// type_name, (constructors_vec, left_params_count)
     inductive_store: HashMap<String, (Vec<(String, T::Type)>, usize)>,
+    /// equivalence_name, registered configuration. Populated by the
+    /// `equivalence` statement, consulted by `transport`.
+    equivalences: HashMap<String, EquivConfig<T>>,
 }
 impl<T: TypeTheory> Clone for Environment<T>
 where
@@ -24,6 +28,7 @@ where
             deltas: self.deltas.clone(),
             predicates: self.predicates.clone(),
             inductive_store: self.inductive_store.clone(),
+            equivalences: self.equivalences.clone(),
         }
     }
 }
@@ -252,6 +257,53 @@ impl<T: TypeTheory> Environment<T> {
             Some((_, left_param_count)) => Some(*left_param_count),
         }
     }
+
+    /// A type's `(constructor_name, constructor_type)` list in declaration
+    /// order. Unlike `get_constructors_for` (an unordered `HashSet` of
+    /// names, sufficient for exhaustiveness checks) this is what a
+    /// positional alignment against the type's own constructors needs -
+    /// eg lining an eliminator application's cases up with the
+    /// constructor each one handles.
+    pub fn get_inductive_constructors(
+        &self,
+        name: &str,
+    ) -> Option<&Vec<(String, T::Type)>> {
+        self.inductive_store.get(name).map(|(list, _)| list)
+    }
+
+    /// Reverse lookup: which inductive type a constructor belongs to.
+    /// Needed when a `match`'s scrutinee type is only known indirectly -
+    /// eg through one of its own branch patterns, whose head is a
+    /// constructor name rather than the type itself.
+    pub fn constructor_type_of(&self, constructor_name: &str) -> Option<String> {
+        self.inductive_store.iter().find_map(|(type_name, (constructors, _))| {
+            constructors
+                .iter()
+                .any(|(name, _)| name == constructor_name)
+                .then(|| type_name.to_owned())
+        })
+    }
+}
+
+// type equivalences
+impl<T: TypeTheory> Environment<T> {
+    pub fn add_equivalence(&mut self, name: &str, config: EquivConfig<T>) {
+        self.equivalences.insert(name.to_string(), config);
+    }
+
+    pub fn get_equivalence(&self, name: &str) -> Option<&EquivConfig<T>> {
+        self.equivalences.get(name)
+    }
+
+    /// Mutable access to a registered equivalence, needed to grow
+    /// `EquivConfig::lifted_names` as `transport` lifts more auxiliary
+    /// `fun`/`global` definitions under it.
+    pub fn get_equivalence_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut EquivConfig<T>> {
+        self.equivalences.get_mut(name)
+    }
 }
 
 // other utilities
@@ -283,6 +335,7 @@ impl<T: TypeTheory> Environment<T> {
             deltas: deltas_map,
             predicates: predicates_map,
             inductive_store: HashMap::new(),
+            equivalences: HashMap::new(),
         }
     }
 
