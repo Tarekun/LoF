@@ -5,13 +5,13 @@ use std::fmt::Debug;
 #[derive(Debug)]
 pub struct Environment<T: TypeTheory> {
     /// var_name, variable type
-    pub context: HashMap<String, Vec<T::Type>>,
+    context: HashMap<String, Vec<T::Type>>,
     /// var_name, definition term, type
-    pub deltas: HashMap<String, Vec<T::Term>>,
+    deltas: HashMap<String, Vec<T::Term>>,
     /// pred_name, arg_types
-    pub predicates: HashMap<String, Vec<T::Type>>,
+    predicates: HashMap<String, Vec<T::Type>>,
     /// type_name, (constructors_vec, left_params_count)
-    pub inductive_store: HashMap<String, (Vec<(String, T::Type)>, usize)>,
+    inductive_store: HashMap<String, (Vec<(String, T::Type)>, usize)>,
 }
 impl<T: TypeTheory> Clone for Environment<T>
 where
