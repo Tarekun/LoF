@@ -351,7 +351,7 @@ fn type_check_theorem_base<
     mut are_compatible: P,
 ) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(formula, environment)?;
-    match proof {
+    let proof_term = match proof {
         L(proof_term) => {
             let proof_type = T::type_check_term(proof_term, environment)?;
             if !are_compatible(&proof_type, formula, environment) {
@@ -361,15 +361,17 @@ fn type_check_theorem_base<
                     &proof_type,
                 ));
             }
+
+            proof_term.to_owned()
         }
         R(interactive_proof) => {
-            let proof = type_check_interactive_proof::<T>(
+            let proof_term = type_check_interactive_proof::<T>(
                 environment,
                 interactive_proof,
                 formula,
             )?;
             // check that the proof proves the statement
-            let proof_type = T::type_check_term(&proof, environment)?;
+            let proof_type = T::type_check_term(&proof_term, environment)?;
             if !are_compatible(&proof_type, formula, environment) {
                 // TODO figure out what to do in this branch:
                 // this is a pratial proof are we sure we should fail if the goal isnt matched?
@@ -380,15 +382,21 @@ fn type_check_theorem_base<
                 //         proof_type, formula
                 //     ));
             }
+
+            proof_term
         }
-    }
-    // include theorem_name into the context for following script, for both
-    // term-mode and tactic-mode proofs
+    };
+    // include theorem_name into the context for following script, and
+    // record its resolved proof term (`add_theorem_proof`, via
+    // `evaluate_theorem`) for both term-mode and tactic-mode proofs - a
+    // tactic-mode proof only has a concrete term once
+    // `type_check_interactive_proof` has resolved it, which is why this
+    // is done here rather than left to `evaluate_theorem` itself.
     let _ = evaluate_theorem::<T, T::Exp>(
         environment,
         theorem_name,
         formula,
-        proof,
+        &L(proof_term),
     );
 
     Ok(formula.to_owned())
