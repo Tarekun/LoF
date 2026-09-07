@@ -13,6 +13,7 @@ pub struct Environment<T: TypeTheory> {
     predicates:       HashMap<String, Vec<T::Type>>,
     inductive_store:  HashMap<String, (Vec<(String, T::Type)>, usize)>,
     equivalences:      HashMap<String, EquivConfig<T>>,
+    theorem_proofs:    HashMap<String, Vec<T::Term>>,
 }
 ```
 
@@ -26,7 +27,7 @@ Maps variable names to their types (`Γ` in type theory notation). Each entry is
 
 Maps variable names to their definitions (`Δ` in reduction rules). Also stack-based for the same reason. Used for δ-reduction: when a variable's name appears during normalization, the engine looks it up here to get the substitutable body.
 
-A variable can have both a context entry (its type) and a delta entry (its definition). Globally defined functions, `let` bindings, and checked **theorems** (both term-mode and tactic-mode) appear in both; only axioms and unproved context entries appear in context alone. A theorem's proof term is therefore an ordinary δ-reduction target, exactly like a `fun`/`global` body — there is no separate opaque "theorem" storage, and no bespoke way to fetch a theorem's witness back out: `get_from_deltas(theorem_name)` is that lookup, the same one any definition uses.
+A variable can have both a context entry (its type) and a delta entry (its definition). Globally defined functions and `let` bindings appear in both; axioms *and checked theorems* appear in context alone - a theorem's proof term is deliberately **not** a delta (see `theorem_proofs` below).
 
 ### `predicates`
 
@@ -40,6 +41,12 @@ Maps an inductive type name to its `(constructor_name, constructor_type)` list *
 
 Maps an equivalence name to its registered `EquivConfig` (`commons/transport.rs`): the forward/backward functions, section/retraction proofs, and the DepConstr/DepElim/Eta/Iota data. Populated by the `equivalence` statement, consulted by `transport` — see [systems/transport.md](systems/transport.md).
 
+### `theorem_proofs`
+
+Maps a theorem name to its proof term. Unlike `deltas` this is **never consulted by δ-reduction or unification** - a theorem stays opaque for reduction, exactly like an axiom, whether or not it happens to have a term-mode proof on file here. It exists purely so a tool can retrieve an already-checked theorem's witness by name, which is what [`transport`](systems/transport.md) needs in order to rewrite an existing proof.
+
+This is a deliberate divergence from treating a theorem like an ordinary definition: a hand-derived `dep_elim` (see [systems/transport.md](systems/transport.md)) is typically itself a *theorem*, and the entire Iota mechanism exists because such a `dep_elim` has no computational behaviour of its own. Making theorem bodies δ-reduce would silently give some of them behaviour again - inconsistently, since it would only "work" where the theorem's own proof happens to bottom out in something reducible - which undermines the very distinction Iota is there to bridge. So the proof is kept retrievable by name without being substitutable.
+
 Note: metavariable unification constraints are no longer accumulated on the environment. The `Refiner` trait now threads them explicitly as a `Vec<(Exp, Exp)>` collected by `term_collect_unifications`/`type_collect_unifications` and consumed directly by `solve_unifications` — see [systems/type-theory-interface.md](systems/type-theory-interface.md).
 
 ## Core Operations
@@ -52,6 +59,7 @@ env.add_substitution(name, &term);          // adds to deltas only
 env.add_substitution_with_type(name, &term, &typee); // adds to both
 env.add_to_inductive_store(name, constructors, left_param_count); // registers an inductive type
 env.add_equivalence(name, config);         // registers an `equivalence` statement's configuration
+env.add_theorem_proof(name, &proof);       // records a checked theorem's witness (not a delta)
 ```
 
 ### Looking up bindings
@@ -69,6 +77,7 @@ env.get_inductive_constructors(name) // -> Option<&Vec<(String, T::Type)>>, in d
 env.get_inductive_param_count(name)  // -> Option<usize>, the type's left-parameter count
 env.get_equivalence(name)          // -> Option<&EquivConfig<T>>
 env.get_equivalence_mut(name)      // -> Option<&mut EquivConfig<T>>, for growing `lifted_names`
+env.get_theorem_proof(name)        // -> Option<T::Term>, a checked theorem's proof term
 ```
 
 ## Scoped Operations
