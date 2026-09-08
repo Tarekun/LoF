@@ -5,13 +5,13 @@ use std::fmt::Debug;
 #[derive(Debug)]
 pub struct Environment<T: TypeTheory> {
     /// var_name, variable type
-    pub context: HashMap<String, Vec<T::Type>>,
+    context: HashMap<String, Vec<T::Type>>,
     /// var_name, definition term, type
-    pub deltas: HashMap<String, Vec<T::Term>>,
+    deltas: HashMap<String, Vec<T::Term>>,
     /// pred_name, arg_types
-    pub predicates: HashMap<String, Vec<T::Type>>,
-    /// type_name, constructors_vec
-    pub constructor_store: HashMap<String, Vec<(String, T::Type)>>,
+    predicates: HashMap<String, Vec<T::Type>>,
+    /// type_name, (constructors_vec, left_params_count)
+    inductive_store: HashMap<String, (Vec<(String, T::Type)>, usize)>,
 }
 impl<T: TypeTheory> Clone for Environment<T>
 where
@@ -23,7 +23,7 @@ where
             context: self.context.clone(),
             deltas: self.deltas.clone(),
             predicates: self.predicates.clone(),
-            constructor_store: self.constructor_store.clone(),
+            inductive_store: self.inductive_store.clone(),
         }
     }
 }
@@ -220,21 +220,22 @@ impl<T: TypeTheory> Environment<T> {
     }
 }
 
-// constructor store
+// inductive store
 impl<T: TypeTheory> Environment<T> {
-    pub fn add_constructor_store(
+    pub fn add_to_inductive_store(
         &mut self,
         name: &str,
         typee: Vec<(String, T::Type)>,
+        left_param_count: usize,
     ) {
-        self.constructor_store
-            .insert(name.to_string(), typee.clone());
+        self.inductive_store
+            .insert(name.to_string(), (typee, left_param_count));
     }
 
     pub fn get_constructors_for(&self, name: &str) -> Option<HashSet<String>> {
-        match self.constructor_store.get(name) {
+        match self.inductive_store.get(name) {
             None => None,
-            Some(list) => {
+            Some((list, _)) => {
                 let res: HashSet<String> = list
                     .into_iter()
                     .map(|(constr_name, _)| constr_name.to_owned())
@@ -242,6 +243,13 @@ impl<T: TypeTheory> Environment<T> {
 
                 Some(res)
             }
+        }
+    }
+
+    pub fn get_inductive_param_count(&self, name: &str) -> Option<usize> {
+        match self.inductive_store.get(name) {
+            None => None,
+            Some((_, left_param_count)) => Some(*left_param_count),
         }
     }
 }
@@ -274,7 +282,7 @@ impl<T: TypeTheory> Environment<T> {
             context: context_map,
             deltas: deltas_map,
             predicates: predicates_map,
-            constructor_store: HashMap::new(),
+            inductive_store: HashMap::new(),
         }
     }
 

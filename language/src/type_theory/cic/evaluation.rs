@@ -145,7 +145,7 @@ pub fn evaluate_inductive(
             constructors.to_owned(),
         ),
     );
-    environment.add_constructor_store(name, constr_set);
+    environment.add_to_inductive_store(name, constr_set, params.len());
 
     Ok(())
 }
@@ -202,4 +202,3 @@ fn substitute_pattern_arg(
 #[cfg(test)]
 #[path = "../../tests/type_theory/cic/evaluation.rs"]
 mod tests;
-
