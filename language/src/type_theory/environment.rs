@@ -1,3 +1,4 @@
+use crate::type_theory::commons::transport::EquivConfig;
 use crate::type_theory::interface::TypeTheory;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -12,6 +13,15 @@ pub struct Environment<T: TypeTheory> {
     predicates: HashMap<String, Vec<T::Type>>,
     /// type_name, (constructors_vec, left_params_count)
     inductive_store: HashMap<String, (Vec<(String, T::Type)>, usize)>,
+    /// equivalence_name, registered configuration. Populated by the
+    /// `equivalence` statement, consulted by `transport`.
+    equivalences: HashMap<String, EquivConfig<T>>,
+    /// theorem_name, proof term. Unlike `deltas`, this is never consulted
+    /// by δ-reduction or unification - a theorem stays opaque for
+    /// reduction, exactly like an axiom. It exists purely so a tool (eg
+    /// `transport`) can retrieve an already-checked theorem's witness term
+    /// by name.
+    theorem_proofs: HashMap<String, Vec<T::Term>>,
 }
 impl<T: TypeTheory> Clone for Environment<T>
 where
@@ -24,6 +34,8 @@ where
             deltas: self.deltas.clone(),
             predicates: self.predicates.clone(),
             inductive_store: self.inductive_store.clone(),
+            equivalences: self.equivalences.clone(),
+            theorem_proofs: self.theorem_proofs.clone(),
         }
     }
 }
@@ -252,6 +264,76 @@ impl<T: TypeTheory> Environment<T> {
             Some((_, left_param_count)) => Some(*left_param_count),
         }
     }
+
+    /// A type's `(constructor_name, constructor_type)` list in declaration
+    /// order. Unlike `get_constructors_for` (an unordered `HashSet` of
+    /// names, sufficient for exhaustiveness checks) this is what a
+    /// positional alignment against the type's own constructors needs -
+    /// eg lining an eliminator application's cases up with the
+    /// constructor each one handles.
+    pub fn get_inductive_constructors(
+        &self,
+        name: &str,
+    ) -> Option<&Vec<(String, T::Type)>> {
+        self.inductive_store.get(name).map(|(list, _)| list)
+    }
+
+    /// Reverse of `get_constructors_for`: which inductive type declares
+    /// `constructor_name`. Needed when a `match`'s scrutinee type is only
+    /// known indirectly - eg through one of its own branch patterns, whose
+    /// head is a constructor name rather than the type itself - notably by
+    /// the reducer, which only holds `&Environment` and so cannot type
+    /// check to recover it another way.
+    pub fn constructor_type_of(&self, constructor_name: &str) -> Option<String> {
+        self.inductive_store.iter().find_map(|(type_name, (constructors, _))| {
+            constructors
+                .iter()
+                .any(|(name, _)| name == constructor_name)
+                .then(|| type_name.to_owned())
+        })
+    }
+}
+
+// type equivalences
+impl<T: TypeTheory> Environment<T> {
+    pub fn add_equivalence(&mut self, name: &str, config: EquivConfig<T>) {
+        self.equivalences.insert(name.to_string(), config);
+    }
+
+    pub fn get_equivalence(&self, name: &str) -> Option<&EquivConfig<T>> {
+        self.equivalences.get(name)
+    }
+
+    /// Mutable access to a registered equivalence, needed to grow
+    /// `EquivConfig::lifted_names` as `transport` lifts more auxiliary
+    /// `fun`/`global` definitions under it.
+    pub fn get_equivalence_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut EquivConfig<T>> {
+        self.equivalences.get_mut(name)
+    }
+}
+
+// theorem proofs
+impl<T: TypeTheory> Environment<T> {
+    /// Records `theorem_name`'s proof term for later introspection (eg by
+    /// `transport`). Does not affect δ-reduction/unification - a
+    /// theorem's name still only carries its formula in `context`, exactly
+    /// as before; this is a separate, read-only channel.
+    pub fn add_theorem_proof(&mut self, theorem_name: &str, proof: &T::Term) {
+        self.theorem_proofs
+            .entry(theorem_name.to_string())
+            .or_insert_with(Vec::new)
+            .push(proof.to_owned());
+    }
+
+    pub fn get_theorem_proof(&self, theorem_name: &str) -> Option<T::Term> {
+        self.theorem_proofs
+            .get(theorem_name)
+            .and_then(|stack| stack.last())
+            .map(|proof| proof.to_owned())
+    }
 }
 
 // other utilities
@@ -283,6 +365,8 @@ impl<T: TypeTheory> Environment<T> {
             deltas: deltas_map,
             predicates: predicates_map,
             inductive_store: HashMap::new(),
+            equivalences: HashMap::new(),
+            theorem_proofs: HashMap::new(),
         }
     }
 

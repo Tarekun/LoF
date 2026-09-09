@@ -7,7 +7,7 @@ use crate::{
             evaluate_axiom, evaluate_fun, evaluate_global, evaluate_theorem,
         },
         environment::Environment,
-        interface::{Interactive, Kernel, Refiner, TypeTheory},
+        interface::{Interactive, Kernel, Reducer, Refiner, TypeTheory},
     },
 };
 
@@ -118,10 +118,11 @@ pub fn type_check_application<
 /// This function does supports both unification-based type inference solving implicit
 /// types and functions with term-dependent types
 pub fn i_type_check_application<
-    T: TypeTheory + Kernel + Refiner,
+    T: TypeTheory + Kernel + Refiner + Reducer,
     F: Fn(&T::Type) -> Option<(String, T::Type, T::Type)>,
     R: Fn(&T::Term, &T::Term) -> T::Term,
     S: Fn(&T::Type, &str, &T::Term) -> T::Type,
+    E: Fn(&T::Type) -> T::Exp,
 >(
     environment: &mut Environment<T>,
     left: &T::Term,
@@ -129,18 +130,38 @@ pub fn i_type_check_application<
     unpack_fun_type: F,
     repack_application: R,
     substitute_type: S,
+    type_as_expression: E,
 ) -> Result<T::Type, LofError> {
     let _arg_type = T::type_check_term(right, environment)?;
     let function_type = T::type_check_term(left, environment)?;
+    // A function type read straight off an earlier application arrives as
+    // an un-reduced substituted codomain - a dependent eliminator's result
+    // is literally `motive(target, proof)`. Normalizing on the fallback
+    // path keeps the fast case (an explicit Pi) free while still letting
+    // such a term be applied.
+    let function_type = match unpack_fun_type(&function_type) {
+        Some(_) => function_type,
+        None => T::normalize_type(environment, &function_type),
+    };
 
-    if let Some((var_name, _domain, codomain)) = unpack_fun_type(&function_type)
+    if let Some((var_name, domain, codomain)) = unpack_fun_type(&function_type)
     {
-        // note: at this stage `constraints` already contains the check _arg_type ≐ _domain
-        let constraints = T::term_collect_unifications(
-            &repack_application(left, right),
-            environment,
-        )?;
+        // Only this node's own constraint - the argument's type against the
+        // domain. Collecting over the whole `left right` term instead (as
+        // this did) re-walks the entire function spine, and constraint
+        // collection on an application itself type checks that
+        // application's function: the two are mutually recursive, so the
+        // cost doubles per argument. A six-argument curried application
+        // nested three deep cost tens of millions of type-check calls.
+        //
+        // Nothing is lost: `left` and `right` were each just type checked
+        // above, which collects and solves their own inner constraints.
+        let constraints = vec![(
+            type_as_expression(&domain),
+            type_as_expression(&_arg_type),
+        )];
         let substitution = T::solve_unifications(constraints, environment)?;
+        let _ = &repack_application;
 
         let codomain = substitute_type(&codomain, &var_name, right);
         let codomain = T::type_apply_unifier(&codomain, &substitution);
@@ -351,7 +372,7 @@ fn type_check_theorem_base<
     mut are_compatible: P,
 ) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(formula, environment)?;
-    match proof {
+    let proof_term = match proof {
         L(proof_term) => {
             let proof_type = T::type_check_term(proof_term, environment)?;
             if !are_compatible(&proof_type, formula, environment) {
@@ -361,15 +382,17 @@ fn type_check_theorem_base<
                     &proof_type,
                 ));
             }
+
+            proof_term.to_owned()
         }
         R(interactive_proof) => {
-            let proof = type_check_interactive_proof::<T>(
+            let proof_term = type_check_interactive_proof::<T>(
                 environment,
                 interactive_proof,
                 formula,
             )?;
             // check that the proof proves the statement
-            let proof_type = T::type_check_term(&proof, environment)?;
+            let proof_type = T::type_check_term(&proof_term, environment)?;
             if !are_compatible(&proof_type, formula, environment) {
                 // TODO figure out what to do in this branch:
                 // this is a pratial proof are we sure we should fail if the goal isnt matched?
@@ -380,15 +403,21 @@ fn type_check_theorem_base<
                 //         proof_type, formula
                 //     ));
             }
+
+            proof_term
         }
-    }
-    // include theorem_name into the context for following script, for both
-    // term-mode and tactic-mode proofs
+    };
+    // include theorem_name into the context for following script, and
+    // record its resolved proof term (`add_theorem_proof`, via
+    // `evaluate_theorem`) for both term-mode and tactic-mode proofs - a
+    // tactic-mode proof only has a concrete term once
+    // `type_check_interactive_proof` has resolved it, which is why this
+    // is done here rather than left to `evaluate_theorem` itself.
     let _ = evaluate_theorem::<T, T::Exp>(
         environment,
         theorem_name,
         formula,
-        proof,
+        &L(proof_term),
     );
 
     Ok(formula.to_owned())

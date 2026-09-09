@@ -1,12 +1,12 @@
 use super::cic::CicTerm;
 use super::cic::CicTerm::{
-    Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Meta, Proj, Product, Sort, Variable,
 };
 use crate::error::LofError;
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function, get_arg_types, is_constant,
-    substitute_meta,
+    substitute, substitute_meta,
 };
 use crate::type_theory::commons::unification::{ucs, Substitution};
 use crate::type_theory::environment::Environment;
@@ -38,7 +38,23 @@ fn structurally_equal(term1: &CicTerm, term2: &CicTerm) -> bool {
         }
         (Variable(name1, dbi1), Variable(name2, dbi2)) => {
             // same dbi1 and if they are global constants then also the constant symbols must be the same
-            dbi1 == dbi2 && (!is_constant(term1) || name1 == name2)
+            let same_position =
+                dbi1 == dbi2 && (!is_constant(term1) || name1 == name2);
+
+            // ... or the same name, where one side merely lost its local
+            // index. `index_variables` runs per elaborated fragment, so a
+            // name bound in one fragment but only *referenced* in another
+            // (a definition's declared type versus its body, an
+            // eliminator's stored type versus a freshly elaborated
+            // argument) comes out flagged global on one side and locally
+            // indexed on the other. Identity in this kernel is by name
+            // anyway - substitution and the unifier's own variable keys
+            // both ignore the index - so treat these as the same variable
+            // rather than rejecting a term for how it was assembled.
+            let same_name_one_side_global = name1 == name2
+                && ((*dbi1 == GLOBAL_INDEX) != (*dbi2 == GLOBAL_INDEX));
+
+            same_position || same_name_one_side_global
         }
         (Abstraction(_, type1, body1), Abstraction(_, type2, body2)) => {
             structurally_equal(type1, type2) && structurally_equal(body1, body2)
@@ -57,22 +73,36 @@ fn structurally_equal(term1: &CicTerm, term2: &CicTerm) -> bool {
             structurally_equal(body1, body2)
                 && structurally_equal(scope1, scope2)
         }
+        // same field of the same type; the targets are compared later, via
+        // `explode` pushing them back onto the ucs queue as their own
+        // constraint pair - same reasoning as the `Match` arm below
+        (Proj(type1, field1, _), Proj(type2, field2, _)) => {
+            type1 == type2 && field1 == field2
+        }
+        // Only check "same number of branches" here rather than eagerly
+        // recursing into the scrutinee (as this arm used to): the
+        // scrutinee is compared later anyway, via `explode` pushing it
+        // back onto the ucs queue as its own constraint pair - and that
+        // path lets `is_substitutable` resolve a bound-variable scrutinee
+        // like any other constraint, whereas a direct recursive
+        // `structurally_equal` call demands raw DBI equality. That matters
+        // because this kernel's De Bruijn numbering (`index_variables`) is
+        // an absolute depth counter from wherever the indexing pass
+        // started, not a depth relative to each variable's own binder - so
+        // it's only internally consistent within a single indexing pass.
+        // Two terms indexed independently (eg an inductive's
+        // auto-generated eliminator type, indexed once at registration
+        // time, vs a freshly-elaborated proof term supplied as one of its
+        // arguments) can be alpha-equivalent while disagreeing on raw DBI
+        // for a scrutinee nested several binders deep - exactly what a
+        // dependent-eliminator-based proof's step case produces. Deferring
+        // to explode/ucs here does not weaken soundness: a genuine
+        // mismatch in the scrutinee or any branch still fails unification,
+        // just one queue round-trip later instead of immediately.
         // TODO this explosion is order dependent on the branches, itd be nice to
         // reorder branches in some deterministic way
-        (Match(matched1, branches1), Match(matched2, branches2)) => {
-            if !structurally_equal(matched1, matched2) {
-                return false;
-            }
-            for (b1, b2) in branches1.iter().zip(branches2.iter()) {
-                let (pattern1, body1) = b1;
-                let (pattern2, body2) = b2;
-                if !(structurally_equal(pattern1, pattern2)
-                    || structurally_equal(body1, body2))
-                {
-                    return false;
-                }
-            }
-            true
+        (Match(_, branches1), Match(_, branches2)) => {
+            branches1.len() == branches2.len()
         }
         _ => false,
     }
@@ -88,6 +118,7 @@ fn explode(term: &CicTerm) -> Vec<CicTerm> {
         Application(left, right) => {
             vec![(**left).to_owned(), (**right).to_owned()]
         }
+        Proj(_, _, target) => vec![(**target).to_owned()],
         // TODO this explosion is order dependent on the branches, itd be nice to
         // reorder branches in some deterministic way
         Match(matched_term, branches) => {
@@ -129,6 +160,7 @@ fn occurs_meta_check(meta_index: i32, term: &CicTerm) -> Result<(), LofError> {
             occurs_meta_check(meta_index, &left)?;
             occurs_meta_check(meta_index, &right)
         }
+        Proj(_, _, target) => occurs_meta_check(meta_index, target),
         Match(matched, branches) => {
             for (pattern, body) in branches {
                 occurs_meta_check(meta_index, pattern)?;
@@ -161,6 +193,7 @@ fn occurs_var_check(term: &CicTerm, name: &str) -> bool {
         Application(func, arg) => {
             occurs_var_check(func, name) || occurs_var_check(arg, name)
         }
+        Proj(_, _, target) => occurs_var_check(target, name),
         Match(scrutinee, branches) => {
             occurs_var_check(scrutinee, name)
                 || branches.iter().any(|(pattern, body)| {
@@ -189,7 +222,23 @@ fn occurs(term: &CicTerm, name: &str) -> bool {
         )
         .is_err()
     } else if name.starts_with("variable_") {
-        occurs_var_check(term, name.strip_prefix("variable_").unwrap())
+        let var_name = name.strip_prefix("variable_").unwrap();
+
+        // Binding a bound variable to a *constant occurrence of the same
+        // name* is the identity, not a cycle. It arises because
+        // `index_variables` runs per elaborated fragment: a name bound in
+        // one fragment but only referenced in another comes out flagged
+        // global there, so `x ≐ x` reaches the solver with just one side
+        // substitutable. Since substitution is by name, that binding is a
+        // no-op. The occurs check still rejects the real cycle `x := f(x)`,
+        // and still reports a bare non-constant `x` as an occurrence.
+        if let Variable(term_name, dbi) = term {
+            if term_name == var_name && *dbi == GLOBAL_INDEX {
+                return false;
+            }
+        }
+
+        occurs_var_check(term, var_name)
     } else {
         panic!("CIC occurs check is being called on a name that isnt formed by any of the 2 prefixes used. this shuold NOT happen");
     }
@@ -236,8 +285,18 @@ fn solve_unifications_unnormalized(
         occurs,
     )?
     .reduce(|term, idx, arg| {
-        let stripped_idx = idx.strip_prefix("metavariable_").unwrap_or(idx);
-        substitute_meta(term, &stripped_idx.parse().unwrap(), arg)
+        // Same metavariable_/variable_ dispatch as `cic_apply_unifier`: a
+        // substitution key from `is_substitutable` is either a `Meta`
+        // (substituted by index) or an ordinary bound `Variable`
+        // (substituted by name) - the two need different substitution
+        // functions.
+        if let Some(meta_idx) = idx.strip_prefix("metavariable_") {
+            substitute_meta(term, &meta_idx.parse().unwrap(), arg)
+        } else if let Some(var_name) = idx.strip_prefix("variable_") {
+            substitute(term, var_name, arg)
+        } else {
+            term.clone()
+        }
     }))
 }
 
@@ -262,14 +321,26 @@ pub fn cic_collect_unifications(
 
             let arg_type = Cic::type_check_term(arg, environment)?;
             let fun_type = Cic::type_check_term(fun, environment)?;
-            let first_arg_type = &get_arg_types(&fun_type)[0];
+            // The function's type can arrive un-reduced (a dependent
+            // eliminator's result is literally `motive(target, proof)`), in
+            // which case its Pi-chain isn't visible yet. Normalize before
+            // giving up, and emit no constraint if it still has no argument
+            // to constrain - a genuine arity error is reported by the
+            // application's own type checking, not here.
+            let argument_types = match get_arg_types(&fun_type).first() {
+                Some(_) => get_arg_types(&fun_type),
+                None => get_arg_types(&Cic::normalize_term(
+                    environment, &fun_type,
+                )),
+            };
+            let own_constraint = match argument_types.first() {
+                Some(first_arg_type) => {
+                    vec![(first_arg_type.to_owned(), arg_type)]
+                }
+                None => vec![],
+            };
 
-            Ok([
-                fun_cons,
-                vec![(first_arg_type.to_owned(), arg_type)],
-                arg_cons,
-            ]
-            .concat())
+            Ok([fun_cons, own_constraint, arg_cons].concat())
         }
         Product(var_name, domain, codomain) => {
             let domain_cons = cic_collect_unifications(domain, environment)?;
@@ -301,10 +372,55 @@ pub fn cic_collect_unifications(
                 cic_collect_unifications(matched_term, environment)?;
             let mut branch_cons = vec![];
             for (pattern, body) in branches {
-                branch_cons
-                    .extend(cic_collect_unifications(pattern, environment)?);
-                branch_cons
-                    .extend(cic_collect_unifications(body, environment)?);
+                // NOTE: the pattern itself is a binding form (`s(nn)`
+                // introduces `nn`), not an ordinary expression - it must
+                // not be fed through `cic_collect_unifications` (which
+                // would try to type-check `nn` as a reference before it's
+                // bound). Only its bound variables (collected below) and
+                // the branch body need constraints collected.
+
+                // Bind the pattern's own variables (eg `nn` in `s(nn)`)
+                // before recursing into the branch body, exactly like
+                // `type_check_match` already does via `type_constr_vars` -
+                // otherwise a body referencing a pattern variable (eg a
+                // recursive call `plus(nn, m)`) fails with an unbound-
+                // variable error the moment this collection pass is
+                // triggered on a term containing the match (which ordinary
+                // `fun` type-checking never does, since it checks a fun's
+                // un-wrapped body with its own parameters already bound
+                // manually - but validating an already-evaluated,
+                // lambda-wrapped definition, as `transport` does, goes
+                // through `i_type_check_abstraction` and hits this path).
+                // Best-effort: if the pattern's head isn't a resolvable
+                // constructor (eg a test exercising this in isolation,
+                // without registering one), fall back to no assumptions
+                // rather than aborting constraint collection entirely -
+                // this pass collects whatever constraints it safely can,
+                // it isn't the authoritative pattern type-checker (that's
+                // `type_check_match`/`type_constr_vars` itself).
+                let constructor = get_applied_function(pattern);
+                let pattern_assumptions = match &constructor {
+                    Variable(_, _) => Cic::type_check_term(
+                        &constructor,
+                        environment,
+                    )
+                    .ok()
+                    .and_then(|constr_type| {
+                        crate::type_theory::cic::type_check::type_constr_vars(
+                            environment,
+                            pattern,
+                            &constr_type,
+                        )
+                        .ok()
+                    })
+                    .unwrap_or_default(),
+                    _ => vec![],
+                };
+                let body_cons = environment.with_local_assumptions(
+                    &pattern_assumptions,
+                    |local_env| cic_collect_unifications(body, local_env),
+                )?;
+                branch_cons.extend(body_cons);
             }
 
             Ok([matched_cons, branch_cons].concat())
@@ -312,21 +428,28 @@ pub fn cic_collect_unifications(
         _ => Ok(vec![]),
     }
 }
+/// Folds a solved `substitution` back into `exp`. Substitution keys are
+/// tagged by `is_substitutable` as either `metavariable_<idx>` (a `Meta`
+/// placeholder, folded via `substitute_meta`) or `variable_<name>` (an
+/// ordinary non-constant `Variable`, folded via the name-based `substitute`)
+/// - the two kinds need different substitution functions, since a `Meta`
+/// is addressed by index and an ordinary variable by name.
 pub fn cic_apply_unifier(
     exp: &CicTerm,
     substitution: &Substitution<CicTerm>,
 ) -> CicTerm {
     let mut solved_exp = exp.to_owned();
     for index in substitution.names() {
-        solved_exp = substitute_meta(
-            &solved_exp,
-            &index
-                .strip_prefix("metavariable_")
-                .unwrap_or(index)
-                .parse()
-                .unwrap(),
-            substitution.get(index).unwrap(),
-        )
+        let value = substitution.get(index).unwrap();
+        solved_exp = if let Some(meta_idx) =
+            index.strip_prefix("metavariable_")
+        {
+            substitute_meta(&solved_exp, &meta_idx.parse().unwrap(), value)
+        } else if let Some(var_name) = index.strip_prefix("variable_") {
+            substitute(&solved_exp, var_name, value)
+        } else {
+            solved_exp
+        };
     }
     solved_exp
 }

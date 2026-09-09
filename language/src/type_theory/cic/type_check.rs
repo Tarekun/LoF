@@ -15,11 +15,14 @@ use crate::{
                 index_variables, is_instance_of, make_multiarg_fun_type,
                 substitute,
             },
-            evaluation::evaluate_inductive, unification::cic_so_unification,
+            evaluation::{
+                evaluate_equivalence, evaluate_inductive, evaluate_transport,
+            },
+            unification::cic_so_unification,
         },
         commons::type_check::type_check_variable,
         environment::Environment,
-        interface::{Kernel, Refiner},
+        interface::{Kernel, Reducer, Refiner},
     },
 };
 use tracing::error;
@@ -38,7 +41,7 @@ pub fn type_check_sort(
 
 
 /// Returns the vector of type judgements for the variables provided if they match the constructor type
-fn type_constr_vars(
+pub(crate) fn type_constr_vars(
     environment: &mut Environment<Cic>,
     pattern: &CicTerm,
     constr_type: &CicTerm,
@@ -193,12 +196,110 @@ fn type_check_pattern(
 // this boils down to type checking an application against a target type where all of its arguments' types are to be infered;
 // => i have a strong feeling type_constr_vars&type_check_pattern can be simplified using unification
 //    (every unbound variable gets a ?_i type, the overall application is unified against the target type)
+/// Types a projection `target.i` out of a single-constructor inductive.
+///
+/// Given `target : T(p_1..p_m)` and `T`'s only constructor
+/// `C : ∀p_1..p_m. ∀a_0:A_0. .. ∀a_{k-1}:A_{k-1}. T(p_1..p_m)`, the result
+/// is `A_i` with the type's parameters instantiated to `target`'s actual
+/// ones and every *earlier* field replaced by its own projection:
+///
+/// ```text
+/// A_i[p_j := actual_j][a_0 := target.0, .., a_{i-1} := target.{i-1}]
+/// ```
+///
+/// That second substitution is what makes a dependent field come out
+/// right: `PackedVec`'s second field has declared type `Vec(Tp, n)`, and
+/// projecting it yields `Vec(Tp, target.0)` rather than a term mentioning
+/// the constructor's own unbound `n`.
+pub fn type_check_proj(
+    environment: &mut Environment<Cic>,
+    type_name: &str,
+    field_index: usize,
+    target: &CicTerm,
+) -> Result<CicTerm, LofError> {
+    let target_type = Cic::type_check_term(target, environment)?;
+    if !is_instance_of(&target_type, type_name) {
+        return Err(LofError::custom(format!(
+            "projection .{} expects a '{}', got a '{}'",
+            field_index, type_name, target_type
+        )));
+    }
+
+    let constructors = environment
+        .get_inductive_constructors(type_name)
+        .ok_or_else(|| {
+            LofError::custom(format!("unknown inductive type '{}'", type_name))
+        })?;
+    if constructors.len() != 1 {
+        return Err(LofError::custom(format!(
+            "projection .{} needs a single-constructor type, but '{}' has {}",
+            field_index,
+            type_name,
+            constructors.len()
+        )));
+    }
+    let constructor_type = constructors[0].1.to_owned();
+    let param_count = environment
+        .get_inductive_param_count(type_name)
+        .unwrap_or(0);
+    let actual_params = application_args(&target_type);
+
+    // walk the constructor's Pi-chain, substituting the type's parameters
+    // and then each earlier field's projection as we pass it
+    let mut remaining = constructor_type;
+    for depth in 0..param_count + field_index {
+        let Product(binder, _, codomain) = remaining else {
+            return Err(LofError::custom(format!(
+                "'{}' has no field {}",
+                type_name, field_index
+            )));
+        };
+        let value = if depth < param_count {
+            actual_params.get(depth).cloned().ok_or_else(|| {
+                LofError::custom(format!(
+                    "'{}' applied to too few parameters",
+                    type_name
+                ))
+            })?
+        } else {
+            CicTerm::Proj(
+                type_name.to_string(),
+                depth - param_count,
+                Box::new(target.to_owned()),
+            )
+        };
+        remaining = substitute(&codomain, &binder, &value);
+    }
+
+    match remaining {
+        Product(_, domain, _) => Ok((*domain).to_owned()),
+        _ => Err(LofError::custom(format!(
+            "'{}' has no field {}",
+            type_name, field_index
+        ))),
+    }
+}
+//
+//
+// TODO: a pattern is essentially an application containing unbound variables;
 pub fn type_check_match(
     environment: &mut Environment<Cic>,
     matched_term: &CicTerm,
     branches: &Vec<(CicTerm, CicTerm)>,
 ) -> Result<CicTerm, LofError> {
     let matching_type = Cic::type_check_term(matched_term, environment)?;
+    // Application inference hands back a substituted codomain without
+    // reducing it, so a scrutinee whose type comes from a dependent
+    // eliminator arrives as a beta-redex (`(λ_:Bin. Bin) b` rather than
+    // `Bin`) and the type former would come out an abstraction rather than
+    // a variable. Only normalize in that case: doing it unconditionally
+    // costs a full normalization on every `match` in the language, for a
+    // shape that is already a variable the overwhelming majority of the
+    // time.
+    let matching_type = match get_applied_function(&matching_type) {
+        Variable(_, _) => matching_type,
+        _ => Cic::normalize_term(environment, &matching_type),
+    };
     let mut return_type = None;
 
     let ind_type_constructor = get_applied_function(&matching_type);
@@ -490,6 +591,101 @@ pub fn inductive_eliminator(
     full_parametrization =
         make_multiarg_fun_type(&params, &full_parametrization);
     index_variables(&full_parametrization)
+}
+
+/// Sanity-checks every component of an `equivalence` declaration (each
+/// must type-check on its own terms - the engine does not attempt to
+/// verify eg that `dep_elim` is genuinely shaped like `type_a`'s own
+/// recursor, only that it is a well-typed term), then registers the
+/// resulting `EquivConfig` via `evaluate_equivalence` so later statements
+/// in the same file (including further `transport` invocations) can see
+/// it - mirroring how `type_check_inductive` registers the inductive type
+/// itself via `evaluate_inductive`, rather than deferring registration to
+/// the later `execute` phase.
+#[allow(clippy::too_many_arguments)]
+pub fn type_check_equivalence(
+    environment: &mut Environment<Cic>,
+    name: &str,
+    type_a: &CicTerm,
+    type_b: &CicTerm,
+    forward: &CicTerm,
+    backward: &CicTerm,
+    section: &CicTerm,
+    retraction: &CicTerm,
+    dep_elim: &CicTerm,
+    eta: &Option<Box<CicTerm>>,
+    dep_constr: &Vec<(String, CicTerm)>,
+    iota: &Vec<(String, CicTerm)>,
+) -> Result<CicTerm, LofError> {
+    // Both sides must be well-formed, but not necessarily *types*: a
+    // parameterized inductive is referred to by its bare name, so `List`
+    // is a type former (`TYPE -> TYPE`) rather than a type. Require only
+    // that its type ends in a sort.
+    for (label, type_former) in [("type_a", type_a), ("type_b", type_b)] {
+        let former_type = Cic::type_check_term(type_former, environment)?;
+        if !matches!(get_prod_innermost(&former_type), Sort(_)) {
+            return Err(LofError::type_mismatch(
+                &format!("equivalence '{}' {}", name, label),
+                &"a type or type former",
+                type_former,
+            ));
+        }
+    }
+    let _ = Cic::type_check_term(forward, environment)?;
+    let _ = Cic::type_check_term(backward, environment)?;
+    let _ = Cic::type_check_term(section, environment)?;
+    let _ = Cic::type_check_term(retraction, environment)?;
+    let _ = Cic::type_check_term(dep_elim, environment)?;
+    if let Some(eta_term) = eta {
+        let _ = Cic::type_check_term(eta_term, environment)?;
+    }
+    for (_, term) in dep_constr {
+        let _ = Cic::type_check_term(term, environment)?;
+    }
+    for (_, term) in iota {
+        let _ = Cic::type_check_term(term, environment)?;
+    }
+
+    evaluate_equivalence(
+        environment,
+        name,
+        type_a,
+        type_b,
+        forward,
+        backward,
+        section,
+        retraction,
+        dep_elim,
+        eta,
+        dep_constr,
+        iota,
+    )?;
+
+    Ok(Variable("Unit".to_string(), GLOBAL_INDEX))
+}
+
+/// Type-checks the declared target type/formula, then performs the actual
+/// transport (via `evaluate_transport`, which calls into
+/// `cic::transport::transport_term` and validates the result) - mirroring
+/// how `type_check_inductive` both checks and registers in one pass.
+pub fn type_check_transport(
+    environment: &mut Environment<Cic>,
+    new_name: &str,
+    new_type: &CicTerm,
+    old_name: &str,
+    equiv_name: &str,
+) -> Result<CicTerm, LofError> {
+    let _ = Cic::type_check_type(new_type, environment)?;
+
+    evaluate_transport(
+        environment,
+        new_name,
+        new_type,
+        old_name,
+        equiv_name,
+    )?;
+
+    Ok(new_type.to_owned())
 }
 
 pub fn type_check_inductive(

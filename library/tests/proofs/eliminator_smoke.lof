@@ -1,0 +1,40 @@
+# Canary test for the transport feature: before building any transport
+# machinery, confirm that this kernel's auto-generated inductive eliminators
+# (e_Nat, e_Eq) can actually be applied to construct a genuine inductive
+# proof by hand. Nothing else in the codebase exercises e_<Type> anywhere
+# (grepped: zero hits outside inductive_eliminator's own Rust unit test
+# fixture), so this isolates "does eliminator application work at all" from
+# any transport-specific bug. If this file fails to check, it's a
+# pre-existing kernel gap, not a transport bug.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+fun rec plus (n:Nat, m:Nat) : Nat {
+  match n with
+  | z => m,
+  | s(nn) => s(plus(nn, m)),
+}
+
+# plus_z_r : forall n:Nat. plus(n,z) = n, proved by real induction on n via
+# the auto-generated e_Nat recursor (Peano induction), with an e_Eq-mediated
+# congruence step (s respects equality) in the successor case. This is not
+# a reflexivity proof: plus(n,z) does not reduce to n definitionally for
+# unspecified n (the match on plus's first argument is stuck until n is
+# constructor-headed), so this genuinely exercises the eliminator.
+theorem plus_z_r : ∀n:Nat. Eq(Nat, plus(n,z), n) :=
+  (e_Nat(
+    (\lambda n:Nat. Eq(Nat, plus(n,z), n)),
+    refl(Nat, z),
+    (\lambda r:Nat. \lambda ih: Eq(Nat, plus(r,z), r).
+      e_Eq(Nat, plus(r,z),
+           (\lambda y:Nat. \lambda h: Eq(Nat, plus(r,z), y). Eq(Nat, s(plus(r,z)), s(y))),
+           refl(Nat, s(plus(r,z))),
+           r,
+           ih))
+  ))

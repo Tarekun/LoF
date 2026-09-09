@@ -234,6 +234,72 @@ theorem zero_plus_one_tac : Eq(Nat, plus(z, s(z)), s(z)) :=
 | `apply` | `apply f` | Applies `f` to the current goal, generating subgoals for its arguments |
 | `qed` | `qed.` | Closes the tactic block |
 
+### Equivalence
+
+Declares that two types are equivalent, bundling the data needed to
+transport proofs and definitions between them. See
+[systems/transport.md](systems/transport.md) for what each field means.
+
+```
+equivalence <Name> : <TypeA> <-> <TypeB> {
+  forward    := <expr>;      # f : A -> B
+  backward   := <expr>;      # g : B -> A
+  section    := <expr>;      # forall a:A. g(f(a)) = a
+  retraction := <expr>;      # forall b:B. f(g(b)) = b
+  dep_elim   := <expr>;      # eliminator over B shaped like A's own
+  eta        := <expr>;      # optional
+  dep_constr {
+    | <A_constructor> => <expr>
+    ...
+  }
+  iota {
+    | <A_constructor> => <expr>
+    ...
+  }
+}
+```
+
+The two types are named without their parameters (`List`, not `List(T)`).
+Fields are parsed in the order shown; only `eta` may be omitted. Example
+(`library/tests/proofs/transport_nat_bin.lof`):
+
+```
+equivalence NatBin : Nat <-> Bin {
+  forward    := nat_to_bin;
+  backward   := bin_to_nat;
+  section    := section_nat_bin;
+  retraction := retraction_nat_bin;
+  dep_elim   := bin_succ_induction;
+  dep_constr {
+    | z => bz
+    | s => bin_succ
+  }
+  iota {
+    | z => refl(Bin, bz)
+    | s => bin_succ_correct
+  }
+}
+```
+
+### Transport
+
+Rewrites an already-checked `theorem`, or an existing `fun`/`global`, into
+its counterpart over the equivalent type.
+
+```
+transport <new_name> : <new_type_or_formula> from <old_name> using <equiv_name>;
+```
+
+The target type is mandatory. Whether the result is registered as a theorem
+or as a definition follows from its sort (`PROP` ⇒ theorem). Transporting a
+definition also records the name mapping, so proofs transported afterwards
+pick it up - so auxiliary functions must be transported before the proofs
+that call them.
+
+```
+transport plus_bin : Bin -> Bin -> Bin from plus using NatBin;
+```
+
 ### Auto (FOL only)
 
 Instructs the engine to automatically prove `formula` via saturation:
