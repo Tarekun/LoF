@@ -232,6 +232,7 @@ impl<T: TypeTheory> Environment<T> {
             .insert(name.to_string(), (typee, left_param_count));
     }
 
+    /// Returns a set of constructor names for inductive type `name`
     pub fn get_constructors_for(&self, name: &str) -> Option<HashSet<String>> {
         match self.inductive_store.get(name) {
             None => None,
@@ -246,11 +247,37 @@ impl<T: TypeTheory> Environment<T> {
         }
     }
 
+    /// Returns the count of left parameters for inductive type `name`
     pub fn get_inductive_param_count(&self, name: &str) -> Option<usize> {
         match self.inductive_store.get(name) {
             None => None,
             Some((_, left_param_count)) => Some(*left_param_count),
         }
+    }
+
+    /// Returns the complete list of constructors for inductive type `name`
+    /// together with their types
+    pub fn get_constructor_signatures(
+        &self,
+        name: &str,
+    ) -> Option<&Vec<(String, T::Type)>> {
+        self.inductive_store.get(name).map(|(list, _)| list)
+    }
+
+    /// Returns the name of the inductive type that can be constructed
+    /// using `constructor_name`
+    pub fn constructor_type_of(
+        &self,
+        constructor_name: &str,
+    ) -> Option<String> {
+        self.inductive_store.iter().find_map(
+            |(type_name, (constructors, _))| {
+                constructors
+                    .iter()
+                    .any(|(name, _)| name == constructor_name)
+                    .then(|| type_name.to_owned())
+            },
+        )
     }
 }
 
