@@ -237,9 +237,6 @@ fn solve_unifications_unnormalized(
         occurs,
     )?
     .reduce(|term, idx, arg| {
-        // let stripped_idx = idx.strip_prefix("metavariable_").unwrap_or(idx);
-        // substitute_meta(term, &stripped_idx.parse().unwrap(), arg)
-
         // TODO: this now applies both first and second order substitution
         // review if its actually what i want implemented here
         if let Some(meta_idx) = idx.strip_prefix("metavariable_") {
