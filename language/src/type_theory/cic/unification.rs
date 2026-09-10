@@ -6,8 +6,9 @@ use crate::error::LofError;
 use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function, get_arg_types, is_constant,
-    substitute_meta,
+    substitute, substitute_meta,
 };
+use crate::type_theory::cic::type_check::type_constr_vars;
 use crate::type_theory::commons::unification::{ucs, Substitution};
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{Kernel, Reducer};
@@ -236,8 +237,18 @@ fn solve_unifications_unnormalized(
         occurs,
     )?
     .reduce(|term, idx, arg| {
-        let stripped_idx = idx.strip_prefix("metavariable_").unwrap_or(idx);
-        substitute_meta(term, &stripped_idx.parse().unwrap(), arg)
+        // let stripped_idx = idx.strip_prefix("metavariable_").unwrap_or(idx);
+        // substitute_meta(term, &stripped_idx.parse().unwrap(), arg)
+
+        // TODO: this now applies both first and second order substitution
+        // review if its actually what i want implemented here
+        if let Some(meta_idx) = idx.strip_prefix("metavariable_") {
+            substitute_meta(term, &meta_idx.parse().unwrap(), arg)
+        } else if let Some(var_name) = idx.strip_prefix("variable_") {
+            substitute(term, var_name, arg)
+        } else {
+            term.clone()
+        }
     }))
 }
 
@@ -301,10 +312,16 @@ pub fn cic_collect_unifications(
                 cic_collect_unifications(matched_term, environment)?;
             let mut branch_cons = vec![];
             for (pattern, body) in branches {
-                branch_cons
-                    .extend(cic_collect_unifications(pattern, environment)?);
-                branch_cons
-                    .extend(cic_collect_unifications(body, environment)?);
+                let constructor = get_applied_function(pattern);
+                let constr_type =
+                    Cic::type_check_term(&constructor, environment)?;
+                let pattern_assumptions =
+                    type_constr_vars(environment, pattern, &constr_type)?;
+                let body_cons = environment.with_local_assumptions(
+                    &pattern_assumptions,
+                    |local_env| cic_collect_unifications(body, local_env),
+                )?;
+                branch_cons.extend(body_cons);
             }
 
             Ok([matched_cons, branch_cons].concat())
@@ -318,15 +335,17 @@ pub fn cic_apply_unifier(
 ) -> CicTerm {
     let mut solved_exp = exp.to_owned();
     for index in substitution.names() {
-        solved_exp = substitute_meta(
-            &solved_exp,
-            &index
-                .strip_prefix("metavariable_")
-                .unwrap_or(index)
-                .parse()
-                .unwrap(),
-            substitution.get(index).unwrap(),
-        )
+        // TODO: this now applies both first and second order substitution
+        // review if its actually what i want implemented here
+        let value = substitution.get(index).unwrap();
+        solved_exp = if let Some(meta_idx) = index.strip_prefix("metavariable_")
+        {
+            substitute_meta(&solved_exp, &meta_idx.parse().unwrap(), value)
+        } else if let Some(var_name) = index.strip_prefix("variable_") {
+            substitute(&solved_exp, var_name, value)
+        } else {
+            solved_exp
+        };
     }
     solved_exp
 }
