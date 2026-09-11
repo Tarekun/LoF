@@ -8,9 +8,9 @@ use crate::type_theory::cic::cic::{
     GLOBAL_INDEX,
 };
 use crate::type_theory::cic::unification::{
-    cic_collect_unifications, cic_so_unification, cic_solve_unifications,
-    explode, is_substitutable, occurs, solve_unifications_unnormalized,
-    structurally_equal,
+    cic_apply_unifier, cic_collect_unifications, cic_so_unification,
+    cic_solve_unifications, explode, is_substitutable, occurs,
+    solve_unifications_unnormalized, structurally_equal,
 };
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::interface::{Kernel, TypeTheory};
@@ -95,13 +95,26 @@ mod constraint_collection {
 
     #[test]
     fn test_collect_unifications_product_match_and_let() {
+        let bool_type = Variable("Bool".to_string(), GLOBAL_INDEX);
         let mut env = Cic::default_environment();
-        env.add_to_context("Bool", &Sort("TYPE".to_string()));
+        Cic::type_check_stm(
+            &InductiveDef(
+                "Bool".to_string(),
+                vec![],
+                Box::new(Sort("TYPE".to_string())),
+                vec![
+                    ("true".to_string(), bool_type.clone()),
+                    ("false".to_string(), bool_type.clone()),
+                ],
+            ),
+            &mut env,
+        )
+        .expect("Failed to set up Bool");
         env.add_to_context(
             "f",
             &Product(
                 "_".to_string(),
-                Box::new(Variable("Bool".to_string(), GLOBAL_INDEX)),
+                Box::new(bool_type),
                 Box::new(Sort("TYPE".to_string())),
             ),
         );
@@ -144,6 +157,52 @@ mod constraint_collection {
         assert!(
             !cic_collect_unifications(&match_term, &mut env).unwrap().is_empty(),
             "cic_collect_unifications must recurse into a Match's scrutinee/branches"
+        );
+    }
+
+    #[test]
+    fn test_collect_unifications_binds_match_pattern_variables() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let s = Variable("s".to_string(), GLOBAL_INDEX);
+        let nn = Variable("nn".to_string(), GLOBAL_INDEX);
+        let mut env = Cic::default_environment();
+        Cic::type_check_stm(
+            &InductiveDef(
+                "Nat".to_string(),
+                vec![],
+                Box::new(Sort("TYPE".to_string())),
+                vec![
+                    ("z".to_string(), nat.clone()),
+                    (
+                        "s".to_string(),
+                        Product(
+                            "_".to_string(),
+                            Box::new(nat.clone()),
+                            Box::new(nat.clone()),
+                        ),
+                    ),
+                ],
+            ),
+            &mut env,
+        )
+        .expect("Failed to set up Nat");
+
+        // match n { s(nn) => s(nn) }: `nn` is bound by the pattern and only
+        // then used by the body
+        let match_term = Match(
+            Box::new(Variable("n".to_string(), FIRST_INDEX)),
+            vec![(
+                Application(Box::new(s.clone()), Box::new(nn.clone())),
+                Application(Box::new(s), Box::new(nn)),
+            )],
+        );
+        let constraints = cic_collect_unifications(&match_term, &mut env)
+            .expect("collection must bind a pattern's variables for its branch body, not type check the pattern as a reference");
+
+        assert_eq!(
+            constraints,
+            vec![(nat.clone(), nat)],
+            "a match branch must contribute only its body's constraints, the pattern is a binder not an expression"
         );
     }
 
@@ -296,6 +355,129 @@ fn test_match_unification() {
         expected,
         "Unification couldnt solve unification of pattern match bodies"
     );
+}
+
+mod substitution_routing {
+    use super::*;
+
+    // NOTE: this test is here atm, but im not sure CIC unification should really
+    // support FO variable substitution
+    #[test]
+    fn test_apply_unifier_routes_variable_keys_by_name() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let vec = Variable("Vec".to_string(), GLOBAL_INDEX);
+        // Θ = { variable_n -> Nat, metavariable_0 -> Vec }
+        let substitution = Substitution::from([
+            ("variable_n".to_string(), nat.clone()),
+            ("metavariable_0".to_string(), vec.clone()),
+        ]);
+        // Vec(n, ?0) mentions both the named variable and the metavariable
+        let exp = Application(
+            Box::new(Application(
+                Box::new(vec.clone()),
+                Box::new(Variable("n".to_string(), FIRST_INDEX)),
+            )),
+            Box::new(Meta(0)),
+        );
+
+        assert_eq!(
+            cic_apply_unifier(&exp, &substitution),
+            Application(
+                Box::new(Application(Box::new(vec.clone()), Box::new(nat))),
+                Box::new(vec),
+            ),
+            "applying a unifier must substitute `variable_<name>` keys by name and `metavariable_<idx>` keys by index"
+        );
+    }
+
+    // NOTE: imma be honest i dont think this should be a test at all even
+    // assuming CIC unification should include FO substitution too `x` is
+    // a FO variable and im pretty sure it should NOT be replaceable
+    // with the type `Nat`
+    #[test]
+    fn test_solved_mgu_grounds_variable_keys_inside_meta_bodies() {
+        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let list = Variable("List".to_string(), GLOBAL_INDEX);
+        let x = Variable("x".to_string(), FIRST_INDEX);
+
+        // ?0 ≐ List(x) and x ≐ Nat: solving the second must ground the first
+        let constraints = VecDeque::from(vec![
+            (
+                Meta(0),
+                Application(Box::new(list.clone()), Box::new(x.clone())),
+            ),
+            (x, nat.clone()),
+        ]);
+
+        assert_eq!(
+            solve_unifications_unnormalized(constraints).unwrap(),
+            Substitution::from([
+                (
+                    "metavariable_0".to_string(),
+                    Application(Box::new(list), Box::new(nat.clone())),
+                ),
+                ("variable_x".to_string(), nat),
+            ]),
+            "reducing an mgu must fold `variable_<name>` solutions into the other bodies by name"
+        );
+    }
+
+    /// The mirror of the case below, and the reason the trivial x=x guard has
+    /// to run *before* the redirect as well as after it: here the vacuous pair
+    /// arrives *after* `x` already has a solution. `f(x, x) ≐ f(x, y)`
+    /// derives `x =~= y` and then, from the repeated occurrence, `x ≐ x` -
+    /// which is vacuous and must be dropped. Redirecting it through the stored
+    /// `x -> y` instead invents `y -> x` out of nothing, closing a cycle that
+    /// `reduce` then collapses into the useless mgu `{x -> x, y -> y}`.
+    #[test]
+    fn test_trivial_constraint_after_a_solution_is_dropped_not_redirected() {
+        let f = Variable("f".to_string(), GLOBAL_INDEX);
+        let x = Variable("x".to_string(), FIRST_INDEX);
+        let y = Variable("y".to_string(), FIRST_INDEX);
+
+        let f_of = |arg1: &CicTerm, arg2: &CicTerm| {
+            Application(
+                Box::new(Application(
+                    Box::new(f.clone()),
+                    Box::new(arg1.clone()),
+                )),
+                Box::new(arg2.clone()),
+            )
+        };
+        assert_eq!(
+            cic_so_unification(&f_of(&x, &x), &f_of(&x, &y)).unwrap(),
+            Substitution::from([("variable_x".to_string(), y)]),
+            "a vacuous x =~= x constraint must be dropped outright, never redirected through an existing solution for x"
+        );
+    }
+
+    /// Redirecting through an already present substitution can turn a pair that
+    /// was not self-referential into one that is: re-deriving `r_0 ≐ r` from a
+    /// second occurrence of `r_0` in the same term redirects (via the stored
+    /// `r_0 -> r`) to `r ≐ r`, which is trivially true - not an occurs-check
+    /// failure. The x=x guard has to be re-checked *after* the redirect.
+    #[test]
+    fn test_repeated_variable_constraint_is_not_an_occurs_failure() {
+        let f = Variable("f".to_string(), GLOBAL_INDEX);
+        let r = Variable("r".to_string(), FIRST_INDEX);
+        let r_0 = Variable("r_0".to_string(), FIRST_INDEX);
+
+        let app = |arg1: &CicTerm, arg2: &CicTerm| {
+            Application(
+                Box::new(Application(
+                    Box::new(f.clone()),
+                    Box::new(arg1.clone()),
+                )),
+                Box::new(arg2.clone()),
+            )
+        };
+        // `f(r_0, r_0) ≐ f(r, r)` derives `r_0 ≐ r`
+        assert_eq!(
+            cic_so_unification(&app(&r_0, &r_0), &app(&r, &r)).unwrap(),
+            Substitution::from([("variable_r_0".to_string(), r)]),
+            "deriving the same variable constraint twice must stay trivially solvable, not trip the occurs check"
+        );
+    }
 }
 
 #[test]

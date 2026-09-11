@@ -38,7 +38,7 @@ pub fn type_check_sort(
 
 
 /// Returns the vector of type judgements for the variables provided if they match the constructor type
-fn type_constr_vars(
+pub(crate) fn type_constr_vars(
     environment: &mut Environment<Cic>,
     pattern: &CicTerm,
     constr_type: &CicTerm,
