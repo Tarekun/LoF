@@ -73,6 +73,23 @@ pub enum Statement {
     Solve(Vec<Expression>),
     /// head, [subgoals]
     HClause(Expression, Vec<Expression>),
+    /// (equivalence_name, type_a, type_b, forward, backward, section,
+    /// retraction, dep_elim, opt_eta, dep_constr entries, iota entries)
+    Equivalence(
+        String,
+        Box<Expression>,
+        Box<Expression>,
+        Box<Expression>,
+        Box<Expression>,
+        Box<Expression>,
+        Box<Expression>,
+        Box<Expression>,
+        Option<Box<Expression>>,
+        Vec<(String, Expression)>,
+        Vec<(String, Expression)>,
+    ),
+    /// (new_name, new_formula_or_type, old_name, equivalence_name)
+    Transport(String, Box<Expression>, String, String),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum Tactic<E> {

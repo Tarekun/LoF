@@ -58,6 +58,18 @@ const RESERVED_KEYWORDS: &[&str] = &[
     "query",
     "hclause",
     "solve",
+    "equivalence",
+    "transport",
+    "from",
+    "using",
+    "forward",
+    "backward",
+    "section",
+    "retraction",
+    "dep_elim",
+    "eta",
+    "dep_constr",
+    "iota",
 ];
 
 impl LofParser {

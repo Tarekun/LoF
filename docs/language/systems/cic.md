@@ -48,6 +48,13 @@ pub enum CicStm {
     Global(String, Option<CicTerm>, Box<CicTerm>),
     Fun(String, Vec<(String, CicTerm)>, Box<CicTerm>, Box<CicTerm>, bool),
     InductiveDef(String, Vec<(String, CicTerm)>, Box<CicTerm>, Vec<(String, CicTerm)>),
+    /// equivalence_name, type_a, type_b, forward, backward, section,
+    /// retraction, dep_elim, optional eta, dep_constr entries, iota entries
+    Equivalence(String, Box<CicTerm>, Box<CicTerm>, Box<CicTerm>, Box<CicTerm>,
+                Box<CicTerm>, Box<CicTerm>, Box<CicTerm>, Option<Box<CicTerm>>,
+                Vec<(String, CicTerm)>, Vec<(String, CicTerm)>),
+    /// new_name, new_type_or_formula, old_name, equivalence_name
+    Transport(String, Box<CicTerm>, String, String),
 }
 ```
 
@@ -101,7 +108,11 @@ Standard VAR rule: look up `x` in `Γ`, return its type.
 - **δ-reduction** (`reduce_variable`): a variable with a definition in `deltas` reduces to its body, otherwise it's a constant and is returned as-is.
 - **β-reduction** (`reduce_application`): both the function and the argument are first fully normalized (`Cic::normalize_term`); if the normalized function is an `Abstraction(x, _, body)`, the result is `body[x := normalized_arg]`, otherwise the application is rebuilt from the normalized parts.
 - **let-reduction** (`reduce_let`): the bound term is fully normalized, then substituted for the variable in the scope (`scope[x := normalized_body]`).
-- **match-reduction** (`reduce_match`): the scrutinee is fully normalized and matched structurally, in branch order, against each pattern (`matches_pattern`, which compares the applied head and arity); on the first match every pattern variable is substituted with the corresponding argument taken from the scrutinee (`substitute_pattern_variables`/`substitute_pattern_arg`), recursing so that variables nested inside constructor sub-patterns (e.g. the `nn` in `s(nn)`) are bound too, not just the top-level ones.
+- **match-reduction** (`reduce_match`): the scrutinee is fully normalized and matched structurally, in branch order, against each pattern (`matches_pattern`, which compares the applied head and arity); on the first match every pattern variable is substituted with the corresponding argument taken from the scrutinee (`substitute_pattern_variables`/`substitute_pattern_arg`), recursing so that variables nested inside constructor sub-patterns (e.g. the `nn` in `s(nn)`) are bound too, not just the top-level ones. A scrutinee that normalizes to something not headed by any of the branches' constructors - an open variable, as happens throughout an inductive proof's step case - leaves the `match` as its own normal form rather than being an error.
+
+- **ι-reduction of eliminators** (`try_reduce_eliminator_application`): a fully applied `e_<Type>(params.., motive, case_1..case_k, indices.., instance)` whose `instance` is a concrete constructor application computes to the matching case, applied to that constructor's arguments with an induction hypothesis (the same eliminator re-applied to the sub-term) inserted after each recursive one. Indexed families are handled: the index count is recovered from the application's arity, and a recursive occurrence's hypothesis is rebuilt with that occurrence's own indices. A scrutinee that isn't constructor-headed leaves the application stuck, which is the normal situation inside an inductive proof's step case.
+
+Reduction also descends into `Product`/`Abstraction` domains and bodies, one step at a time, so a redex embedded under a binder - eg a motive applied to a bound variable, exactly what an eliminator's generated types produce - is reduced too. Without that, two Pi-types equal only up to an under-binder redex are never recognized as such, since unification normalizes both sides before comparing.
 
 `generic_term_normalization` from `commons/evaluation.rs` drives the fixed-point iteration: apply `one_step_reduction` repeatedly until the term is unchanged.
 
@@ -163,6 +174,7 @@ The `Refiner` flow is split into three explicit phases (`cic/unification.rs`), r
 | `evaluation.rs` | β/δ reduction, statement evaluation |
 | `unification.rs` | CIC unification and constraint solving |
 | `tactics.rs` | Interactive tactic checking |
+| `transport.rs` | Transport across type equivalences - see [transport.md](transport.md) |
 | `cic_utils.rs` | `substitute`, `substitute_meta`, indexing utilities |
 | `../tests/type_theory/cic/type_check.rs`\* | Type checking tests |
 | `../tests/type_theory/cic/evaluation.rs`\* | Reduction and pattern-matching tests |

@@ -14,7 +14,9 @@ use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
 };
 use crate::type_theory::cic::type_check::{
-    type_check_inductive, type_check_match,
+    type_check_equivalence, type_check_inductive, type_check_match,
+    type_check_proj,
+    type_check_transport,
 };
 use crate::type_theory::cic::unification::{
     cic_apply_unifier, cic_collect_unifications, cic_solve_unifications,
@@ -52,6 +54,21 @@ pub enum CicTerm {
     Match(Box<CicTerm>, Vec<(CicTerm, CicTerm)>),
     /// (var_name, var_type, body, scope)
     Let(String, Box<Option<CicTerm>>, Box<CicTerm>, Box<CicTerm>),
+    /// (inductive type name, 0-based field index, target)
+    ///
+    /// The i-th field of a value of a single-constructor inductive type.
+    /// There is no surface syntax for this: it is produced only by the
+    /// kernel's own eta expansion (see `is_eta_eligible` /
+    /// `eta_expand_scrutinee` in `evaluation.rs`), which needs a way to
+    /// name "the fields of an *opaque* value of a one-constructor type".
+    ///
+    /// It has to be its own term former rather than sugar for an
+    /// `e_<Type>` application: an eta expansion built out of eliminators
+    /// would itself be a stuck eliminator application, so the eta rule
+    /// would fire on its own output and expand forever. `Proj` is inert -
+    /// no reduction site looks through it - which is what breaks that
+    /// cycle.
+    Proj(String, usize, Box<CicTerm>),
     /// index
     Meta(i32),
 }
@@ -78,6 +95,23 @@ pub enum CicStm {
         Box<CicTerm>,
         Vec<(String, CicTerm)>,
     ),
+    /// (equivalence_name, type_a, type_b, forward, backward, section,
+    /// retraction, dep_elim, optional eta, dep_constr entries, iota entries)
+    Equivalence(
+        String,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Box<CicTerm>,
+        Option<Box<CicTerm>>,
+        Vec<(String, CicTerm)>,
+        Vec<(String, CicTerm)>,
+    ),
+    /// (new_name, new_type_or_formula, old_name, equivalence_name)
+    Transport(String, Box<CicTerm>, String, String),
     // Auto(CicTerm),
 }
 
@@ -173,12 +207,16 @@ impl Kernel for Cic {
                     Application(Box::new(l.to_owned()), Box::new(r.to_owned()))
                 },
                 Cic::substitute,
+                |cic_type| cic_type.to_owned(),
             ),
             CicTerm::Match(matched_term, branches) => {
                 type_check_match(environment, matched_term, branches)
             }
             CicTerm::Let(var_name, var_type, body, scope) => {
                 type_check_let(environment, var_name, var_type, body, scope)
+            }
+            CicTerm::Proj(type_name, field_index, target) => {
+                type_check_proj(environment, type_name, *field_index, target)
             }
             CicTerm::Meta(index) => {
                 //TODO handle this properly
@@ -255,6 +293,41 @@ impl Kernel for Cic {
                     theorem_name,
                     formula,
                     proof,
+                )
+            }
+            CicStm::Equivalence(
+                name,
+                type_a,
+                type_b,
+                forward,
+                backward,
+                section,
+                retraction,
+                dep_elim,
+                eta,
+                dep_constr,
+                iota,
+            ) => type_check_equivalence(
+                environment,
+                name,
+                type_a,
+                type_b,
+                forward,
+                backward,
+                section,
+                retraction,
+                dep_elim,
+                eta,
+                dep_constr,
+                iota,
+            ),
+            CicStm::Transport(new_name, new_type, old_name, equiv_name) => {
+                type_check_transport(
+                    environment,
+                    new_name,
+                    new_type,
+                    old_name,
+                    equiv_name,
                 )
             } // CicStm::Auto(formula) => {
               //     type_check_auto::<Cic>(environment, formula)
@@ -353,6 +426,13 @@ impl Refiner for Cic {
 impl Reducer for Cic {
     fn substitute(term: &CicTerm, var_name: &str, body: &CicTerm) -> CicTerm {
         substitute(term, var_name, body)
+    }
+
+    fn normalize_type(
+        environment: &Environment<Cic>,
+        typee: &CicTerm,
+    ) -> CicTerm {
+        Cic::normalize_term(environment, typee)
     }
 
     fn normalize_expression(

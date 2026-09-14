@@ -1,5 +1,5 @@
 use super::cic::CicTerm::{
-    Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Meta, Proj, Product, Sort, Variable,
 };
 use super::cic::{Cic, CicTerm};
 use crate::misc::simple_map;
@@ -42,6 +42,9 @@ fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         }
         Let(var_name, _, body, scope) => {
             write!(f, "let {} := {} in\n{}", var_name, body, scope)
+        }
+        Proj(type_name, field_index, target) => {
+            write!(f, "{}.{}[{}]", target, type_name, field_index)
         }
         Meta(index) => write!(f, "?[{}]", index),
     }
@@ -232,6 +235,11 @@ pub fn substitute_meta(term: &CicTerm, target: &i32, arg: &CicTerm) -> CicTerm {
         }
         Sort(_) => term.clone(),
         Variable(_, _) => term.clone(),
+        Proj(type_name, field_index, target_term) => Proj(
+            type_name.to_string(),
+            *field_index,
+            Box::new(substitute_meta(target_term, target, arg)),
+        ),
         Application(left, right) => Application(
             Box::new(substitute_meta(left, target, arg)),
             Box::new(substitute_meta(right, target, arg)),
@@ -285,6 +293,11 @@ pub fn substitute(term: &CicTerm, target_name: &str, arg: &CicTerm) -> CicTerm {
                 term.clone()
             }
         }
+        Proj(type_name, field_index, target) => Proj(
+            type_name.to_string(),
+            *field_index,
+            Box::new(substitute(target, target_name, arg)),
+        ),
         Application(left, right) => Application(
             Box::new(substitute(left, target_name, arg)),
             Box::new(substitute(right, target_name, arg)),
@@ -366,6 +379,11 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
         match term {
             Sort(_) => term.to_owned(),
             Meta(_) => term.to_owned(),
+            Proj(type_name, field_index, target) => Proj(
+                type_name.to_string(),
+                *field_index,
+                Box::new(solver(target, current_dbi, bound_vars)),
+            ),
             Variable(name, _) => match bound_vars.get(name) {
                 Some(dbi) => Variable(name.to_string(), *dbi),
                 // unbound variables in the term get the global variable index

@@ -1,7 +1,7 @@
 use crate::{
     config::global_config,
     error::LofError,
-    misc::Union,
+    misc::Union::{self, L},
     parser::api::Tactic,
     type_theory::{
         commons::{unification::Substitution, utils::eta_expand},
@@ -159,9 +159,21 @@ pub fn evaluate_theorem<T: TypeTheory, E>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
-    _proof: &Union<T::Term, Vec<Tactic<E>>>,
+    proof: &Union<T::Term, Vec<Tactic<E>>>,
 ) -> Result<(), LofError> {
     environment.add_to_context(&theorem_name, &formula);
+    // Record the term-mode proof for later introspection (eg by
+    // `transport`) without making it a δ-reduction target: a theorem
+    // stays opaque for reduction, exactly like an axiom, and only a
+    // `dep_elim`-style consumer reaches for its witness by name. See
+    // `docs/language/environment.md` and `docs/language/systems/
+    // transport.md` for why this has to stay opaque - the whole Iota
+    // mechanism exists because a theorem used as `dep_elim` has no
+    // computational behaviour, which would stop being true the moment
+    // its own proof term became substitutable.
+    if let L(proof) = proof {
+        environment.add_theorem_proof(&theorem_name, proof);
+    }
     Ok(())
 }
 

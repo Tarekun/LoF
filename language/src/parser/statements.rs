@@ -1,6 +1,6 @@
 use super::api::Statement::{
-    Auto, Axiom, Comment, EmptyRoot, Fun, Global, HClause, Inductive, Solve,
-    Theorem,
+    Auto, Axiom, Comment, Equivalence, EmptyRoot, Fun, Global, HClause,
+    Inductive, Solve, Theorem, Transport,
 };
 use super::api::{Expression, LofAst, LofParser, PResult, Statement};
 use super::commons::{ws0, ws1};
@@ -272,6 +272,144 @@ impl LofParser {
     }
     //
     //
+    /// Parses one `key := expr;` field, used by `equivalence`'s
+    /// forward/backward/section/retraction/dep_elim/eta entries - the same
+    /// shape as `global`'s `name := body;`, just with a fixed key instead
+    /// of a user-chosen name.
+    fn parse_equiv_field<'a>(
+        &self,
+        input: &'a str,
+        key: &str,
+    ) -> PResult<'a, Expression> {
+        let (input, _) = preceded(ws0, tag(key))(input)?;
+        let (input, _) = preceded(ws0, tag(":="))(input)?;
+        let (input, expr) =
+            preceded(ws0, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(ws0, char(';'))(input)?;
+
+        Ok((input, expr))
+    }
+    //
+    //
+    /// Parses one `| name => expr` entry, used by `equivalence`'s
+    /// `dep_constr`/`iota` blocks. Deliberately uses `parse_type_expression`
+    /// (not the full `parse_expression`) for the value, exactly like
+    /// `parse_inductive_constructor` does for constructor types: the full
+    /// expression grammar tries `parse_pipe` before falling back to a bare
+    /// variable, which would greedily swallow a *following* `| next_entry`
+    /// as if it were a type union. A parenthesized value (eg a `\lambda`)
+    /// still works, since `parse_type_expression` includes `parse_parens`,
+    /// which re-enters the full expression grammar inside the parens where
+    /// that ambiguity can't arise.
+    fn parse_named_expr_entry<'a>(
+        &self,
+        input: &'a str,
+    ) -> PResult<'a, (String, Expression)> {
+        let (input, _) = preceded(ws0, char('|'))(input)?;
+        let (input, name) =
+            preceded(ws0, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, tag("=>"))(input)?;
+        let (input, expr) = self.parse_type_expression(input)?;
+
+        Ok((input, (name.to_string(), expr)))
+    }
+    fn parse_named_expr_block<'a>(
+        &self,
+        input: &'a str,
+        block_name: &str,
+    ) -> PResult<'a, Vec<(String, Expression)>> {
+        let (input, _) = preceded(ws0, tag(block_name))(input)?;
+        let (input, _) = preceded(ws0, tag("{"))(input)?;
+        let (input, entries) =
+            many0(|input| self.parse_named_expr_entry(input))(input)?;
+        let (input, _) = preceded(ws0, char('}'))(input)?;
+
+        Ok((input, entries))
+    }
+    //
+    //
+    /// Declares a type equivalence, bundling the hand-authored data a
+    /// `transport` invocation needs (see `docs/language/systems/transport.md`):
+    /// forward/backward functions, section/retraction proofs, a `dep_elim`
+    /// induction principle over the target type, an optional `eta`
+    /// (defaulting to nothing - the elaborator supplies the identity), and
+    /// per-constructor `dep_constr`/`iota` tables.
+    fn parse_equivalence<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
+        let (input, _) = preceded(ws0, tag("equivalence"))(input)?;
+        let (input, name) =
+            preceded(ws1, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, tag(":"))(input)?;
+        let (input, type_a) =
+            preceded(ws0, |input| self.parse_type_expression(input))(input)?;
+        let (input, _) = preceded(ws0, tag("<->"))(input)?;
+        let (input, type_b) =
+            preceded(ws0, |input| self.parse_type_expression(input))(input)?;
+        let (input, _) = preceded(ws0, tag("{"))(input)?;
+
+        let (input, forward) = self.parse_equiv_field(input, "forward")?;
+        let (input, backward) = self.parse_equiv_field(input, "backward")?;
+        let (input, section) = self.parse_equiv_field(input, "section")?;
+        let (input, retraction) =
+            self.parse_equiv_field(input, "retraction")?;
+        let (input, dep_elim) = self.parse_equiv_field(input, "dep_elim")?;
+        let (input, eta) =
+            opt(|input| self.parse_equiv_field(input, "eta"))(input)?;
+        let (input, dep_constr) =
+            self.parse_named_expr_block(input, "dep_constr")?;
+        let (input, iota) = self.parse_named_expr_block(input, "iota")?;
+
+        let (input, _) = preceded(ws0, tag("}"))(input)?;
+
+        Ok((
+            input,
+            Equivalence(
+                name.to_string(),
+                Box::new(type_a),
+                Box::new(type_b),
+                Box::new(forward),
+                Box::new(backward),
+                Box::new(section),
+                Box::new(retraction),
+                Box::new(dep_elim),
+                eta.map(Box::new),
+                dep_constr,
+                iota,
+            ),
+        ))
+    }
+    //
+    //
+    /// Invokes transport on an already-proved `theorem` or already-defined
+    /// `fun`/`global`, producing a new one about the equivalence's target
+    /// type. The target type/formula is mandatory - there is deliberately
+    /// no "translate the old statement automatically" pass.
+    fn parse_transport<'a>(&self, input: &'a str) -> PResult<'a, Statement> {
+        let (input, _) = preceded(ws0, tag("transport"))(input)?;
+        let (input, new_name) =
+            preceded(ws1, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, tag(":"))(input)?;
+        let (input, new_type) =
+            preceded(ws0, |input| self.parse_expression(input))(input)?;
+        let (input, _) = preceded(ws0, tag("from"))(input)?;
+        let (input, old_name) =
+            preceded(ws1, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, tag("using"))(input)?;
+        let (input, equiv_name) =
+            preceded(ws1, |input| self.parse_identifier(input))(input)?;
+        let (input, _) = preceded(ws0, char(';'))(input)?;
+
+        Ok((
+            input,
+            Transport(
+                new_name.to_string(),
+                Box::new(new_type),
+                old_name.to_string(),
+                equiv_name.to_string(),
+            ),
+        ))
+    }
+    //
+    //
     pub fn parse_statement<'a>(
         &self,
         input: &'a str,
@@ -289,6 +427,8 @@ impl LofParser {
             |input| self.auto(input),
             |input| self.prolog_query(input),
             |input| self.horn_clause(input),
+            |input| self.parse_equivalence(input),
+            |input| self.parse_transport(input),
         ))(input)
     }
 }
