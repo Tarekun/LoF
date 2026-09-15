@@ -3,9 +3,7 @@ use super::cic::CicTerm::{
 };
 use super::cic::{Cic, CicTerm};
 use crate::misc::simple_map;
-use crate::type_theory::cic::cic::{
-    FIRST_INDEX, GLOBAL_INDEX, PLACEHOLDER_DBI,
-};
+use crate::type_theory::cic::cic::{NameKind, FIRST_INDEX, PLACEHOLDER_DBI};
 use crate::type_theory::commons::utils::generic_multiarg_fun_type;
 use std::collections::HashMap;
 use std::fmt;
@@ -15,10 +13,11 @@ fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // (sort name)
         Sort(name) => write!(f, "{}", name),
         // (var name)
-        Variable(name, dbi) => {
-            let dbi_text = if *dbi == GLOBAL_INDEX {
-                "G"
-            } else if *dbi == PLACEHOLDER_DBI {
+        Variable(name, NameKind::Const()) => {
+            write!(f, "{}|G", name)
+        }
+        Variable(name, NameKind::Bound(dbi)) => {
+            let dbi_text = if *dbi == PLACEHOLDER_DBI {
                 "P"
             } else {
                 &dbi.to_string()
@@ -70,7 +69,8 @@ pub fn get_variables_as_terms(fun_type: &CicTerm) -> Vec<CicTerm> {
         match fun_type {
             Product(var_name, _domain, codomain) => {
                 let mut rec: Vec<CicTerm> = solver(codomain, index + 1);
-                let mut result = vec![Variable(var_name.to_owned(), index)];
+                let mut result =
+                    vec![Variable(var_name.to_owned(), NameKind::Bound(index))];
                 result.append(&mut rec);
                 result
             }
@@ -184,7 +184,7 @@ pub fn is_instance_of(term: &CicTerm, name: &str) -> bool {
 /// Returns `true` if `term` corresponds to a constant symbol, `false` otherwise
 pub fn is_constant(term: &CicTerm) -> bool {
     match term {
-        Variable(_, dbi) => *dbi == GLOBAL_INDEX,
+        Variable(_, NameKind::Const()) => true,
         _ => false,
     }
 }
@@ -367,9 +367,9 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
             Sort(_) => term.to_owned(),
             Meta(_) => term.to_owned(),
             Variable(name, _) => match bound_vars.get(name) {
-                Some(dbi) => Variable(name.to_string(), *dbi),
+                Some(dbi) => Variable(name.to_string(), NameKind::Bound(*dbi)),
                 // unbound variables in the term get the global variable index
-                None => Variable(name.to_string(), GLOBAL_INDEX),
+                None => Variable(name.to_string(), NameKind::Const()),
             },
             Abstraction(var_name, var_type, body) => {
                 bound_vars.insert(var_name.to_string(), current_dbi);
@@ -436,7 +436,7 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
     substitute(
         &term,
         var_name,
-        &Variable(var_name.to_string(), GLOBAL_INDEX),
+        &Variable(var_name.to_string(), NameKind::Const()),
     )
 }
 //########################### UNIT TESTS
@@ -445,14 +445,14 @@ mod unit_tests {
     use crate::type_theory::cic::{
         cic::{
             CicTerm::{Abstraction, Sort, Variable},
-            GLOBAL_INDEX, PLACEHOLDER_DBI,
+            NameKind, GLOBAL_INDEX, PLACEHOLDER_DBI,
         },
         cic_utils::{index_variables, swap_proof_hole},
     };
 
     #[test]
     fn test_swap_proof_hole_preserves_abstraction_shape() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let hole = Sort("THIS_IS_A_PARTIAL_PROOF_HOLE".to_string());
         let outer_abstraction = Abstraction(
             "n".to_string(),
@@ -500,8 +500,11 @@ mod unit_tests {
     #[test]
     fn test_index_variables() {
         assert_eq!(
-            index_variables(&Variable("x".to_string(), PLACEHOLDER_DBI)),
-            Variable("x".to_string(), GLOBAL_INDEX),
+            index_variables(&Variable(
+                "x".to_string(),
+                NameKind::Bound(PLACEHOLDER_DBI)
+            )),
+            Variable("x".to_string(), NameKind::Const()),
             "Variable indexer doesnt use the global index properly"
         );
 
@@ -509,12 +512,15 @@ mod unit_tests {
             index_variables(&Abstraction(
                 "y".to_string(),
                 Box::new(Sort("TYPE".to_string())),
-                Box::new(Variable("y".to_string(), PLACEHOLDER_DBI)),
+                Box::new(Variable(
+                    "y".to_string(),
+                    NameKind::Bound(PLACEHOLDER_DBI)
+                )),
             )),
             Abstraction(
                 "y".to_string(),
                 Box::new(Sort("TYPE".to_string())),
-                Box::new(Variable("y".to_string(), 0)),
+                Box::new(Variable("y".to_string(), NameKind::Bound(0))),
             ),
             "Abstraction indexing not working"
         );
@@ -522,20 +528,26 @@ mod unit_tests {
         assert_eq!(
             index_variables(&Abstraction(
                 "a".to_string(),
-                Box::new(Variable("Unit".to_string(), PLACEHOLDER_DBI)),
+                Box::new(Variable(
+                    "Unit".to_string(),
+                    NameKind::Bound(PLACEHOLDER_DBI)
+                )),
                 Box::new(Abstraction(
                     "b".to_string(),
                     Box::new(Sort("TYPE".to_string())),
-                    Box::new(Variable("b".to_string(), PLACEHOLDER_DBI)),
+                    Box::new(Variable(
+                        "b".to_string(),
+                        NameKind::Bound(PLACEHOLDER_DBI)
+                    )),
                 )),
             )),
             Abstraction(
                 "a".to_string(),
-                Box::new(Variable("Unit".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("Unit".to_string(), NameKind::Const())),
                 Box::new(Abstraction(
                     "b".to_string(),
                     Box::new(Sort("TYPE".to_string())),
-                    Box::new(Variable("b".to_string(), 1)),
+                    Box::new(Variable("b".to_string(), NameKind::Bound(1))),
                 )),
             )
         );

@@ -3,7 +3,7 @@ use super::cic::CicTerm::{
     Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
 };
 use crate::error::LofError;
-use crate::type_theory::cic::cic::{Cic, GLOBAL_INDEX};
+use crate::type_theory::cic::cic::{Cic, NameKind};
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function, get_arg_types, is_constant,
     substitute, substitute_meta,
@@ -34,9 +34,8 @@ fn structurally_equal(term1: &CicTerm, term2: &CicTerm) -> bool {
         // TODO this is a bug: ? and Nat should be able to unify the same way x and 3 can at FO
         // however this needs to make sure the Variable actually is a type name and not some random term
         // idx == GLOBAL_INDEX is a current hack (global type names get assigned this value) but should be fixed
-        (Meta(_), Variable(_, idx)) | (Variable(_, idx), Meta(_)) => {
-            *idx == GLOBAL_INDEX
-        }
+        (Meta(_), Variable(_, NameKind::Const()))
+        | (Variable(_, NameKind::Const()), Meta(_)) => true,
         (Variable(name1, dbi1), Variable(name2, dbi2)) => {
             // same dbi1 and if they are global constants then also the constant symbols must be the same
             dbi1 == dbi2 && (!is_constant(term1) || name1 == name2)

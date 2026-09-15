@@ -37,11 +37,17 @@ pub static GLOBAL_INDEX: i32 = -1;
 pub static PLACEHOLDER_DBI: i32 = -2;
 
 #[derive(PartialEq, Clone)]
+pub enum NameKind {
+    /// De Bruijn index
+    Bound(i32),
+    Const(),
+}
+#[derive(PartialEq, Clone)]
 pub enum CicTerm {
     /// (sort name)
     Sort(String),
-    /// (var name, De Bruijn index)
-    Variable(String, i32),
+    /// (var name, name kind)
+    Variable(String, NameKind),
     /// (var name, var type, body)
     Abstraction(String, Box<CicTerm>, Box<CicTerm>), //add bodytype?
     /// (var name, var type, body)

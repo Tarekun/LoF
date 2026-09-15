@@ -1,16 +1,16 @@
 use crate::type_theory::{cic::{
     cic::{
-        Cic, CicStm::{Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, GLOBAL_INDEX, PLACEHOLDER_DBI
+        Cic, CicStm::{Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI
     }, evaluation::evaluate_inductive, type_check::{inductive_eliminator, type_check_inductive}
 }, environment::Environment};
 use crate::type_theory::interface::Kernel;
 use crate::type_theory::interface::TypeTheory;
 
 fn var(name: &str) -> CicTerm {
-    Variable(name.to_string(), PLACEHOLDER_DBI)
+    Variable(name.to_string(), NameKind::Bound(PLACEHOLDER_DBI))
 }
 fn vardbi(name: &str, dbi: i32) -> CicTerm {
-    Variable(name.to_string(), dbi)
+    Variable(name.to_string(), NameKind::Bound(dbi))
 }
 fn app(fun_name: &str, mut args: Vec<CicTerm>) -> CicTerm {
     if args.len() == 0 {
@@ -26,10 +26,10 @@ fn app(fun_name: &str, mut args: Vec<CicTerm>) -> CicTerm {
 }
 fn packed_env() -> Environment<Cic>{
     let mut test_env = Cic::default_environment();
-    let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
-    let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-    let list = Variable("List".to_string(), GLOBAL_INDEX);
-    let type_var = Variable("T".to_string(), GLOBAL_INDEX);
+    let boolean = Variable("Bool".to_string(), NameKind::Const());
+    let nat = Variable("Nat".to_string(), NameKind::Const());
+    let list = Variable("List".to_string(), NameKind::Const());
+    let type_var = Variable("T".to_string(), NameKind::Const());
 
     let _ = evaluate_inductive(
         &mut test_env,
@@ -91,7 +91,7 @@ mod sorts_and_variables {
 
     #[test]
     fn test_type_check_sort_n_vars() {
-        let nat = Variable("nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("nat".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env
             .add_to_context("nat", &Sort("TYPE".to_string()));
@@ -103,7 +103,7 @@ mod sorts_and_variables {
         // definition, we have the variabled and a typed body
         test_env.add_substitution_with_type(
             "m",
-            &Variable("n".to_string(), GLOBAL_INDEX),
+            &Variable("n".to_string(), NameKind::Const()),
             &nat,
         );
 
@@ -135,7 +135,7 @@ mod sorts_and_variables {
         );
         assert!(
             Cic::type_check_term(
-                &Variable("TYPE".to_string(), GLOBAL_INDEX),
+                &Variable("TYPE".to_string(), NameKind::Const()),
                 &mut test_env
             )
             .is_ok(),
@@ -145,7 +145,7 @@ mod sorts_and_variables {
         // variables
         assert_eq!(
             Cic::type_check_term(
-                &Variable("n".to_string(), GLOBAL_INDEX),
+                &Variable("n".to_string(), NameKind::Const()),
                 &mut test_env
             )
             .unwrap(),
@@ -154,7 +154,7 @@ mod sorts_and_variables {
         );
         assert!(
             Cic::type_check_term(
-                &Variable("m".to_string(), GLOBAL_INDEX),
+                &Variable("m".to_string(), NameKind::Const()),
                 &mut test_env
             )
             .is_ok(),
@@ -176,7 +176,7 @@ mod abstraction {
 
     #[test]
     fn test_type_check_abstraction() {
-        let nat = Variable("nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("nat".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env
             .add_to_context("nat", &Sort("TYPE".to_string()));
@@ -200,7 +200,7 @@ mod abstraction {
                 &Abstraction(
                     "x".to_string(),
                     Box::new(nat.clone()),
-                    Box::new(Variable("x".to_string(), 0)),
+                    Box::new(Variable("x".to_string(), NameKind::Bound(0))),
                 ),
                 &mut test_env
             )
@@ -223,8 +223,8 @@ mod abstraction {
                     "x".to_string(),
                     Box::new(nat.clone()),
                     Box::new(Application(
-                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                        Box::new(Variable("x".to_string(), 0)),
+                        Box::new(Variable("s".to_string(), NameKind::Const())),
+                        Box::new(Variable("x".to_string(), NameKind::Bound(0))),
                     )),
                 ),
                 &mut test_env
@@ -237,9 +237,9 @@ mod abstraction {
                 &Abstraction(
                     "x".to_string(),
                     Box::new(Variable(
-                        "StupidInvalidType".to_string(), GLOBAL_INDEX
+                        "StupidInvalidType".to_string(), NameKind::Const()
                     )),
-                    Box::new(Variable("x".to_string(), 0)),
+                    Box::new(Variable("x".to_string(), NameKind::Bound(0))),
                 ),
                 &mut test_env
             )
@@ -250,7 +250,7 @@ mod abstraction {
 
     #[test]
     fn test_abstraction_inference() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env
             .add_to_context("Nat", &Sort("TYPE".to_string()));
@@ -279,8 +279,8 @@ mod abstraction {
                     "n".to_string(), 
                     Box::new(Meta(0)), 
                     Box::new(Application(
-                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)), 
-                        Box::new(Variable("n".to_string(), 0))
+                        Box::new(Variable("s".to_string(), NameKind::Const())), 
+                        Box::new(Variable("n".to_string(), NameKind::Bound(0)))
                     ))
                 ), 
                 &mut test_env
@@ -296,8 +296,8 @@ mod abstraction {
                     "n".to_string(), 
                     Box::new(nat.clone()), 
                     Box::new(Application(
-                        Box::new(Variable("id".to_string(), GLOBAL_INDEX)), 
-                        Box::new(Variable("n".to_string(), 0))
+                        Box::new(Variable("id".to_string(), NameKind::Const())), 
+                        Box::new(Variable("n".to_string(), NameKind::Bound(0)))
                     ))
                 ), 
                 &mut test_env
@@ -329,7 +329,7 @@ mod product {
                 &Product(
                     "T".to_string(),
                     Box::new(Sort("TYPE".to_string())),
-                    Box::new(Variable("T".to_string(), 0)),
+                    Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                 ),
                 &mut test_env
             )
@@ -347,7 +347,7 @@ mod product {
                 &Product(
                     "T".to_string(),
                     Box::new(Sort("StupidInvalidSort".to_string())),
-                    Box::new(Variable("T".to_string(), 0)),
+                    Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                 ),
                 &mut test_env
             )
@@ -360,8 +360,8 @@ mod product {
                     "T".to_string(),
                     Box::new(Sort("TYPE".to_string())),
                     Box::new(Application(
-                        Box::new(Variable("list".to_string(), GLOBAL_INDEX)),
-                        Box::new(Variable("T".to_string(), 0))
+                        Box::new(Variable("list".to_string(), NameKind::Const())),
+                        Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                     ))
                 ),
                 &mut test_env
@@ -377,7 +377,7 @@ mod application {
 
     #[test]
     fn test_type_check_application() {
-        let nat = Variable("nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("nat".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env
             .add_to_context("nat", &Sort("TYPE".to_string()));
@@ -389,7 +389,7 @@ mod application {
         // definition, we have the variabled and a typed body
         test_env.add_substitution_with_type(
             "m",
-            &Variable("n".to_string(), GLOBAL_INDEX),
+            &Variable("n".to_string(), NameKind::Const()),
             &nat.clone(),
         );
         // function over nat
@@ -405,8 +405,8 @@ mod application {
         assert_eq!(
             Cic::type_check_term(
                 &Application(
-                    Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                    Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("s".to_string(), NameKind::Const())),
+                    Box::new(Variable("n".to_string(), NameKind::Const())),
                 ),
                 &mut test_env
             )
@@ -417,8 +417,8 @@ mod application {
         assert!(
             Cic::type_check_term(
                 &Application(
-                    Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                    Box::new(Variable("m".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("s".to_string(), NameKind::Const())),
+                    Box::new(Variable("m".to_string(), NameKind::Const())),
                 ),
                 &mut test_env
             )
@@ -428,8 +428,8 @@ mod application {
         assert!(
             Cic::type_check_term(
                 &Application(
-                    Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                    Box::new(Variable("TYPE".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("s".to_string(), NameKind::Const())),
+                    Box::new(Variable("TYPE".to_string(), NameKind::Const())),
                 ),
                 &mut test_env
             )
@@ -440,8 +440,8 @@ mod application {
 
     #[test]
     fn test_argument_dependent_function() {
-        let unit = Variable("Unit".to_string(), GLOBAL_INDEX);
-        let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
+        let unit = Variable("Unit".to_string(), NameKind::Const());
+        let boolean = Variable("Bool".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env.add_to_context("Bool", &Sort("TYPE".to_string()));
         test_env
@@ -463,9 +463,9 @@ mod application {
                         Box::new(Product(
                             "_".to_string(),
                             Box::new(unit.clone()),
-                            Box::new(Variable(type_var_name.to_string(), 0)),
+                            Box::new(Variable(type_var_name.to_string(), NameKind::Bound(0))),
                         )),
-                        Box::new(Variable(type_var_name.to_string(), 0)),
+                        Box::new(Variable(type_var_name.to_string(), NameKind::Bound(0))),
                     )),
                 )),
             ),
@@ -476,15 +476,15 @@ mod application {
                 &Application(
                     Box::new(Application(
                         Box::new(Application(
-                            Box::new(Variable("if".to_string(), GLOBAL_INDEX)),
+                            Box::new(Variable("if".to_string(), NameKind::Const())),
                             Box::new(unit.clone()),
                         )),
-                        Box::new(Variable("true".to_string(), GLOBAL_INDEX))
+                        Box::new(Variable("true".to_string(), NameKind::Const()))
                     )),
                     Box::new(Abstraction(
                         "_".to_string(), 
                         Box::new(unit.clone()),
-                        Box::new(Variable("it".to_string(), GLOBAL_INDEX)),
+                        Box::new(Variable("it".to_string(), NameKind::Const())),
                     ))
                 ),
                 &mut test_env
@@ -502,15 +502,15 @@ mod application {
                     Box::new(Application(
                         Box::new(Application(
                             Box::new(Application(
-                                Box::new(Variable("if".to_string(), GLOBAL_INDEX)),
+                                Box::new(Variable("if".to_string(), NameKind::Const())),
                                 Box::new(unit.clone()),
                             )),
-                            Box::new(Variable("b".to_string(), 0))
+                            Box::new(Variable("b".to_string(), NameKind::Bound(0)))
                         )),
                         Box::new(Abstraction(
                             "_".to_string(), 
                             Box::new(unit.clone()),
-                            Box::new(Variable("it".to_string(), GLOBAL_INDEX)),
+                            Box::new(Variable("it".to_string(), NameKind::Const())),
                         ))
                     )),
                     false
@@ -524,8 +524,8 @@ mod application {
 
     #[test]
     fn test_application_inference() {
-        let list = Variable("List".to_string(), GLOBAL_INDEX);
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let list = Variable("List".to_string(), NameKind::Const());
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env
             .add_to_context("Nat", &Sort("TYPE".to_string()));
@@ -545,16 +545,16 @@ mod application {
                 Box::new(Sort("TYPE".to_string())),
                 Box::new(Product(
                     "e".to_string(),
-                    Box::new(Variable("T".to_string(), 0)),
+                    Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                     Box::new(Product(
                         "l".to_string(),
                         Box::new(Application(
                             Box::new(list.clone()),
-                            Box::new(Variable("T".to_string(), 0)),
+                            Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                         )),
                         Box::new(Application(
                             Box::new(list.clone()),
-                            Box::new(Variable("T".to_string(), 0)),
+                            Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                         ))
                     ))
                 ))
@@ -571,12 +571,12 @@ mod application {
                 &Application(
                     Box::new(Application(
                         Box::new(Application(
-                            Box::new(Variable("cons".to_string(), GLOBAL_INDEX)), 
+                            Box::new(Variable("cons".to_string(), NameKind::Const())), 
                             Box::new(Meta(10))
                         )),
-                        Box::new(Variable("elem".to_string(), GLOBAL_INDEX))
+                        Box::new(Variable("elem".to_string(), NameKind::Const()))
                     )), 
-                    Box::new(Variable("li".to_string(), GLOBAL_INDEX))
+                    Box::new(Variable("li".to_string(), NameKind::Const()))
                 ),
                 &mut test_env
             ),
@@ -595,8 +595,8 @@ mod let_expr {
     #[test]
     fn test_type_check_let() {
         let mut test_env = Cic::default_environment();
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let zero = Variable("z".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let zero = Variable("z".to_string(), NameKind::Const());
         test_env.add_to_context("z", &nat);
 
         assert!(
@@ -605,7 +605,7 @@ mod let_expr {
                     "n".to_string(),
                     Box::new(Some(nat.clone())),
                     Box::new(zero.clone()),
-                    Box::new(Variable("n".to_string(), 1)),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(1))),
                 ),
                 &mut test_env
             ).is_ok(),
@@ -617,7 +617,7 @@ mod let_expr {
                     "n".to_string(),
                     Box::new(None),
                     Box::new(zero.clone()),
-                    Box::new(Variable("n".to_string(), 1)),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(1))),
                 ),
                 &mut test_env
             ).is_ok(),
@@ -627,9 +627,9 @@ mod let_expr {
             Cic::type_check_term(
                 &Let(
                     "n".to_string(),
-                    Box::new(Some(Variable("UnboundType".to_string(), GLOBAL_INDEX))),
+                    Box::new(Some(Variable("UnboundType".to_string(), NameKind::Const()))),
                     Box::new(zero.clone()),
-                    Box::new(Variable("n".to_string(), 1)),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(1))),
                 ),
                 &mut test_env
             ).is_err(),
@@ -640,8 +640,8 @@ mod let_expr {
                 &Let(
                     "n".to_string(),
                     Box::new(Some(nat.clone())),
-                    Box::new(Variable("unbound_term".to_string(), 1)),
-                    Box::new(Variable("n".to_string(), 1)),
+                    Box::new(Variable("unbound_term".to_string(), NameKind::Bound(1))),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(1))),
                 ),
                 &mut test_env
             ).is_err(),
@@ -653,7 +653,7 @@ mod let_expr {
                     "n".to_string(),
                     Box::new(Some(nat.clone())),
                     Box::new(zero.clone()),
-                    Box::new(Variable("unbound_term".to_string(), 1)),
+                    Box::new(Variable("unbound_term".to_string(), NameKind::Bound(1))),
                 ),
                 &mut test_env
             ).is_err(),
@@ -667,11 +667,11 @@ mod pattern_match {
 
     #[test]
     fn test_list_match() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let list = Variable("List".to_string(), GLOBAL_INDEX);
-        let nil = Variable("nil".to_string(), GLOBAL_INDEX);
-        let cons = Variable("cons".to_string(), GLOBAL_INDEX);
-        let type_var = Variable("T".to_string(), 0);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let list = Variable("List".to_string(), NameKind::Const());
+        let nil = Variable("nil".to_string(), NameKind::Const());
+        let cons = Variable("cons".to_string(), NameKind::Const());
+        let type_var = Variable("T".to_string(), NameKind::Bound(0));
         let sort = Sort("TYPE".to_string());
         let mut test_env = Cic::default_environment();
 
@@ -716,14 +716,14 @@ mod pattern_match {
         assert!(
             Cic::type_check_term(
                 &Match(
-                    Box::new(Variable("test_list".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("test_list".to_string(), NameKind::Const())),
                     vec![
                         (
                             Application(
                                 Box::new(nil.clone()),
                                 Box::new(nat.clone()),
                             ),
-                            Variable("test_list".to_string(), GLOBAL_INDEX)
+                            Variable("test_list".to_string(), NameKind::Const())
                         ),
                         (
                             Application(
@@ -732,11 +732,11 @@ mod pattern_match {
                                         Box::new(cons.clone()),
                                         Box::new(nat.clone()),
                                     )),
-                                    Box::new(Variable("n".to_string(), 0))
+                                    Box::new(Variable("n".to_string(), NameKind::Bound(0)))
                                 )),
-                                Box::new(Variable("l".to_string(), 1)),
+                                Box::new(Variable("l".to_string(), NameKind::Bound(1))),
                             ),
-                            Variable("test_list".to_string(), GLOBAL_INDEX)
+                            Variable("test_list".to_string(), NameKind::Const())
                         ),
                     ]
                 ),
@@ -748,23 +748,23 @@ mod pattern_match {
         // assert!(
         //     Cic::type_check_term(
         //         &Match(
-        //             Box::new(Variable("test_list".to_string(), GLOBAL_INDEX)),
+        //             Box::new(Variable("test_list".to_string(), NameKind::Const())),
         //             vec![
         //                 (
         //                     vec![
         //                         nil.clone(), 
         //                         Meta(0),
         //                     ],
-        //                     Variable("test_list".to_string(), GLOBAL_INDEX)
+        //                     Variable("test_list".to_string(), NameKind::Const())
         //                 ),
         //                 (
         //                     vec![
         //                         cons.clone(),
         //                         Meta(0),
-        //                         Variable("n".to_string(), 0),
-        //                         Variable("l".to_string(), 1),
+        //                         Variable("n".to_string(), NameKind::Bound(0)),
+        //                         Variable("l".to_string(), NameKind::Bound(1)),
         //                     ],
-        //                     Variable("test_list".to_string(), GLOBAL_INDEX)
+        //                     Variable("test_list".to_string(), NameKind::Const())
         //                 ),
         //             ]
         //         ),
@@ -791,14 +791,14 @@ mod pattern_match {
 
         assert_eq!(
             Cic::type_check_term(&matc, &mut test_env),
-            Ok(Variable("Bool".to_string(), GLOBAL_INDEX)),
+            Ok(Variable("Bool".to_string(), NameKind::Const())),
             "Match type checking fails when pattern make use of metavariables"
         );
     }
 
     #[test]
     fn test_nested_pattern_match() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let mut test_env = packed_env();
         test_env.add_to_context("c", &nat.clone());
 
@@ -850,8 +850,8 @@ mod pattern_match {
 
     #[test]
     fn test_nested_pattern_match_recursive_type() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let list = Variable("List".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let list = Variable("List".to_string(), NameKind::Const());
         let mut test_env = packed_env();
         test_env.add_to_context(
             "test_list",
@@ -930,8 +930,8 @@ mod pattern_match {
 
     #[test]
     fn test_nested_pattern_match_type_mismatch() {
-        let nat = Variable("nat".to_string(), GLOBAL_INDEX);
-        let wrapped = Variable("Wrapped".to_string(), GLOBAL_INDEX);
+        let nat = Variable("nat".to_string(), NameKind::Const());
+        let wrapped = Variable("Wrapped".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env.add_to_context("nat", &Sort("TYPE".to_string()));
         test_env.add_to_context("o", &nat);
@@ -980,8 +980,8 @@ mod pattern_match {
     #[test]
     //TODO add check of exaustiveness of patterns
     fn test_type_check_match() {
-        let nat = Variable("nat".to_string(), GLOBAL_INDEX);
-        let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
+        let nat = Variable("nat".to_string(), NameKind::Const());
+        let boolean = Variable("Bool".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env
             .add_to_context("nat", &Sort("TYPE".to_string()));
@@ -1018,18 +1018,18 @@ mod pattern_match {
         assert_eq!(
             Cic::type_check_term(
                 &Match(
-                    Box::new(Variable("c".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("c".to_string(), NameKind::Const())),
                     vec![
                         (
-                            Variable("o".to_string(), GLOBAL_INDEX),
-                            Variable("o".to_string(), GLOBAL_INDEX)
+                            Variable("o".to_string(), NameKind::Const()),
+                            Variable("o".to_string(), NameKind::Const())
                         ),
                         (
                             Application(
-                                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                                Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                                Box::new(Variable("s".to_string(), NameKind::Const())),
+                                Box::new(Variable("n".to_string(), NameKind::Const())),
                             ),
-                            Variable("c".to_string(), GLOBAL_INDEX)
+                            Variable("c".to_string(), NameKind::Const())
                         ),
                     ]
                 ),
@@ -1043,19 +1043,19 @@ mod pattern_match {
             Cic::type_check_term(
                 &Match(
                     Box::new(Variable(
-                        "stupidUnboundVariable".to_string(), GLOBAL_INDEX
+                        "stupidUnboundVariable".to_string(), NameKind::Const()
                     )),
                     vec![
                         (
-                            Variable("o".to_string(), GLOBAL_INDEX),
-                            Variable("o".to_string(), GLOBAL_INDEX)
+                            Variable("o".to_string(), NameKind::Const()),
+                            Variable("o".to_string(), NameKind::Const())
                         ),
                         (
                             Application(
-                                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                                Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                                Box::new(Variable("s".to_string(), NameKind::Const())),
+                                Box::new(Variable("n".to_string(), NameKind::Const())),
                             ),
-                            Variable("c".to_string(), GLOBAL_INDEX)
+                            Variable("c".to_string(), NameKind::Const())
                         ),
                     ]
                 ),
@@ -1067,18 +1067,18 @@ mod pattern_match {
         assert!(
             Cic::type_check_term(
                 &Match(
-                    Box::new(Variable("c".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("c".to_string(), NameKind::Const())),
                     vec![
                         (
-                            Variable("o".to_string(), GLOBAL_INDEX),
-                            Variable("o".to_string(), GLOBAL_INDEX)
+                            Variable("o".to_string(), NameKind::Const()),
+                            Variable("o".to_string(), NameKind::Const())
                         ),
                         (
                             Application(
-                                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                                Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                                Box::new(Variable("s".to_string(), NameKind::Const())),
+                                Box::new(Variable("n".to_string(), NameKind::Const())),
                             ),
-                            Variable("true".to_string(), GLOBAL_INDEX) //this body has type : Bool
+                            Variable("true".to_string(), NameKind::Const()) //this body has type : Bool
                         ),
                     ]
                 ),
@@ -1117,7 +1117,7 @@ mod pattern_match {
 
     #[test]
     fn test_match_exhaustiveness() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let mut test_env = packed_env();
         test_env.add_to_context(
             "n",
@@ -1164,7 +1164,7 @@ mod inductive {
 
     #[test]
     fn test_type_check_inductive() {
-        let nat = Variable("nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("nat".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         #[allow(non_snake_case)]
         let TYPE = Sort("TYPE".to_string());
@@ -1187,8 +1187,8 @@ mod inductive {
                 &vec![],
                 &TYPE,
                 &vec![
-                    ("correct".to_string(), Variable("inc".to_string(), GLOBAL_INDEX)),
-                    ("wrong".to_string(), Variable("wrongType".to_string(), GLOBAL_INDEX))
+                    ("correct".to_string(), Variable("inc".to_string(), NameKind::Const())),
+                    ("wrong".to_string(), Variable("wrongType".to_string(), NameKind::Const()))
                 ]
             )
             .is_err(),
@@ -1214,8 +1214,8 @@ mod inductive {
                     local_env,
                     "fail",
                     &vec![],
-                    &Variable("zero".to_string(), GLOBAL_INDEX),  //bound, non-sort variable
-                    &vec![("cons".to_string(), Variable("zero".to_string(), GLOBAL_INDEX))]
+                    &Variable("zero".to_string(), NameKind::Const()),  //bound, non-sort variable
+                    &vec![("cons".to_string(), Variable("zero".to_string(), NameKind::Const()))]
                 )
                 .is_err()
             }),
@@ -1231,7 +1231,7 @@ mod inductive {
                     "fail",
                     &vec![],
                     &TYPE,
-                    &vec![("cons".to_string(), Variable("zero".to_string(), GLOBAL_INDEX))]
+                    &vec![("cons".to_string(), Variable("zero".to_string(), NameKind::Const()))]
                 )
                 .is_err()
             }),
@@ -1264,11 +1264,11 @@ mod inductive {
                 "Eq",
                 &vec![
                     ("T".to_string(), TYPE.clone()),
-                    ("x".to_string(), Variable("T".to_string(), 0))
+                    ("x".to_string(), Variable("T".to_string(), NameKind::Bound(0)))
                 ],
                 &Product(
                     "_".to_string(),
-                    Box::new(Variable("T".to_string(), 0)),
+                    Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                     Box::new(Sort("PROP".to_string()))
                 ),
                 &vec![(
@@ -1276,12 +1276,12 @@ mod inductive {
                     Application(
                         Box::new(Application(
                             Box::new(Application(
-                                Box::new(Variable("Eq".to_string(), GLOBAL_INDEX)),
-                                Box::new(Variable("T".to_string(), 0))
+                                Box::new(Variable("Eq".to_string(), NameKind::Const())),
+                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                             )),
-                            Box::new(Variable("x".to_string(), 1))
+                            Box::new(Variable("x".to_string(), NameKind::Bound(1)))
                         )),
-                        Box::new(Variable("x".to_string(), 1))
+                        Box::new(Variable("x".to_string(), NameKind::Bound(1)))
                     )
                 )]
             )
@@ -1302,10 +1302,10 @@ mod inductive {
                 Box::new(TYPE.clone()),
                 Box::new(Product(
                     "x".to_string(), 
-                    Box::new(Variable("T".to_string(), 0)),
+                    Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                     Box::new(Product(
                         "_".to_string(),
-                        Box::new(Variable("T".to_string(), 0)),
+                        Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                         Box::new(Sort("PROP".to_string()))
                     ))
                 ))
@@ -1325,16 +1325,16 @@ mod inductive {
                 Box::new(TYPE.clone()),
                 Box::new(Product(
                     "x".to_string(), 
-                    Box::new(Variable("T".to_string(), 0)),
+                    Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                     Box::new(Application(
                         Box::new(Application(
                             Box::new(Application(
-                                Box::new(Variable("Eq".to_string(), GLOBAL_INDEX)),
-                                Box::new(Variable("T".to_string(), 0))
+                                Box::new(Variable("Eq".to_string(), NameKind::Const())),
+                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                             )),
-                            Box::new(Variable("x".to_string(), 1))
+                            Box::new(Variable("x".to_string(), NameKind::Bound(1)))
                         )),
-                        Box::new(Variable("x".to_string(), 1))
+                        Box::new(Variable("x".to_string(), NameKind::Bound(1)))
                     ))
                 ))
             ),
@@ -1347,7 +1347,7 @@ mod inductive {
         let mut test_env = Cic::default_environment();
         #[allow(non_snake_case)]
         let TYPE = Sort("TYPE".to_string());
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let constructors = vec![
             ("o".to_string(), nat.clone()),
             (
@@ -1391,7 +1391,7 @@ mod inductive {
         let (_, zero_type) = zero_type.unwrap();
         assert_eq!(
             zero_type,
-            Variable("Nat".to_string(), GLOBAL_INDEX),
+            Variable("Nat".to_string(), NameKind::Const()),
             "Zero constructor type wasnt constructed properly"
         );
     
@@ -1405,8 +1405,8 @@ mod inductive {
             succ_type,
             Product(
                 "_".to_string(),
-                Box::new(Variable("Nat".to_string(), GLOBAL_INDEX)),
-                Box::new(Variable("Nat".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("Nat".to_string(), NameKind::Const())),
+                Box::new(Variable("Nat".to_string(), NameKind::Const())),
             ),
             "Successor constructor type wasnt constructed properly"
         );
@@ -1419,8 +1419,8 @@ mod inductive {
         let TYPE = Sort("TYPE".to_string());
 
         let list_of_t = Application(
-            Box::new(Variable("list".to_string(), GLOBAL_INDEX)),
-            Box::new(Variable("T".to_string(), 0)),
+            Box::new(Variable("list".to_string(), NameKind::Const())),
+            Box::new(Variable("T".to_string(), NameKind::Bound(0))),
         );
         let constructors = vec![
             ("nil".to_string(), list_of_t.clone()),
@@ -1428,7 +1428,7 @@ mod inductive {
                 "cons".to_string(),
                 Product(
                     "_".to_string(),
-                    Box::new(Variable("T".to_string(), 0)),
+                    Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                     Box::new(Product(
                         "_".to_string(),
                         Box::new(list_of_t.clone()),
@@ -1443,7 +1443,7 @@ mod inductive {
                 "cons".to_string(),
                 Product(
                     "_".to_string(),
-                    Box::new(Variable("T_T".to_string(), 0)), //unbound variable
+                    Box::new(Variable("T_T".to_string(), NameKind::Bound(0))), //unbound variable
                     Box::new(Product(
                         "_".to_string(),
                         Box::new(list_of_t.clone()),
@@ -1478,11 +1478,11 @@ mod inductive {
 
     #[test]
     fn test_inductive_eliminator() {
-        let unit = Variable("Unit".to_string(), GLOBAL_INDEX);
-        let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let list = Variable("List".to_string(), GLOBAL_INDEX);
-        let vec = Variable("Vec".to_string(), GLOBAL_INDEX);
+        let unit = Variable("Unit".to_string(), NameKind::Const());
+        let boolean = Variable("Bool".to_string(), NameKind::Const());
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let list = Variable("List".to_string(), NameKind::Const());
+        let vec = Variable("Vec".to_string(), NameKind::Const());
 
         // Unit
         assert_eq!(
@@ -1502,15 +1502,15 @@ mod inductive {
                 Box::new(Product(
                     "c_0".to_string(),
                     Box::new(Application(
-                        Box::new(Variable("er_Unit".to_string(), 0)),
-                        Box::new(Variable("it".to_string(), GLOBAL_INDEX)),
+                        Box::new(Variable("er_Unit".to_string(), NameKind::Bound(0))),
+                        Box::new(Variable("it".to_string(), NameKind::Const())),
                     )),
                     Box::new(Product(
                         "t".to_string(),
                         Box::new(unit.clone()),
                         Box::new(Application(
-                            Box::new(Variable("er_Unit".to_string(), 0)),
-                            Box::new(Variable("t".to_string(), 2)),
+                            Box::new(Variable("er_Unit".to_string(), NameKind::Bound(0))),
+                            Box::new(Variable("t".to_string(), NameKind::Bound(2))),
                         )),
                     ))
                 ))
@@ -1538,21 +1538,21 @@ mod inductive {
                 Box::new(Product(
                     "c_0".to_string(),
                     Box::new(Application(
-                        Box::new(Variable("er_Bool".to_string(), 0)),
-                        Box::new(Variable("true".to_string(), GLOBAL_INDEX)),
+                        Box::new(Variable("er_Bool".to_string(), NameKind::Bound(0))),
+                        Box::new(Variable("true".to_string(), NameKind::Const())),
                     )),
                     Box::new(Product(
                         "c_1".to_string(),
                         Box::new(Application(
-                            Box::new(Variable("er_Bool".to_string(), 0)),
-                            Box::new(Variable("false".to_string(), GLOBAL_INDEX)),
+                            Box::new(Variable("er_Bool".to_string(), NameKind::Bound(0))),
+                            Box::new(Variable("false".to_string(), NameKind::Const())),
                         )),
                         Box::new(Product(
                             "t".to_string(),
                             Box::new(boolean.clone()),
                             Box::new(Application(
-                                Box::new(Variable("er_Bool".to_string(), 0)),
-                                Box::new(Variable("t".to_string(), 3)),
+                                Box::new(Variable("er_Bool".to_string(), NameKind::Bound(0))),
+                                Box::new(Variable("t".to_string(), NameKind::Bound(3))),
                             ))
                         ))
                     ))
@@ -1590,8 +1590,8 @@ mod inductive {
                 Box::new(Product(
                     "c_0".to_string(),
                     Box::new(Application(
-                        Box::new(Variable("er_Nat".to_string(), 0)),
-                        Box::new(Variable("z".to_string(), GLOBAL_INDEX)),
+                        Box::new(Variable("er_Nat".to_string(), NameKind::Bound(0))),
+                        Box::new(Variable("z".to_string(), NameKind::Const())),
                     )),
                     Box::new(Product(
                         "c_1".to_string(),
@@ -1601,14 +1601,14 @@ mod inductive {
                             Box::new(Product(
                                 "ih_0".to_string(),
                                 Box::new(Application(
-                                    Box::new(Variable("er_Nat".to_string(), 0)),
-                                    Box::new(Variable("r_0".to_string(), 3))
+                                    Box::new(Variable("er_Nat".to_string(), NameKind::Bound(0))),
+                                    Box::new(Variable("r_0".to_string(), NameKind::Bound(3)))
                                 )),
                                 Box::new(Application(
-                                    Box::new(Variable("er_Nat".to_string(), 0)),
+                                    Box::new(Variable("er_Nat".to_string(), NameKind::Bound(0))),
                                     Box::new(Application(
-                                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                                        Box::new(Variable("r_0".to_string(), 3))
+                                        Box::new(Variable("s".to_string(), NameKind::Const())),
+                                        Box::new(Variable("r_0".to_string(), NameKind::Bound(3)))
                                     ))
                                 ))
                             ))
@@ -1617,8 +1617,8 @@ mod inductive {
                             "t".to_string(),
                             Box::new(nat.clone()),
                             Box::new(Application(
-                                Box::new(Variable("er_Nat".to_string(), 0)),
-                                Box::new(Variable("t".to_string(), 3))
+                                Box::new(Variable("er_Nat".to_string(), NameKind::Bound(0))),
+                                Box::new(Variable("t".to_string(), NameKind::Bound(3)))
                             ))
                         ))
                     ))
@@ -1637,23 +1637,23 @@ mod inductive {
                         "nil".to_string(),
                         Application(
                             Box::new(list.clone()),
-                            Box::new(Variable("T".to_string(), 0))
+                            Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                         )
                     ),
                     (
                         "cons".to_string(),
                         Product(
                             "elem".to_string(),
-                            Box::new(Variable("T".to_string(), 0)),
+                            Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                             Box::new(Product(
                                 "l".to_string(),
                                 Box::new(Application(
                                     Box::new(list.clone()),
-                                    Box::new(Variable("T".to_string(), 0))
+                                    Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                 )),
                                 Box::new(Application(
                                     Box::new(list.clone()),
-                                    Box::new(Variable("T".to_string(), 0))
+                                    Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                 ))
                             ))
                         )
@@ -1669,60 +1669,60 @@ mod inductive {
                         "instance".to_string(),
                         Box::new(Application(
                             Box::new(list.clone()),
-                            Box::new(Variable("T".to_string(), 0))
+                            Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                         )),
                         Box::new(Sort("TYPE".to_string()))
                     )),
                     Box::new(Product(
                         "c_0".to_string(),
                         Box::new(Application(
-                            Box::new(Variable("er_List".to_string(), 1)),
+                            Box::new(Variable("er_List".to_string(), NameKind::Bound(1))),
                             Box::new(Application(
-                                Box::new(Variable("nil".to_string(), GLOBAL_INDEX)),
-                                Box::new(Variable("T".to_string(), 0))
+                                Box::new(Variable("nil".to_string(), NameKind::Const())),
+                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                             )),
                         )),
                         Box::new(Product(
                             "c_1".to_string(),
                             Box::new(Product(
                                 "nr_0".to_string(),
-                                Box::new(Variable("T".to_string(), 0)),
+                                Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                                 Box::new(Product(
                                     "r_1".to_string(),
                                     Box::new(Application(
                                         Box::new(list.clone()),
-                                        Box::new(Variable("T".to_string(), 0))
+                                        Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                     )),
                                     Box::new(Product(
                                         "ih_0".to_string(),
                                         Box::new(Application(
                                             Box::new(Variable(
-                                                "er_List".to_string(), 1
+                                                "er_List".to_string(), NameKind::Bound(1)
                                             )),
                                             Box::new(Variable(
-                                                "r_1".to_string(), 5
+                                                "r_1".to_string(), NameKind::Bound(5)
                                             ))
                                         )),
                                         Box::new(Application(
                                             Box::new(Variable(
-                                                "er_List".to_string(), 1
+                                                "er_List".to_string(), NameKind::Bound(1)
                                             )),
                                             Box::new(Application(
                                                 Box::new(Application(
                                                     Box::new(Application(
                                                         Box::new(Variable(
-                                                            "cons".to_string(), GLOBAL_INDEX
+                                                            "cons".to_string(), NameKind::Const()
                                                         )),
                                                         Box::new(Variable(
-                                                            "T".to_string(), 0
+                                                            "T".to_string(), NameKind::Bound(0)
                                                         ))
                                                     )),
                                                     Box::new(Variable(
-                                                        "nr_0".to_string(), 4
+                                                        "nr_0".to_string(), NameKind::Bound(4)
                                                     ))
                                                 )),
                                                 Box::new(Variable(
-                                                    "r_1".to_string(), 5
+                                                    "r_1".to_string(), NameKind::Bound(5)
                                                 ))
                                             ))
                                         ))
@@ -1733,11 +1733,11 @@ mod inductive {
                                 "t".to_string(),
                                 Box::new(Application(
                                     Box::new(list.clone()),
-                                    Box::new(Variable("T".to_string(), 0))
+                                    Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                 )),
                                 Box::new(Application(
-                                    Box::new(Variable("er_List".to_string(), 1)),
-                                    Box::new(Variable("t".to_string(), 4))
+                                    Box::new(Variable("er_List".to_string(), NameKind::Bound(1))),
+                                    Box::new(Variable("t".to_string(), NameKind::Bound(4)))
                                 ))
                             ))
                         )),
@@ -1760,13 +1760,13 @@ mod inductive {
                     ("nul".to_string(), Application(
                         Box::new(Application(
                             Box::new(vec.clone()), 
-                            Box::new(Variable("T".to_string(), 0))
+                            Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                         )),
-                        Box::new(Variable("z".to_string(), GLOBAL_INDEX))
+                        Box::new(Variable("z".to_string(), NameKind::Const()))
                     )),
                     ("cons".to_string(), Product(
                         "nr_0".to_string(), 
-                        Box::new(Variable("T".to_string(), 0)), 
+                        Box::new(Variable("T".to_string(), NameKind::Bound(0))), 
                         Box::new(Product(
                             "nr_1".to_string(),
                             Box::new(nat.clone()), 
@@ -1775,18 +1775,18 @@ mod inductive {
                                 Box::new(Application(
                                     Box::new(Application(
                                         Box::new(vec.clone()), 
-                                        Box::new(Variable("T".to_string(), 0))
+                                        Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                     )),
-                                    Box::new(Variable("nr_1".to_string(), 2))
+                                    Box::new(Variable("nr_1".to_string(), NameKind::Bound(2)))
                                 )), 
                                 Box::new(Application(
                                     Box::new(Application(
                                         Box::new(vec.clone()), 
-                                        Box::new(Variable("T".to_string(), 0))
+                                        Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                     )),
                                     Box::new(Application(
-                                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)), 
-                                        Box::new(Variable("nr_1".to_string(), 2))
+                                        Box::new(Variable("s".to_string(), NameKind::Const())), 
+                                        Box::new(Variable("nr_1".to_string(), NameKind::Bound(2)))
                                     ))
                                 )) 
                             )) 
@@ -1808,9 +1808,9 @@ mod inductive {
                             Box::new(Application(
                                 Box::new(Application(
                                     Box::new(vec.clone()), 
-                                    Box::new(Variable("T".to_string(), 0))
+                                    Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                 )),
-                                Box::new(Variable("len".to_string(), 2))
+                                Box::new(Variable("len".to_string(), NameKind::Bound(2)))
                             )), 
                             Box::new(Sort("TYPE".to_string())) 
                         ))
@@ -1819,19 +1819,19 @@ mod inductive {
                         "c_0".to_string(), 
                         Box::new(Application(
                             Box::new(Application(
-                                Box::new(Variable("er_Vec".to_string(), 1)), 
-                                Box::new(Variable("z".to_string(), GLOBAL_INDEX))
+                                Box::new(Variable("er_Vec".to_string(), NameKind::Bound(1))), 
+                                Box::new(Variable("z".to_string(), NameKind::Const()))
                             )),
                             Box::new(Application(
-                                Box::new(Variable("nul".to_string(), GLOBAL_INDEX)),
-                                Box::new(Variable("T".to_string(), 0))
+                                Box::new(Variable("nul".to_string(), NameKind::Const())),
+                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                             ))
                         )),
                         Box::new(Product(
                             "c_1".to_string(),
                             Box::new(Product(
                                 "nr_0".to_string(), 
-                                Box::new(Variable("T".to_string(), 0)), 
+                                Box::new(Variable("T".to_string(), NameKind::Bound(0))), 
                                 Box::new(Product(
                                     "nr_1".to_string(),
                                     Box::new(nat.clone()),
@@ -1840,39 +1840,39 @@ mod inductive {
                                         Box::new(Application(
                                             Box::new(Application(
                                                 Box::new(vec.clone()), 
-                                                Box::new(Variable("T".to_string(), 0))
+                                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                             )),
-                                            Box::new(Variable("nr_1".to_string(), 5))
+                                            Box::new(Variable("nr_1".to_string(), NameKind::Bound(5)))
                                         )), 
                                         Box::new(Product(
                                             "ih_0".to_string(), 
                                             Box::new(Application(
                                                 Box::new(Application(
-                                                    Box::new(Variable("er_Vec".to_string(), 1)), 
-                                                    Box::new(Variable("nr_1".to_string(), 5))
+                                                    Box::new(Variable("er_Vec".to_string(), NameKind::Bound(1))), 
+                                                    Box::new(Variable("nr_1".to_string(), NameKind::Bound(5)))
                                                 )),
-                                                Box::new(Variable("r_2".to_string(), 6))
+                                                Box::new(Variable("r_2".to_string(), NameKind::Bound(6)))
                                             )), 
                                             Box::new(Application(
                                                 Box::new(Application(
-                                                    Box::new(Variable("er_Vec".to_string(), 1)), 
+                                                    Box::new(Variable("er_Vec".to_string(), NameKind::Bound(1))), 
                                                     Box::new(Application(
-                                                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)), 
-                                                        Box::new(Variable("nr_1".to_string(), 5))
+                                                        Box::new(Variable("s".to_string(), NameKind::Const())), 
+                                                        Box::new(Variable("nr_1".to_string(), NameKind::Bound(5)))
                                                     ))
                                                 )),
                                                 Box::new(Application(
                                                     Box::new(Application(
                                                         Box::new(Application(
                                                             Box::new(Application(
-                                                                Box::new(Variable("cons".to_string(), GLOBAL_INDEX)),
-                                                                Box::new(Variable("T".to_string(), 0))
+                                                                Box::new(Variable("cons".to_string(), NameKind::Const())),
+                                                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                                             )),
-                                                            Box::new(Variable("nr_0".to_string(), 4))
+                                                            Box::new(Variable("nr_0".to_string(), NameKind::Bound(4)))
                                                         )),
-                                                        Box::new(Variable("nr_1".to_string(), 5))
+                                                        Box::new(Variable("nr_1".to_string(), NameKind::Bound(5)))
                                                     )),
-                                                    Box::new(Variable("r_2".to_string(), 6))
+                                                    Box::new(Variable("r_2".to_string(), NameKind::Bound(6)))
                                                 ))
                                             )) 
                                         )) 
@@ -1887,16 +1887,16 @@ mod inductive {
                                     Box::new(Application(
                                         Box::new(Application(
                                             Box::new(vec.clone()), 
-                                            Box::new(Variable("T".to_string(), 0))
+                                            Box::new(Variable("T".to_string(), NameKind::Bound(0)))
                                         )),
-                                        Box::new(Variable("rp_0".to_string(), 4))
+                                        Box::new(Variable("rp_0".to_string(), NameKind::Bound(4)))
                                     )), 
                                     Box::new(Application(
                                         Box::new(Application(
-                                            Box::new(Variable("er_Vec".to_string(), 1)), 
-                                            Box::new(Variable("rp_0".to_string(), 4))
+                                            Box::new(Variable("er_Vec".to_string(), NameKind::Bound(1))), 
+                                            Box::new(Variable("rp_0".to_string(), NameKind::Bound(4)))
                                         )),
-                                        Box::new(Variable("t".to_string(), 5))
+                                        Box::new(Variable("t".to_string(), NameKind::Bound(5)))
                                     )) 
                                 ))
                             ))
@@ -1924,10 +1924,10 @@ mod inductive {
                         "negative".to_string(), 
                         Box::new(Product(
                             "_".to_string(), 
-                            Box::new(Variable("CurrysParadox".to_string(), GLOBAL_INDEX)), 
-                            Box::new(Variable("Empty".to_string(), GLOBAL_INDEX)) 
+                            Box::new(Variable("CurrysParadox".to_string(), NameKind::Const())), 
+                            Box::new(Variable("Empty".to_string(), NameKind::Const())) 
                         )), 
-                        Box::new(Variable("CurrysParadox".to_string(), GLOBAL_INDEX)), 
+                        Box::new(Variable("CurrysParadox".to_string(), NameKind::Const())), 
                     ))]
                 ), 
                 &mut test_env
@@ -1942,7 +1942,7 @@ mod fun_stm {
 
     #[test]
     fn test_type_check_fun() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let mut test_env = packed_env();
 
         assert!(
@@ -1951,7 +1951,7 @@ mod fun_stm {
                     "f".to_string(),
                     vec![("t".to_string(), Sort("TYPE".to_string()))],
                     Box::new(Sort("TYPE".to_string())),
-                    Box::new(Variable("t".to_string(), 0)),
+                    Box::new(Variable("t".to_string(), NameKind::Bound(0))),
                     false
                 ),
                 &mut test_env,
@@ -1966,25 +1966,25 @@ mod fun_stm {
         ];
         let zerobranch = (
             //patter
-            Variable("0".to_string(), GLOBAL_INDEX),
+            Variable("0".to_string(), NameKind::Const()),
             //body
-            Variable("m".to_string(), GLOBAL_INDEX),
+            Variable("m".to_string(), NameKind::Const()),
         );
         let succbranch = (
             //patter
             Application(
-                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                Box::new(Variable("nn".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("s".to_string(), NameKind::Const())),
+                Box::new(Variable("nn".to_string(), NameKind::Const())),
             ),
             //body
             Application(
-                Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("s".to_string(), NameKind::Const())),
                 Box::new(Application(
                     Box::new(Application(
-                        Box::new(Variable("add".to_string(), GLOBAL_INDEX)),
-                        Box::new(Variable("nn".to_string(), GLOBAL_INDEX)),
+                        Box::new(Variable("add".to_string(), NameKind::Const())),
+                        Box::new(Variable("nn".to_string(), NameKind::Const())),
                     )),
-                    Box::new(Variable("m".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("m".to_string(), NameKind::Const())),
                 )),
             ),
         );
@@ -1995,7 +1995,7 @@ mod fun_stm {
                     args.clone(),
                     Box::new(Sort("Nat".to_string())),
                     Box::new(Match(
-                        Box::new(Variable("n".to_string(), 0)),
+                        Box::new(Variable("n".to_string(), NameKind::Bound(0))),
                         vec![zerobranch.clone(), succbranch.clone()]
                     )),
                     false
@@ -2011,7 +2011,7 @@ mod fun_stm {
                 args.clone(),
                 Box::new(nat.clone()),
                 Box::new(Match(
-                    Box::new(Variable("n".to_string(), 0)),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(0))),
                     vec![zerobranch, succbranch],
                 )),
                 true

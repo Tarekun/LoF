@@ -1,11 +1,10 @@
-use crate::type_theory::cic::cic::{Cic, FIRST_INDEX};
+use crate::type_theory::cic::cic::{Cic, NameKind, FIRST_INDEX};
 use crate::type_theory::cic::cic::{
     CicStm::{Fun, InductiveDef},
     CicTerm::{
         self, Abstraction, Application, Let, Match, Meta, Product, Sort,
         Variable,
     },
-    GLOBAL_INDEX,
 };
 use crate::type_theory::cic::unification::{
     cic_apply_unifier, cic_collect_unifications, cic_so_unification,
@@ -17,30 +16,32 @@ use crate::type_theory::interface::{Kernel, TypeTheory};
 use std::collections::VecDeque;
 
 mod components {
+    use crate::type_theory::cic::cic::NameKind;
+
     use super::*;
 
     #[test]
     fn test_variable_structural_equality() {
         assert!(
             structurally_equal(
-                &Variable("x".to_string(), 0),
-                &Variable("y".to_string(), 0),
+                &Variable("x".to_string(), NameKind::Bound(0)),
+                &Variable("y".to_string(), NameKind::Bound(0)),
             ),
             "bound variables at the same de Bruijn position should be equal regardless of name (they're alpha equivalent)"
         );
 
         assert!(
             !structurally_equal(
-                &Variable("x".to_string(), 0),
-                &Variable("y".to_string(), 1),
+                &Variable("x".to_string(), NameKind::Bound(0)),
+                &Variable("y".to_string(), NameKind::Bound(1)),
             ),
             "bound variables at different positions with different names must not be equal"
         );
 
         assert!(
             !structurally_equal(
-                &Variable("z".to_string(), GLOBAL_INDEX),
-                &Variable("s".to_string(), GLOBAL_INDEX),
+                &Variable("z".to_string(), NameKind::Const()),
+                &Variable("s".to_string(), NameKind::Const()),
             ),
             "different global constants should not be considered structurally equal"
         );
@@ -55,7 +56,7 @@ mod components {
             Box::new(Abstraction(
                 "y".to_string(),
                 Box::new(Sort("TYPE".to_string())),
-                Box::new(Variable("x".to_string(), 1)),
+                Box::new(Variable("x".to_string(), NameKind::Bound(1))),
             )),
         );
         // (y,x) -> y
@@ -65,7 +66,7 @@ mod components {
             Box::new(Abstraction(
                 "x".to_string(),
                 Box::new(Sort("TYPE".to_string())),
-                Box::new(Variable("y".to_string(), 1)),
+                Box::new(Variable("y".to_string(), NameKind::Bound(1))),
             )),
         );
         // (y,x) -> x
@@ -75,7 +76,7 @@ mod components {
             Box::new(Abstraction(
                 "x".to_string(),
                 Box::new(Sort("TYPE".to_string())),
-                Box::new(Variable("x".to_string(), 2)),
+                Box::new(Variable("x".to_string(), NameKind::Bound(2))),
             )),
         );
 
@@ -91,11 +92,13 @@ mod components {
 }
 
 mod constraint_collection {
+    use crate::type_theory::cic::cic::{NameKind, FIRST_INDEX};
+
     use super::*;
 
     #[test]
     fn test_collect_unifications_product_match_and_let() {
-        let bool_type = Variable("Bool".to_string(), GLOBAL_INDEX);
+        let bool_type = Variable("Bool".to_string(), NameKind::Const());
         let mut env = Cic::default_environment();
         Cic::type_check_stm(
             &InductiveDef(
@@ -118,7 +121,7 @@ mod constraint_collection {
                 Box::new(Sort("TYPE".to_string())),
             ),
         );
-        let f = Variable("f".to_string(), GLOBAL_INDEX);
+        let f = Variable("f".to_string(), NameKind::Const());
         // applying `f` (Bool -> TYPE) to a metavariable generates a
         // constraint pairing `f`'s domain against the meta's own type
         let inner_application =
@@ -150,7 +153,7 @@ mod constraint_collection {
         let match_term = Match(
             Box::new(inner_application),
             vec![(
-                Variable("true".to_string(), GLOBAL_INDEX),
+                Variable("true".to_string(), NameKind::Const()),
                 Sort("TYPE".to_string()),
             )],
         );
@@ -162,9 +165,9 @@ mod constraint_collection {
 
     #[test]
     fn test_collect_unifications_binds_match_pattern_variables() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let s = Variable("s".to_string(), GLOBAL_INDEX);
-        let nn = Variable("nn".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let s = Variable("s".to_string(), NameKind::Const());
+        let nn = Variable("nn".to_string(), NameKind::Const());
         let mut env = Cic::default_environment();
         Cic::type_check_stm(
             &InductiveDef(
@@ -190,7 +193,7 @@ mod constraint_collection {
         // match n { s(nn) => s(nn) }: `nn` is bound by the pattern and only
         // then used by the body
         let match_term = Match(
-            Box::new(Variable("n".to_string(), FIRST_INDEX)),
+            Box::new(Variable("n".to_string(), NameKind::Bound(FIRST_INDEX))),
             vec![(
                 Application(Box::new(s.clone()), Box::new(nn.clone())),
                 Application(Box::new(s), Box::new(nn)),
@@ -214,12 +217,12 @@ mod constraint_collection {
             "s",
             &Product(
                 "_".to_string(),
-                Box::new(Variable("Nat".to_string(), GLOBAL_INDEX)),
-                Box::new(Variable("Nat".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("Nat".to_string(), NameKind::Const())),
+                Box::new(Variable("Nat".to_string(), NameKind::Const())),
             ),
         );
-        let s = Variable("s".to_string(), GLOBAL_INDEX);
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let s = Variable("s".to_string(), NameKind::Const());
+        let nat = Variable("Nat".to_string(), NameKind::Const());
 
         // `\lambda n: Nat. s(n)`
         let abstraction = Abstraction(
@@ -227,7 +230,7 @@ mod constraint_collection {
             Box::new(nat.clone()),
             Box::new(Application(
                 Box::new(s.clone()),
-                Box::new(Variable("n".to_string(), 0)),
+                Box::new(Variable("n".to_string(), NameKind::Bound(0))),
             )),
         );
         assert!(
@@ -241,7 +244,7 @@ mod constraint_collection {
             Box::new(nat),
             Box::new(Application(
                 Box::new(s),
-                Box::new(Variable("n".to_string(), 0)),
+                Box::new(Variable("n".to_string(), NameKind::Bound(0))),
             )),
         );
         assert!(
@@ -254,19 +257,19 @@ mod constraint_collection {
 #[test]
 fn test_variable_ground_unification() {
     fn var(name: &str) -> CicTerm {
-        Variable(name.to_string(), -100)
+        Variable(name.to_string(), NameKind::Bound(-100))
     }
     let listbool = Application(Box::new(var("List")), Box::new(var("Bool")));
     let listt = Application(
         Box::new(var("List")),
-        Box::new(Variable("T".to_string(), FIRST_INDEX)),
+        Box::new(Variable("T".to_string(), NameKind::Bound(FIRST_INDEX))),
     );
     assert!(cic_so_unification(&listbool, &listt).is_ok(), "nook");
 }
 
 #[test]
 fn test_dhm() {
-    let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+    let nat = Variable("Nat".to_string(), NameKind::Const());
     assert_eq!(
         cic_so_unification(&Meta(0), &nat).unwrap(),
         Substitution::from([("metavariable_0".to_string(), nat.clone())]),
@@ -300,27 +303,27 @@ fn test_dhm() {
 
 #[test]
 fn test_match_unification() {
-    let t = Variable("true".to_string(), GLOBAL_INDEX);
+    let t = Variable("true".to_string(), NameKind::Const());
     let expected =
         Substitution::from([("metavariable_1".to_string(), t.clone())]);
     let constraints = vec![(
         Match(
-            Box::new(Variable("b".to_string(), 0)),
+            Box::new(Variable("b".to_string(), NameKind::Bound(0))),
             vec![
-                (t.clone(), Variable("b".to_string(), GLOBAL_INDEX)),
+                (t.clone(), Variable("b".to_string(), NameKind::Const())),
                 (
-                    Variable("false".to_string(), GLOBAL_INDEX),
-                    Variable("b".to_string(), GLOBAL_INDEX),
+                    Variable("false".to_string(), NameKind::Const()),
+                    Variable("b".to_string(), NameKind::Const()),
                 ),
             ],
         ),
         Match(
-            Box::new(Variable("b".to_string(), 0)),
+            Box::new(Variable("b".to_string(), NameKind::Bound(0))),
             vec![
-                (Meta(1), Variable("b".to_string(), GLOBAL_INDEX)),
+                (Meta(1), Variable("b".to_string(), NameKind::Const())),
                 (
-                    Variable("false".to_string(), GLOBAL_INDEX),
-                    Variable("b".to_string(), GLOBAL_INDEX),
+                    Variable("false".to_string(), NameKind::Const()),
+                    Variable("b".to_string(), NameKind::Const()),
                 ),
             ],
         ),
@@ -336,17 +339,26 @@ fn test_match_unification() {
         Substitution::from([("metavariable_2".to_string(), body.clone())]);
     let constraints = vec![(
         Match(
-            Box::new(Variable("b".to_string(), 0)),
+            Box::new(Variable("b".to_string(), NameKind::Bound(0))),
             vec![
-                (Variable("true".to_string(), GLOBAL_INDEX), body.clone()),
-                (Variable("false".to_string(), GLOBAL_INDEX), body.clone()),
+                (
+                    Variable("true".to_string(), NameKind::Const()),
+                    body.clone(),
+                ),
+                (
+                    Variable("false".to_string(), NameKind::Const()),
+                    body.clone(),
+                ),
             ],
         ),
         Match(
-            Box::new(Variable("b".to_string(), 0)),
+            Box::new(Variable("b".to_string(), NameKind::Bound(0))),
             vec![
-                (Variable("true".to_string(), GLOBAL_INDEX), Meta(2)),
-                (Variable("false".to_string(), GLOBAL_INDEX), body.clone()),
+                (Variable("true".to_string(), NameKind::Const()), Meta(2)),
+                (
+                    Variable("false".to_string(), NameKind::Const()),
+                    body.clone(),
+                ),
             ],
         ),
     )];
@@ -358,14 +370,16 @@ fn test_match_unification() {
 }
 
 mod substitution_routing {
+    use crate::type_theory::cic::cic::FIRST_INDEX;
+
     use super::*;
 
     // NOTE: this test is here atm, but im not sure CIC unification should really
     // support FO variable substitution
     #[test]
     fn test_apply_unifier_routes_variable_keys_by_name() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let vec = Variable("Vec".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let vec = Variable("Vec".to_string(), NameKind::Const());
         // Θ = { variable_n -> Nat, metavariable_0 -> Vec }
         let substitution = Substitution::from([
             ("variable_n".to_string(), nat.clone()),
@@ -375,7 +389,10 @@ mod substitution_routing {
         let exp = Application(
             Box::new(Application(
                 Box::new(vec.clone()),
-                Box::new(Variable("n".to_string(), FIRST_INDEX)),
+                Box::new(Variable(
+                    "n".to_string(),
+                    NameKind::Bound(FIRST_INDEX),
+                )),
             )),
             Box::new(Meta(0)),
         );
@@ -396,9 +413,9 @@ mod substitution_routing {
     // with the type `Nat`
     #[test]
     fn test_solved_mgu_grounds_variable_keys_inside_meta_bodies() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let list = Variable("List".to_string(), GLOBAL_INDEX);
-        let x = Variable("x".to_string(), FIRST_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let list = Variable("List".to_string(), NameKind::Const());
+        let x = Variable("x".to_string(), NameKind::Bound(FIRST_INDEX));
 
         // ?0 ≐ List(x) and x ≐ Nat: solving the second must ground the first
         let constraints = VecDeque::from(vec![
@@ -431,9 +448,9 @@ mod substitution_routing {
     /// `reduce` then collapses into the useless mgu `{x -> x, y -> y}`.
     #[test]
     fn test_trivial_constraint_after_a_solution_is_dropped_not_redirected() {
-        let f = Variable("f".to_string(), GLOBAL_INDEX);
-        let x = Variable("x".to_string(), FIRST_INDEX);
-        let y = Variable("y".to_string(), FIRST_INDEX);
+        let f = Variable("f".to_string(), NameKind::Const());
+        let x = Variable("x".to_string(), NameKind::Bound(FIRST_INDEX));
+        let y = Variable("y".to_string(), NameKind::Bound(FIRST_INDEX));
 
         let f_of = |arg1: &CicTerm, arg2: &CicTerm| {
             Application(
@@ -458,9 +475,9 @@ mod substitution_routing {
     /// failure. The x=x guard has to be re-checked *after* the redirect.
     #[test]
     fn test_repeated_variable_constraint_is_not_an_occurs_failure() {
-        let f = Variable("f".to_string(), GLOBAL_INDEX);
-        let r = Variable("r".to_string(), FIRST_INDEX);
-        let r_0 = Variable("r_0".to_string(), FIRST_INDEX);
+        let f = Variable("f".to_string(), NameKind::Const());
+        let r = Variable("r".to_string(), NameKind::Bound(FIRST_INDEX));
+        let r_0 = Variable("r_0".to_string(), NameKind::Bound(FIRST_INDEX));
 
         let app = |arg1: &CicTerm, arg2: &CicTerm| {
             Application(
@@ -488,7 +505,10 @@ fn test_substitutability() {
         "is_substitutable check doesnt return proper naming for a metavariable"
     );
     assert_eq!(
-        is_substitutable(&Variable("super_idol".to_string(), 69)),
+        is_substitutable(&Variable(
+            "super_idol".to_string(),
+            NameKind::Bound(69)
+        )),
         Some("variable_super_idol".to_string()),
         "is_substitutable check doesnt return proper naming for a variable"
     );
@@ -497,28 +517,28 @@ fn test_substitutability() {
         "is_substitutable check returns a key for a term different from [meta]variables"
     );
     assert!(
-        is_substitutable(&Application(Box::new(Variable("".to_string(), 0)), Box::new(Meta(0)))).is_none(),
+        is_substitutable(&Application(Box::new(Variable("".to_string(), NameKind::Bound(0))), Box::new(Meta(0)))).is_none(),
         "is_substitutable check returns a key for a term different from [meta]variables"
     );
     assert!(
-        is_substitutable(&Product("".to_string(), Box::new(Meta(0)), Box::new(Variable("".to_string(), 0)))).is_none(),
+        is_substitutable(&Product("".to_string(), Box::new(Meta(0)), Box::new(Variable("".to_string(), NameKind::Bound(0))))).is_none(),
         "is_substitutable check returns a key for a term different from [meta]variables"
     );
     assert!(
-        is_substitutable(&Abstraction("".to_string(), Box::new(Meta(0)), Box::new(Variable("".to_string(), 0)))).is_none(),
+        is_substitutable(&Abstraction("".to_string(), Box::new(Meta(0)), Box::new(Variable("".to_string(), NameKind::Bound(0))))).is_none(),
         "is_substitutable check returns a key for a term different from [meta]variables"
     );
     assert!(
         is_substitutable(&Match(
-            Box::new(Variable("".to_string(), 0)),
+            Box::new(Variable("".to_string(), NameKind::Bound(0))),
             vec![
-                (Variable("".to_string(), 0), Meta(0))
+                (Variable("".to_string(), NameKind::Bound(0)), Meta(0))
             ]
         )).is_none(),
         "is_substitutable check returns a key for a term different from [meta]variables"
     );
     assert!(
-        is_substitutable(&Let("".to_string(), Box::new(Some(Meta(0))), Box::new(Variable("".to_string(), 0)), Box::new(Sort("TYPE".to_string())))).is_none(),
+        is_substitutable(&Let("".to_string(), Box::new(Some(Meta(0))), Box::new(Variable("".to_string(), NameKind::Bound(0))), Box::new(Sort("TYPE".to_string())))).is_none(),
         "is_substitutable check returns a key for a term different from [meta]variables"
     );
 }
@@ -538,7 +558,7 @@ fn test_explosion() {
         "CIC explosion doesnt produce the proper subcomponents vector"
     );
     assert_eq!(
-        explode(&Variable("".to_string(), 0)),
+        explode(&Variable("".to_string(), NameKind::Bound(0))),
         vec![],
         "CIC explosion doesnt produce the proper subcomponents vector"
     );
@@ -583,7 +603,7 @@ fn test_explosion() {
 
 #[test]
 fn test_cic_occurs() {
-    let variable = Variable("name".to_string(), 0);
+    let variable = Variable("name".to_string(), NameKind::Bound(0));
     let name_key = "variable_name";
     let meta = Meta(16 * 29);
     let meta_key = &format!("metavariable_{}", 16 * 29);
@@ -596,7 +616,7 @@ fn test_cic_occurs() {
     assert!(
         occurs(
             &Application(
-                Box::new(Variable("f".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("f".to_string(), NameKind::Const())),
                 Box::new(variable.clone())
             ),
             name_key
@@ -608,7 +628,7 @@ fn test_cic_occurs() {
             &Let(
                 "".to_string(),
                 Box::new(None),
-                Box::new(Variable("exp".to_string(), 0)),
+                Box::new(Variable("exp".to_string(), NameKind::Bound(0))),
                 Box::new(variable.clone())
             ),
             name_key
@@ -634,7 +654,7 @@ fn test_cic_occurs() {
     assert!(
         occurs(
             &Application(
-                Box::new(Variable("nil".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("nil".to_string(), NameKind::Const())),
                 Box::new(meta.clone())
             ),
             meta_key
@@ -645,10 +665,16 @@ fn test_cic_occurs() {
     assert!(
         occurs(
             &Match(
-                Box::new(Variable("".to_string(), 42)),
+                Box::new(Variable("".to_string(), NameKind::Bound(42))),
                 vec![
-                    (Variable("true".to_string(), 0), variable.clone()),
-                    (Variable("false".to_string(), 0), meta.clone())
+                    (
+                        Variable("true".to_string(), NameKind::Bound(0)),
+                        variable.clone()
+                    ),
+                    (
+                        Variable("false".to_string(), NameKind::Bound(0)),
+                        meta.clone()
+                    )
                 ]
             ),
             name_key
@@ -658,10 +684,16 @@ fn test_cic_occurs() {
     assert!(
         occurs(
             &Match(
-                Box::new(Variable("".to_string(), 42)),
+                Box::new(Variable("".to_string(), NameKind::Bound(42))),
                 vec![
-                    (Variable("true".to_string(), 0), variable.clone()),
-                    (Variable("false".to_string(), 0), meta.clone())
+                    (
+                        Variable("true".to_string(), NameKind::Bound(0)),
+                        variable.clone()
+                    ),
+                    (
+                        Variable("false".to_string(), NameKind::Bound(0)),
+                        meta.clone()
+                    )
                 ]
             ),
             meta_key
@@ -671,10 +703,16 @@ fn test_cic_occurs() {
     assert!(
         !occurs(
             &Match(
-                Box::new(Variable("".to_string(), 42)),
+                Box::new(Variable("".to_string(), NameKind::Bound(42))),
                 vec![
-                    (Variable("true".to_string(), 0), variable.clone()),
-                    (Variable("false".to_string(), 0), meta.clone())
+                    (
+                        Variable("true".to_string(), NameKind::Bound(0)),
+                        variable.clone()
+                    ),
+                    (
+                        Variable("false".to_string(), NameKind::Bound(0)),
+                        meta.clone()
+                    )
                 ]
             ),
             "variable_missing_key"
@@ -704,7 +742,7 @@ fn test_cic_occurs() {
 
 #[test]
 fn test_plus_zero_one_unification() {
-    let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+    let nat = Variable("Nat".to_string(), NameKind::Const());
     let mut env = Cic::default_environment();
 
     Cic::type_check_stm(
@@ -737,33 +775,42 @@ fn test_plus_zero_one_unification() {
             ],
             Box::new(nat.clone()),
             Box::new(Match(
-                Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("n".to_string(), NameKind::Const())),
                 vec![
                     (
-                        Variable("z".to_string(), GLOBAL_INDEX),
-                        Variable("m".to_string(), GLOBAL_INDEX),
+                        Variable("z".to_string(), NameKind::Const()),
+                        Variable("m".to_string(), NameKind::Const()),
                     ),
                     (
                         Application(
-                            Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                            Box::new(Variable("nn".to_string(), GLOBAL_INDEX)),
+                            Box::new(Variable(
+                                "s".to_string(),
+                                NameKind::Const(),
+                            )),
+                            Box::new(Variable(
+                                "nn".to_string(),
+                                NameKind::Const(),
+                            )),
                         ),
                         Application(
-                            Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
+                            Box::new(Variable(
+                                "s".to_string(),
+                                NameKind::Const(),
+                            )),
                             Box::new(Application(
                                 Box::new(Application(
                                     Box::new(Variable(
                                         "plus".to_string(),
-                                        GLOBAL_INDEX,
+                                        NameKind::Const(),
                                     )),
                                     Box::new(Variable(
                                         "nn".to_string(),
-                                        GLOBAL_INDEX,
+                                        NameKind::Const(),
                                     )),
                                 )),
                                 Box::new(Variable(
                                     "m".to_string(),
-                                    GLOBAL_INDEX,
+                                    NameKind::Const(),
                                 )),
                             )),
                         ),
@@ -776,12 +823,12 @@ fn test_plus_zero_one_unification() {
     )
     .expect("Failed to set up plus");
 
-    let z = Variable("z".to_string(), GLOBAL_INDEX);
-    let s = Variable("s".to_string(), GLOBAL_INDEX);
+    let z = Variable("z".to_string(), NameKind::Const());
+    let s = Variable("s".to_string(), NameKind::Const());
     let one = Application(Box::new(s.clone()), Box::new(z.clone()));
     let plus_zero_one = Application(
         Box::new(Application(
-            Box::new(Variable("plus".to_string(), GLOBAL_INDEX)),
+            Box::new(Variable("plus".to_string(), NameKind::Const())),
             Box::new(z.clone()),
         )),
         Box::new(one.clone()),

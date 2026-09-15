@@ -125,7 +125,7 @@ mod unit_tests {
         },
         type_theory::{
             cic::{
-                cic::{CicTerm::Variable, GLOBAL_INDEX},
+                cic::{CicTerm::Variable, NameKind},
                 elaboration::elaborate_expression,
             },
             commons::elaboration::{elaborate_exact, elaborate_intro},
@@ -143,7 +143,7 @@ mod unit_tests {
             ),
             Ok(Intro(
                 "n".to_string(),
-                Variable("Nat".to_string(), GLOBAL_INDEX)
+                Variable("Nat".to_string(), NameKind::Const())
             )),
             "Intro elaboration doesnt produce expected tactic"
         );
@@ -155,7 +155,7 @@ mod unit_tests {
             elaborate_exact(Expression::VarUse("p".to_string()), |exp| {
                 elaborate_expression(&exp)
             }),
-            Ok(Exact(Variable("p".to_string(), GLOBAL_INDEX))),
+            Ok(Exact(Variable("p".to_string(), NameKind::Const()))),
             "Exact elaboration doesnt produce expected tactic"
         );
     }

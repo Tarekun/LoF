@@ -14,7 +14,7 @@ use crate::misc::Union;
 use crate::misc::Union::{L, R};
 use crate::parser::api::{Expression, LofAst, Statement, Tactic};
 use crate::runtime::program::Schedule;
-use crate::type_theory::cic::cic::Cic;
+use crate::type_theory::cic::cic::{Cic, NameKind};
 use crate::type_theory::commons::elaboration::{
     elaborate_ast_vector, elaborate_tactic,
 };
@@ -80,7 +80,7 @@ fn elaborate_var_use(var_name: &str) -> CicTerm {
     if var_name.len() > 1 && var_name.chars().all(|c| c.is_ascii_uppercase()) {
         Sort(var_name.to_string())
     } else {
-        Variable(var_name.to_string(), PLACEHOLDER_DBI)
+        Variable(var_name.to_string(), NameKind::Bound(PLACEHOLDER_DBI))
     }
 }
 //
@@ -406,7 +406,7 @@ mod unit_tests {
                         Abstraction, Application, Let, Match, Product, Sort,
                         Variable,
                     },
-                    GLOBAL_INDEX, PLACEHOLDER_DBI,
+                    NameKind, GLOBAL_INDEX, PLACEHOLDER_DBI,
                 },
                 elaboration::{
                     elaborate_application, elaborate_expression,
@@ -421,9 +421,11 @@ mod unit_tests {
     #[test]
     fn test_var_elaboration() {
         let test_var_name = "test_var";
-        let test_var = Variable(test_var_name.to_string(), GLOBAL_INDEX);
-        let test_var_placeholder =
-            Variable(test_var_name.to_string(), PLACEHOLDER_DBI);
+        let test_var = Variable(test_var_name.to_string(), NameKind::Const());
+        let test_var_placeholder = Variable(
+            test_var_name.to_string(),
+            NameKind::Bound(PLACEHOLDER_DBI),
+        );
 
         assert_eq!(
             elaborate_var_use(test_var_name),
@@ -449,7 +451,7 @@ mod unit_tests {
         let expected_term = Abstraction(
             "x".to_string(),
             Box::new(Sort("TYPE".to_string())),
-            Box::new(Variable("x".to_string(), 0)),
+            Box::new(Variable("x".to_string(), NameKind::Bound(0))),
         );
 
         assert_eq!(
@@ -494,8 +496,8 @@ mod unit_tests {
     #[test]
     fn test_app_elaboration() {
         let expected_term = Application(
-            Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-            Box::new(Variable("o".to_string(), GLOBAL_INDEX)),
+            Box::new(Variable("s".to_string(), NameKind::Const())),
+            Box::new(Variable("o".to_string(), NameKind::Const())),
         );
 
         assert_eq!(
@@ -516,10 +518,10 @@ mod unit_tests {
             ),
             Application(
                 Box::new(Application(
-                    Box::new(Variable("f".to_string(), GLOBAL_INDEX)),
-                    Box::new(Variable("x".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("f".to_string(), NameKind::Const())),
+                    Box::new(Variable("x".to_string(), NameKind::Const())),
                 )),
-                Box::new(Variable("y".to_string(), GLOBAL_INDEX))
+                Box::new(Variable("y".to_string(), NameKind::Const()))
             ),
             "Application elaboration isnt respecting associativity"
         );
@@ -544,9 +546,12 @@ mod unit_tests {
             )),
             Ok(Let(
                 "x".to_string(),
-                Box::new(Some(Variable("Complex".to_string(), GLOBAL_INDEX))),
-                Box::new(Variable("i".to_string(), GLOBAL_INDEX)),
-                Box::new(Variable("x".to_string(), 0)),
+                Box::new(Some(Variable(
+                    "Complex".to_string(),
+                    NameKind::Const()
+                ))),
+                Box::new(Variable("i".to_string(), NameKind::Const())),
+                Box::new(Variable("x".to_string(), NameKind::Bound(0))),
             )),
             "Let elaboration isnt producing the proper term"
         );
@@ -560,8 +565,8 @@ mod unit_tests {
             Ok(Let(
                 "x".to_string(),
                 Box::new(None),
-                Box::new(Variable("i".to_string(), GLOBAL_INDEX)),
-                Box::new(Variable("x".to_string(), 0)),
+                Box::new(Variable("i".to_string(), NameKind::Const())),
+                Box::new(Variable("x".to_string(), NameKind::Bound(0))),
             )),
             "Let elaboration cant cope with missing type annotation"
         );
@@ -570,21 +575,21 @@ mod unit_tests {
     #[test]
     fn test_match_elaboration() {
         let expected_term = Match(
-            Box::new(Variable("t".to_string(), GLOBAL_INDEX)),
+            Box::new(Variable("t".to_string(), NameKind::Const())),
             vec![
                 (
-                    Variable("o".to_string(), GLOBAL_INDEX),
+                    Variable("o".to_string(), NameKind::Const()),
                     Application(
-                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                        Box::new(Variable("o".to_string(), GLOBAL_INDEX)),
+                        Box::new(Variable("s".to_string(), NameKind::Const())),
+                        Box::new(Variable("o".to_string(), NameKind::Const())),
                     ),
                 ),
                 (
                     Application(
-                        Box::new(Variable("s".to_string(), GLOBAL_INDEX)),
-                        Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+                        Box::new(Variable("s".to_string(), NameKind::Const())),
+                        Box::new(Variable("n".to_string(), NameKind::Const())),
                     ),
-                    Variable("n".to_string(), GLOBAL_INDEX),
+                    Variable("n".to_string(), NameKind::Const()),
                 ),
             ],
         );
@@ -650,14 +655,20 @@ mod unit_tests {
                 vec![
                     (
                         "o".to_string(),
-                        Variable("nat".to_string(), GLOBAL_INDEX)
+                        Variable("nat".to_string(), NameKind::Const())
                     ),
                     (
                         "s".to_string(),
                         Product(
                             "_".to_string(),
-                            Box::new(Variable("nat".to_string(), GLOBAL_INDEX)),
-                            Box::new(Variable("nat".to_string(), GLOBAL_INDEX)),
+                            Box::new(Variable(
+                                "nat".to_string(),
+                                NameKind::Const()
+                            )),
+                            Box::new(Variable(
+                                "nat".to_string(),
+                                NameKind::Const()
+                            )),
                         )
                     )
                 ]
