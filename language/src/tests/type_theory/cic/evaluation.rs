@@ -234,9 +234,10 @@ fn test_match_reduction_binds_pattern_variables() {
     // pattern `s(n)` whose body just returns the bound variable `n`
     let succ_pattern = Application(
         Box::new(succ.clone()),
-        Box::new(Variable("n".to_string(), NameKind::Const())),
+        Box::new(Variable("n".to_string(), NameKind::Bound(0))),
     );
-    let body_returning_bound_var = Variable("n".to_string(), NameKind::Const());
+    let body_returning_bound_var =
+        Variable("n".to_string(), NameKind::Bound(0));
 
     test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
     test_env.add_to_context("z", &nat.clone());

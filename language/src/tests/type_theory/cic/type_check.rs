@@ -1,8 +1,8 @@
-use crate::type_theory::{cic::{
+use crate::{config::Config, parser::api::LofParser, runtime::program::ProgramNode, type_theory::{cic::{
     cic::{
-        Cic, CicStm::{Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI
+        Cic, CicStm::{self, Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI
     }, evaluation::evaluate_inductive, type_check::{inductive_eliminator, type_check_inductive}
-}, environment::Environment};
+}, environment::Environment}};
 use crate::type_theory::interface::Kernel;
 use crate::type_theory::interface::TypeTheory;
 
@@ -84,6 +84,25 @@ fn packed_env() -> Environment<Cic>{
     );
 
     return test_env;
+}
+
+fn parse_term(code: &str) -> CicTerm {
+    let parser = LofParser::new(Config::default());
+    let (_, exp) = parser.parse_expression(code).unwrap();
+    Cic::elaborate_expression(&exp).unwrap()
+}
+fn parse_stm(code: &str) -> CicStm {
+    let parser = LofParser::new(Config::default());
+    let (_, stm) = parser.parse_statement(code).unwrap();
+    let stm = Cic::elaborate_statement(&stm)
+        .unwrap()
+        .peek_first()
+        .unwrap()
+        .clone();
+    match stm {
+        ProgramNode::OfStm(stm) => stm,
+        _ => unreachable!(),
+    }
 }
 
 mod sorts_and_variables {
@@ -1934,6 +1953,22 @@ mod inductive {
             ).is_err(),
             "Oh no, Curry's paradox is accepted"
         );
+    }
+
+    #[test]
+    fn test_inductive_exists() {
+        let mut test_env = packed_env();
+        let exists = parse_stm(
+            "inductive Exists (T: TYPE, P: T -> PROP) : PROP {\
+                | excon: ∀t:T. P(t) -> Exists(T, P)\
+        }");
+        println!("{:?}", exists);
+        let result = Cic::type_check_stm(&exists, &mut test_env);
+
+        assert!(
+            Cic::type_check_stm(&exists, &mut test_env).is_ok(),
+            "error in parsing/typechecking Exist inductive definition {:?}", result
+        )
     }
 }
 

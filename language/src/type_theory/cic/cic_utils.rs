@@ -278,68 +278,159 @@ pub fn substitute_meta(term: &CicTerm, target: &i32, arg: &CicTerm) -> CicTerm {
 /// Given a `term` and a variable, returns a term where each instance of
 /// `var_name` is substituted with `arg`
 pub fn substitute(term: &CicTerm, target_name: &str, arg: &CicTerm) -> CicTerm {
-    match term {
-        Sort(_) => term.clone(),
-        Variable(var_name, _) => {
-            if var_name == target_name {
-                arg.clone()
-            } else {
-                term.clone()
+    substitute_base(term, target_name, arg)
+}
+/// `substitute` + also shifts indeces if binders are removed
+pub fn substitute_and_lift(
+    term: &CicTerm,
+    target_name: &str,
+    arg: &CicTerm,
+) -> CicTerm {
+    substitute_base(term, target_name, arg)
+}
+
+fn substitute_base(
+    term: &CicTerm,
+    target_name: &str,
+    arg: &CicTerm,
+) -> CicTerm {
+    /// Increases every free `Bound` index in `term` by `amount` — "free" meaning
+    /// it refers past `term`'s own binders, tracked via `cutoff`. Needed
+    /// whenever a substituted argument is spliced back in `amount` binders
+    /// deeper than where it was originally computed, so its own escaping
+    /// references keep pointing to the same external things instead of being
+    /// captured by binders they were just moved underneath.
+    fn shift(term: &CicTerm, amount: i32) -> CicTerm {
+        fn solver(term: &CicTerm, amount: i32, cutoff: i32) -> CicTerm {
+            match term {
+                Sort(_) => term.clone(),
+                Meta(_) => term.clone(),
+                Variable(_, NameKind::Const()) => term.clone(),
+                Variable(var_name, NameKind::Bound(dbi)) => {
+                    if *dbi >= cutoff {
+                        Variable(
+                            var_name.to_string(),
+                            NameKind::Bound(dbi + amount),
+                        )
+                    } else {
+                        term.clone()
+                    }
+                }
+                Application(left, right) => Application(
+                    Box::new(solver(left, amount, cutoff)),
+                    Box::new(solver(right, amount, cutoff)),
+                ),
+                Abstraction(var_name, domain, codomain) => Abstraction(
+                    var_name.to_string(),
+                    Box::new(solver(domain, amount, cutoff)),
+                    Box::new(solver(codomain, amount, cutoff + 1)),
+                ),
+                Product(var_name, domain, codomain) => Product(
+                    var_name.to_string(),
+                    Box::new(solver(domain, amount, cutoff)),
+                    Box::new(solver(codomain, amount, cutoff + 1)),
+                ),
+                Let(var_name, var_type, body, scope) => Let(
+                    var_name.to_string(),
+                    Box::new(
+                        (**var_type)
+                            .as_ref()
+                            .map(|t| solver(t, amount, cutoff + 1)),
+                    ),
+                    Box::new(solver(body, amount, cutoff)),
+                    Box::new(solver(scope, amount, cutoff + 1)),
+                ),
+                Match(matched_term, branches) => Match(
+                    Box::new(solver(matched_term, amount, cutoff)),
+                    simple_map(branches.clone(), |(pattern, body)| {
+                        (
+                            solver(&pattern, amount, cutoff),
+                            solver(&body, amount, cutoff),
+                        )
+                    }),
+                ),
             }
         }
-        Application(left, right) => Application(
-            Box::new(substitute(left, target_name, arg)),
-            Box::new(substitute(right, target_name, arg)),
-        ),
-        // TODO: dont carry substitution if names match to implement overriding of names
-        Abstraction(var_name, domain, codomain) => Abstraction(
-            var_name.to_string(),
-            Box::new(substitute(domain, target_name, arg)),
-            Box::new(substitute(codomain, target_name, arg)),
-        ),
-        Product(var_name, domain, codomain) => Product(
-            var_name.to_string(),
-            Box::new(substitute(domain, target_name, arg)),
-            Box::new(substitute(codomain, target_name, arg)),
-        ),
-        Let(var_name, var_type, body, scope) => {
-            let var_type = if var_type.is_some() {
-                Some(substitute(
-                    &(**var_type).as_ref().unwrap(),
-                    target_name,
-                    arg,
-                ))
-            } else {
-                None
-            };
-            let body = substitute(body, target_name, arg);
-            // the name is overridden in `body`'s scope
-            let scope = if var_name != target_name {
-                substitute(scope, target_name, arg)
-            } else {
-                (**scope).to_owned()
-            };
 
-            Let(
-                var_name.to_string(),
-                Box::new(var_type),
-                Box::new(body),
-                Box::new(scope),
-            )
+        if amount == 0 {
+            term.clone()
+        } else {
+            solver(term, amount, 0)
         }
-        Match(matched_term, branches) => Match(
-            Box::new(substitute(matched_term, target_name, arg)),
-            //TODO i dont want to clone branches here tbh
-            simple_map(branches.clone(), |(pattern, body)| {
-                (
-                    substitute(&pattern, target_name, arg),
-                    substitute(&body, target_name, arg),
-                )
-            }),
-        ),
-        //TODO implementare qua la sostituzione delle metavariabili?
-        Meta(_) => term.clone(),
     }
+
+    // `depth` is how many binders we've descended through since the start
+    // of this substitution: a `Bound` reference exactly at `depth` is the
+    // one being removed (it gets `arg`, shifted so its own escaping
+    // references still point outside correctly); one further out
+    // (`dbi > depth`) has lost a binder and must be decremented; one more
+    // local (`dbi < depth`, e.g. bound by a nested binder of the same
+    // name) refers to something else entirely and is left alone. This is
+    // what lets shadowing "just work" without a separate name-based check.
+    fn solver(
+        term: &CicTerm,
+        target_name: &str,
+        arg: &CicTerm,
+        depth: i32,
+    ) -> CicTerm {
+        match term {
+            Sort(_) => term.clone(),
+            Meta(_) => term.clone(),
+            // a `Const` is a global/free constant, not a binder occurrence:
+            // substitution never touches it, regardless of name.
+            Variable(_, NameKind::Const()) => term.clone(),
+            Variable(var_name, NameKind::Bound(dbi)) => {
+                if var_name == target_name && *dbi == depth {
+                    shift(arg, depth)
+                    // arg.clone()
+                } else if *dbi > depth {
+                    Variable(var_name.to_string(), NameKind::Bound(dbi - 1))
+                } else {
+                    term.clone()
+                }
+            }
+            Application(left, right) => Application(
+                Box::new(solver(left, target_name, arg, depth)),
+                Box::new(solver(right, target_name, arg, depth)),
+            ),
+            Abstraction(var_name, domain, codomain) => Abstraction(
+                var_name.to_string(),
+                Box::new(solver(domain, target_name, arg, depth)),
+                Box::new(solver(codomain, target_name, arg, depth + 1)),
+            ),
+            Product(var_name, domain, codomain) => Product(
+                var_name.to_string(),
+                Box::new(solver(domain, target_name, arg, depth)),
+                Box::new(solver(codomain, target_name, arg, depth + 1)),
+            ),
+            Let(var_name, var_type, body, scope) => {
+                let var_type = (**var_type)
+                    .as_ref()
+                    .map(|t| solver(t, target_name, arg, depth + 1));
+                let body = solver(body, target_name, arg, depth);
+                let scope = solver(scope, target_name, arg, depth + 1);
+
+                Let(
+                    var_name.to_string(),
+                    Box::new(var_type),
+                    Box::new(body),
+                    Box::new(scope),
+                )
+            }
+            Match(matched_term, branches) => Match(
+                Box::new(solver(matched_term, target_name, arg, depth)),
+                //TODO i dont want to clone branches here tbh
+                simple_map(branches.clone(), |(pattern, body)| {
+                    (
+                        solver(&pattern, target_name, arg, depth),
+                        solver(&body, target_name, arg, depth),
+                    )
+                }),
+            ),
+        }
+    }
+
+    solver(term, target_name, arg, 0)
 }
 
 /// Creates the CIC type of a function with named arguments `arg_types`

@@ -8,7 +8,7 @@ use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::CicTerm::{Application, Product};
 use crate::type_theory::cic::cic_utils::{
-    make_multiarg_fun_type, substitute, substitute_meta,
+    make_multiarg_fun_type, substitute_and_lift, substitute_meta,
 };
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
@@ -358,7 +358,7 @@ impl Refiner for Cic {
 
 impl Reducer for Cic {
     fn substitute(term: &CicTerm, var_name: &str, body: &CicTerm) -> CicTerm {
-        substitute(term, var_name, body)
+        substitute_and_lift(term, var_name, body)
     }
 
     fn normalize_expression(
