@@ -3,9 +3,11 @@ use super::cic::CicTerm::{
 };
 use super::cic::{Cic, CicTerm};
 use crate::misc::simple_map;
-use crate::type_theory::cic::cic::{NameKind, FIRST_INDEX, PLACEHOLDER_DBI};
-use crate::type_theory::commons::utils::generic_multiarg_fun_type;
-use std::collections::HashMap;
+use crate::type_theory::cic::cic::{NameKind, PLACEHOLDER_DBI};
+use crate::type_theory::cic::elaboration::index_variables_in_store;
+use crate::type_theory::commons::utils::{
+    generic_multiarg_fun_type, ElabStore,
+};
 use std::fmt;
 
 fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -357,77 +359,7 @@ pub fn make_multiarg_fun_type(
 
 /// Given a term, it enumerates variables with De Bruijn indexes properly
 pub fn index_variables(term: &CicTerm) -> CicTerm {
-    fn solver(
-        term: &CicTerm,
-        current_dbi: i32,
-        //TODO this doesnt support shadowing of already defined names
-        bound_vars: &mut HashMap<String, i32>,
-    ) -> CicTerm {
-        match term {
-            Sort(_) => term.to_owned(),
-            Meta(_) => term.to_owned(),
-            Variable(name, _) => match bound_vars.get(name) {
-                Some(dbi) => Variable(name.to_string(), NameKind::Bound(*dbi)),
-                // unbound variables in the term get the global variable index
-                None => Variable(name.to_string(), NameKind::Const()),
-            },
-            Abstraction(var_name, var_type, body) => {
-                bound_vars.insert(var_name.to_string(), current_dbi);
-
-                Abstraction(
-                    var_name.to_string(),
-                    Box::new(solver(var_type, current_dbi + 1, bound_vars)),
-                    Box::new(solver(body, current_dbi + 1, bound_vars)),
-                )
-            }
-            Product(var_name, var_type, body) => {
-                bound_vars.insert(var_name.to_string(), current_dbi);
-
-                Product(
-                    var_name.to_string(),
-                    Box::new(solver(var_type, current_dbi + 1, bound_vars)),
-                    Box::new(solver(body, current_dbi + 1, bound_vars)),
-                )
-            }
-            Let(var_name, var_type, body, scope) => {
-                bound_vars.insert(var_name.to_string(), current_dbi);
-                let var_type = if var_type.is_some() {
-                    Some(solver(
-                        &(**var_type).as_ref().unwrap(),
-                        current_dbi + 1,
-                        bound_vars,
-                    ))
-                } else {
-                    None
-                };
-
-                Let(
-                    var_name.to_string(),
-                    Box::new(var_type),
-                    Box::new(solver(body, current_dbi + 1, bound_vars)),
-                    Box::new(solver(scope, current_dbi + 1, bound_vars)),
-                )
-            }
-            Application(left, right) => Application(
-                Box::new(solver(left, current_dbi, bound_vars)),
-                Box::new(solver(right, current_dbi, bound_vars)),
-            ),
-            Match(matched_term, branches) => {
-                let matched_term =
-                    solver(matched_term, current_dbi, bound_vars);
-                // TODO reimplement this
-                // this code needs to distinguish between type argument (terms)
-                // and constructor argument (variables)
-                // each pattern creates binding for each constructor argument
-                // after this body does the same thing starting from the last index
-                // used in the pattern
-
-                Match(Box::new(matched_term), branches.to_owned())
-            }
-        }
-    }
-
-    solver(term, FIRST_INDEX, &mut HashMap::new())
+    index_variables_in_store(term, &ElabStore::empty())
 }
 
 /// Returns `term` where every occurance of `var_name` as a variable
@@ -444,11 +376,21 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
 mod unit_tests {
     use crate::type_theory::cic::{
         cic::{
-            CicTerm::{Abstraction, Sort, Variable},
-            NameKind, GLOBAL_INDEX, PLACEHOLDER_DBI,
+            CicTerm::{Abstraction, Application, Match, Sort, Variable},
+            NameKind, PLACEHOLDER_DBI,
         },
         cic_utils::{index_variables, swap_proof_hole},
     };
+
+    fn placeholder(name: &str) -> crate::type_theory::cic::cic::CicTerm {
+        Variable(name.to_string(), NameKind::Bound(PLACEHOLDER_DBI))
+    }
+    fn free(name: &str) -> crate::type_theory::cic::cic::CicTerm {
+        Variable(name.to_string(), NameKind::Const())
+    }
+    fn bound(name: &str, dbi: i32) -> crate::type_theory::cic::cic::CicTerm {
+        Variable(name.to_string(), NameKind::Bound(dbi))
+    }
 
     #[test]
     fn test_swap_proof_hole_preserves_abstraction_shape() {
@@ -547,7 +489,7 @@ mod unit_tests {
                 Box::new(Abstraction(
                     "b".to_string(),
                     Box::new(Sort("TYPE".to_string())),
-                    Box::new(Variable("b".to_string(), NameKind::Bound(1))),
+                    Box::new(Variable("b".to_string(), NameKind::Bound(0))),
                 )),
             )
         );
@@ -789,6 +731,151 @@ mod unit_tests {
     // }
 
     // #[test]
+    #[test]
+    fn test_index_variables_binds_match_pattern_arguments() {
+        // match t { o => s(o), s(n) => n }
+        // `o` is a nullary constructor: a bare pattern binds nothing, so both
+        // occurrences stay free. `n` sits in an argument position of `s`, so
+        // it binds over the pattern *and* the branch body.
+        let term = Match(
+            Box::new(placeholder("t")),
+            vec![
+                (
+                    placeholder("o"),
+                    Application(
+                        Box::new(placeholder("s")),
+                        Box::new(placeholder("o")),
+                    ),
+                ),
+                (
+                    Application(
+                        Box::new(placeholder("s")),
+                        Box::new(placeholder("n")),
+                    ),
+                    placeholder("n"),
+                ),
+            ],
+        );
+
+        assert_eq!(
+            index_variables(&term),
+            Match(
+                Box::new(free("t")),
+                vec![
+                    (
+                        free("o"),
+                        Application(Box::new(free("s")), Box::new(free("o"))),
+                    ),
+                    (
+                        Application(
+                            Box::new(free("s")),
+                            Box::new(bound("n", 0)),
+                        ),
+                        bound("n", 0),
+                    ),
+                ],
+            ),
+            "match pattern arguments must be indexed as binders of their branch"
+        );
+    }
+
+    #[test]
+    fn test_index_variables_binds_nested_match_pattern_arguments() {
+        // match t { cons(h, cons(h2, ll)) => h }
+        // three binders, depth-first left-to-right: h is outermost so it gets
+        // the highest index, ll is innermost so it gets 0.
+        let pattern = Application(
+            Box::new(Application(
+                Box::new(placeholder("cons")),
+                Box::new(placeholder("h")),
+            )),
+            Box::new(Application(
+                Box::new(Application(
+                    Box::new(placeholder("cons")),
+                    Box::new(placeholder("h2")),
+                )),
+                Box::new(placeholder("ll")),
+            )),
+        );
+        let term = Match(
+            Box::new(placeholder("t")),
+            vec![(pattern, placeholder("h"))],
+        );
+
+        assert_eq!(
+            index_variables(&term),
+            Match(
+                Box::new(free("t")),
+                vec![(
+                    Application(
+                        Box::new(Application(
+                            Box::new(free("cons")),
+                            Box::new(bound("h", 2)),
+                        )),
+                        Box::new(Application(
+                            Box::new(Application(
+                                Box::new(free("cons")),
+                                Box::new(bound("h2", 1)),
+                            )),
+                            Box::new(bound("ll", 0)),
+                        )),
+                    ),
+                    bound("h", 2),
+                )],
+            ),
+            "nested pattern arguments must all bind, outermost getting the highest index"
+        );
+    }
+
+    #[test]
+    fn test_index_variables_match_binders_shadow_and_stack_on_outer_scope() {
+        // \T. \l. match l { cons(T, h, ll) => T }
+        // the pattern rebinds `T`, shadowing the abstraction's own `T`, and
+        // references from the branch body must count the pattern's binders.
+        let pattern = Application(
+            Box::new(Application(
+                Box::new(Application(
+                    Box::new(placeholder("cons")),
+                    Box::new(placeholder("T")),
+                )),
+                Box::new(placeholder("h")),
+            )),
+            Box::new(placeholder("ll")),
+        );
+        let term = Abstraction(
+            "T".to_string(),
+            Box::new(Sort("TYPE".to_string())),
+            Box::new(Abstraction(
+                "l".to_string(),
+                Box::new(placeholder("T")),
+                Box::new(Match(
+                    Box::new(placeholder("l")),
+                    vec![(pattern, placeholder("T"))],
+                )),
+            )),
+        );
+
+        let indexed = index_variables(&term);
+        let branch_body = match &indexed {
+            Abstraction(_, _, outer_body) => match &**outer_body {
+                Abstraction(_, _, inner_body) => match &**inner_body {
+                    Match(_, branches) => branches[0].1.clone(),
+                    other => panic!("expected a Match, got {:?}", other),
+                },
+                other => panic!("expected an Abstraction, got {:?}", other),
+            },
+            other => panic!("expected an Abstraction, got {:?}", other),
+        };
+
+        // scope is [T, l, T, h, ll]: the pattern's own `T` shadows the
+        // abstraction's, so the body resolves to it at distance 2
+        assert_eq!(
+            branch_body,
+            bound("T", 2),
+            "a pattern binder must shadow an outer binder of the same name"
+        );
+    }
+
     // fn test_index_variables() {
     //     // Test index variables function
     //     let var = Variable("x".to_string(), 0);

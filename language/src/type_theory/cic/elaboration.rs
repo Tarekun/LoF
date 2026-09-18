@@ -1,5 +1,4 @@
 use super::cic::CicStm::{Axiom, Theorem};
-use super::cic::PLACEHOLDER_DBI;
 use super::cic::{
     CicStm::{self},
     CicTerm,
@@ -7,7 +6,6 @@ use super::cic::{
         Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
     },
 };
-use super::cic_utils::index_variables;
 use crate::error::LofError;
 use crate::misc::simple_map;
 use crate::misc::Union;
@@ -15,49 +13,157 @@ use crate::misc::Union::{L, R};
 use crate::parser::api::{Expression, LofAst, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::{Cic, NameKind};
+use crate::type_theory::cic::cic_utils::application_args;
+// use crate::type_theory::cic::cic_utils::index_variables_in_store;
 use crate::type_theory::commons::elaboration::{
     elaborate_ast_vector, elaborate_tactic,
 };
+use crate::type_theory::commons::utils::ElabStore;
+
+pub fn index_variables_in_store(term: &CicTerm, store: &ElabStore) -> CicTerm {
+    /// Returns the list of bounded names introduced by this patter
+    fn pattern_binder_names(pattern: &CicTerm) -> Vec<String> {
+        match pattern {
+            Application(_, _) => application_args(pattern)
+                .iter()
+                .flat_map(|arg| match arg {
+                    Variable(name, _) => vec![name.to_string()],
+                    Application(_, _) => pattern_binder_names(arg),
+                    _ => vec![],
+                })
+                .collect(),
+            _ => vec![],
+        }
+    }
+
+    fn solver(term: &CicTerm, store: &ElabStore) -> CicTerm {
+        match term {
+            Sort(_) => term.to_owned(),
+            Meta(_) => term.to_owned(),
+            Variable(name, _) => match store.lookup_dbi(name) {
+                Some(dbi) => Variable(name.to_string(), NameKind::Bound(dbi)),
+                // unbound variables in the term get the global variable index
+                None => Variable(name.to_string(), NameKind::Const()),
+            },
+            Abstraction(var_name, var_type, body) => {
+                let var_type = solver(var_type, store);
+
+                Abstraction(
+                    var_name.to_string(),
+                    Box::new(var_type),
+                    Box::new(solver(body, &store.push_name(var_name))),
+                )
+            }
+            Product(var_name, var_type, body) => {
+                let var_type = solver(var_type, store);
+
+                Product(
+                    var_name.to_string(),
+                    Box::new(var_type),
+                    Box::new(solver(body, &store.push_name(var_name))),
+                )
+            }
+            Let(var_name, var_type, body, scope) => {
+                // the definition body lives in the *outer* scope: the `x`
+                // on the right of `:=` must resolve against whatever `x`
+                // was bound before this `let`, not against the binder this
+                // `let` is itself introducing.
+                let body = solver(body, store);
+                let inner_scope = store.push_name(var_name);
+
+                let var_type = if var_type.is_some() {
+                    Some(solver(&(**var_type).as_ref().unwrap(), &inner_scope))
+                } else {
+                    None
+                };
+
+                Let(
+                    var_name.to_string(),
+                    Box::new(var_type),
+                    Box::new(body),
+                    Box::new(solver(scope, &inner_scope)),
+                )
+            }
+            Application(left, right) => Application(
+                Box::new(solver(left, store)),
+                Box::new(solver(right, store)),
+            ),
+            Match(matched_term, branches) => {
+                let matched_term = solver(matched_term, store);
+                let branches = branches
+                    .iter()
+                    .map(|(pattern, body)| {
+                        // a pattern's arguments bind over the pattern itself
+                        // *and* over its branch body, so both share one
+                        // telescope, exactly like an eliminator's minor premise
+                        let branch_store = pattern_binder_names(pattern)
+                            .iter()
+                            .fold(store.to_owned(), |current, name| {
+                                current.push_name(name)
+                            });
+
+                        (
+                            solver(pattern, &branch_store),
+                            solver(body, &branch_store),
+                        )
+                    })
+                    .collect();
+
+                Match(Box::new(matched_term), branches)
+            }
+        }
+    }
+
+    solver(term, store)
+}
 
 fn map_typed_variables(
     variables: &Vec<(String, Expression)>,
-) -> Vec<(String, CicTerm)> {
-    variables
-        .iter()
-        .map(|(var_name, var_type_exp)| {
-            (var_name.to_owned(), elaborate_expression(var_type_exp))
-        })
-        .collect()
+) -> (Vec<(String, CicTerm)>, ElabStore) {
+    let mut store = ElabStore::empty();
+    let mut elaborated_args = vec![];
+    for (arg_name, arg_type_exp) in variables {
+        let arg_type = elaborate_expression_rec(arg_type_exp, &store);
+
+        store = store.push_name(arg_name);
+        elaborated_args.push((arg_name.to_owned(), arg_type));
+    }
+
+    (elaborated_args, store)
 }
 //
 //########################### EXPRESSIONS ELABORATION
-/// Performs elaboration of the LoF `Expression` to a `CicTerm`.
 pub fn elaborate_expression(ast: &Expression) -> CicTerm {
+    elaborate_expression_rec(ast, &mut ElabStore::empty())
+}
+/// Performs elaboration of the LoF `Expression` to a `CicTerm`.
+fn elaborate_expression_rec(ast: &Expression, store: &ElabStore) -> CicTerm {
     let elaborated = match ast {
-        Expression::VarUse(var_name) => elaborate_var_use(var_name),
+        Expression::VarUse(var_name) => elaborate_var_use(var_name, store),
         Expression::Abstraction(var_name, var_type, body) => {
-            elaborate_abstraction(var_name, &*var_type, &*body)
+            elaborate_abstraction(var_name, &*var_type, &*body, store)
         }
         Expression::TypeProduct(var_name, var_type, body) => {
-            elaborate_type_product(var_name, &*var_type, &*body)
+            elaborate_type_product(var_name, &*var_type, &*body, store)
         }
         Expression::Application(left, args) => {
-            elaborate_application(left, args)
+            elaborate_application(left, args, store)
         }
         Expression::Let(var_name, var_type, definition_body, scope) => {
-            elaborate_let(var_name, var_type, definition_body, scope)
+            elaborate_let(var_name, var_type, definition_body, scope, store)
         }
         Expression::Match(matched_term, branches) => {
-            elaborate_match(&*matched_term, branches)
+            elaborate_match(&*matched_term, branches, store)
         }
         Expression::Arrow(domain, codomain) => {
-            elaborate_arrow(domain, codomain)
+            elaborate_arrow(domain, codomain, store)
         }
         Expression::Inferator() => elaborate_meta(),
         _ => panic!("Expression primitive {:?} is not supported in CIC", ast),
     };
 
-    index_variables(&elaborated)
+    // index_variables(&elaborated)
+    elaborated
 }
 //
 //
@@ -74,13 +180,20 @@ fn elaborate_meta() -> CicTerm {
     }
 }
 //
-//
-fn elaborate_var_use(var_name: &str) -> CicTerm {
+fn is_sort(var_name: &str) -> bool {
     //TODO this should probably be at the parser level
-    if var_name.len() > 1 && var_name.chars().all(|c| c.is_ascii_uppercase()) {
+    var_name.len() > 1 && var_name.chars().all(|c| c.is_ascii_uppercase())
+}
+//
+fn elaborate_var_use(var_name: &str, store: &ElabStore) -> CicTerm {
+    if is_sort(var_name) {
         Sort(var_name.to_string())
     } else {
-        Variable(var_name.to_string(), NameKind::Bound(PLACEHOLDER_DBI))
+        if let Some(index) = store.lookup_dbi(var_name) {
+            Variable(var_name.to_string(), NameKind::Bound(index))
+        } else {
+            Variable(var_name.to_string(), NameKind::Const())
+        }
     }
 }
 //
@@ -89,9 +202,10 @@ fn elaborate_abstraction(
     var_name: &str,
     var_type: &Expression,
     body: &Expression,
+    store: &ElabStore,
 ) -> CicTerm {
-    let var_type_term = elaborate_expression(var_type);
-    let body_term = elaborate_expression(body);
+    let var_type_term = elaborate_expression_rec(var_type, &store);
+    let body_term = elaborate_expression_rec(body, &store.push_name(var_name));
 
     Abstraction(
         var_name.to_string(),
@@ -105,9 +219,10 @@ fn elaborate_type_product(
     var_name: &str,
     var_type: &Expression,
     body: &Expression,
+    store: &ElabStore,
 ) -> CicTerm {
-    let type_term = elaborate_expression(var_type);
-    let body_term = elaborate_expression(body);
+    let type_term = elaborate_expression_rec(var_type, &store);
+    let body_term = elaborate_expression_rec(body, &store.push_name(var_name));
 
     Product(
         var_name.to_string(),
@@ -120,10 +235,12 @@ fn elaborate_type_product(
 fn elaborate_application(
     function: &Expression,
     args: &Vec<Expression>,
+    store: &ElabStore,
 ) -> CicTerm {
-    let fun_term = elaborate_expression(function);
-    let arg_terms =
-        simple_map(args.to_owned(), |arg| elaborate_expression(&arg));
+    let fun_term = elaborate_expression_rec(function, store);
+    let arg_terms = simple_map(args.to_owned(), |arg| {
+        elaborate_expression_rec(&arg, store)
+    });
 
     arg_terms.into_iter().fold(fun_term, |acc, arg| {
         Application(Box::new(acc), Box::new(arg))
@@ -131,12 +248,14 @@ fn elaborate_application(
 }
 //
 //
-fn elaborate_arrow(domain: &Expression, codomain: &Expression) -> CicTerm {
-    //TODO this introduces a binder on no variable. should it increase the dbi?
-    let type_term = elaborate_expression(domain);
-    let body_term = elaborate_expression(codomain);
-
-    Product("_".to_string(), Box::new(type_term), Box::new(body_term))
+fn elaborate_arrow(
+    domain: &Expression,
+    codomain: &Expression,
+    store: &ElabStore,
+) -> CicTerm {
+    // fully treated as a forall with an anonymous variable
+    // this means A->B is still treated as a binder for _
+    elaborate_type_product("_", domain, codomain, store)
 }
 //
 //
@@ -145,6 +264,7 @@ fn elaborate_let(
     var_type: &Option<Expression>,
     body: &Expression,
     scope: &Expression,
+    store: &ElabStore,
 ) -> CicTerm {
     let var_type = if var_type.is_some() {
         Some(elaborate_expression(&var_type.as_ref().unwrap()))
@@ -155,42 +275,35 @@ fn elaborate_let(
     Let(
         var_name.to_string(),
         Box::new(var_type),
-        Box::new(elaborate_expression(body)),
-        Box::new(elaborate_expression(scope)),
+        Box::new(elaborate_expression_rec(body, store)),
+        Box::new(elaborate_expression_rec(scope, &store.push_name(var_name))),
     )
 }
 //
 //
+
 fn elaborate_match(
     matched_exp: &Expression,
     branches: &Vec<(Expression, Expression)>,
+    store: &ElabStore,
 ) -> CicTerm {
-    //TODO im not sure if the match is a binder
-    let matched_term = elaborate_expression(matched_exp);
-
+    // which of a pattern's arguments bind is decided by `index_variables`
+    // from the elaborated pattern's own shape, so the rule lives in one
+    // place. Everything is elaborated in the ambient scope here and then
+    // re-indexed under it, which is what resolves those binders.
+    let matched_term = elaborate_expression_rec(matched_exp, store);
     let mut branch_terms = vec![];
     for (pattern, body_exp) in branches {
-        let pattern = elaborate_expression(pattern);
-        let body_exp = elaborate_expression(body_exp);
-
-        // let mut pattern_terms = vec![constr_term];
-        // for arg in &pattern[1..] {
-        //     let arg_term = elaborate_expression(arg);
-
-        //     match &arg_term {
-        //         Variable(_, _) => {
-        //             pattern_terms.push(arg_term);
-        //         }
-        //         _ => panic!("Argument expression should be just a variable"),
-        //     }
-        // }
-
-        // let body_term = elaborate_expression(&body_exp);
-
-        branch_terms.push((pattern, body_exp));
+        branch_terms.push((
+            elaborate_expression_rec(pattern, store),
+            elaborate_expression_rec(body_exp, store),
+        ));
     }
 
-    Match(Box::new(matched_term), branch_terms)
+    index_variables_in_store(
+        &Match(Box::new(matched_term), branch_terms),
+        store,
+    )
 }
 //
 //########################### EXPRESSIONS ELABORATION
@@ -300,9 +413,10 @@ fn elaborate_fun(
     body: &Expression,
     is_rec: &bool,
 ) -> Result<CicStm, LofError> {
-    let elaborated_args = map_typed_variables(&args);
-    let elaborated_out_type = elaborate_expression(&out_type);
-    let elaborated_body = elaborate_expression(&body);
+    // compute dbis for the arguments introduced and use them in the body
+    let (elaborated_args, store) = map_typed_variables(args);
+    let elaborated_out_type = elaborate_expression_rec(&out_type, &store);
+    let elaborated_body = elaborate_expression_rec(&body, &store);
 
     Ok(CicStm::Fun(
         fun_name.to_string(),
@@ -320,15 +434,16 @@ fn elaborate_inductive(
     ariety: &Expression,
     constructors: &Vec<(String, Expression)>,
 ) -> Result<CicStm, LofError> {
-    let parameter_terms: Vec<(String, CicTerm)> =
-        //TODO i assume inductive definitions are only top-level avaible but who knows
-        map_typed_variables(&parameters);
-    let ariety_term = elaborate_expression(&ariety);
-    let ariety_term = index_variables(&ariety_term);
+    // compute dbis for the left params and use them for arity and constructor types
+    let (parameter_terms, store) = map_typed_variables(&parameters);
+    let ariety_term = elaborate_expression_rec(&ariety, &store);
     let constructor_terms: Vec<(String, CicTerm)> = constructors
         .iter()
         .map(|(constr_name, constr_type)| {
-            (constr_name.to_owned(), elaborate_expression(constr_type))
+            (
+                constr_name.to_owned(),
+                elaborate_expression_rec(constr_type, &store),
+            )
         })
         .collect();
 
@@ -386,294 +501,9 @@ fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Cic>, LofError> {
     elaborate_ast_vector::<Cic>(&"".to_string(), nodes)
 }
 //
-//
-// fn elaborate_auto(formula: &Expression) -> Result<CicStm, LofError> {
-//     Ok(Auto(elaborate_expression(formula)))
-// }
-//
 //########################### STATEMENTS ELABORATION
 
 //########################### UNIT TESTS
-#[cfg(test)]
-mod unit_tests {
-    use crate::{
-        parser::api::Expression,
-        type_theory::{
-            cic::{
-                cic::{
-                    Cic, CicStm,
-                    CicTerm::{
-                        Abstraction, Application, Let, Match, Product, Sort,
-                        Variable,
-                    },
-                    NameKind, GLOBAL_INDEX, PLACEHOLDER_DBI,
-                },
-                elaboration::{
-                    elaborate_application, elaborate_expression,
-                    elaborate_inductive, elaborate_match,
-                    elaborate_type_product, elaborate_var_use,
-                },
-            },
-            interface::TypeTheory,
-        },
-    };
 
-    #[test]
-    fn test_var_elaboration() {
-        let test_var_name = "test_var";
-        let test_var = Variable(test_var_name.to_string(), NameKind::Const());
-        let test_var_placeholder = Variable(
-            test_var_name.to_string(),
-            NameKind::Bound(PLACEHOLDER_DBI),
-        );
-
-        assert_eq!(
-            elaborate_var_use(test_var_name),
-            test_var_placeholder.clone(),
-            "Variable term not properly constructed"
-        );
-        assert_eq!(
-            elaborate_var_use("TYPE"),
-            Sort("TYPE".to_string()),
-            "Sort name returns a simple variable instead of a sort term"
-        );
-        assert_eq!(
-            elaborate_expression(&Expression::VarUse(
-                test_var_name.to_string()
-            )),
-            test_var.clone(),
-            "Top level elaboration doesnt work with variables as expected"
-        );
-    }
-
-    #[test]
-    fn test_abs_elaboration() {
-        let expected_term = Abstraction(
-            "x".to_string(),
-            Box::new(Sort("TYPE".to_string())),
-            Box::new(Variable("x".to_string(), NameKind::Bound(0))),
-        );
-
-        assert_eq!(
-            elaborate_expression(&Expression::Abstraction(
-                "x".to_string(),
-                Box::new(Expression::VarUse("TYPE".to_string())),
-                Box::new(Expression::VarUse("x".to_string())),
-            )),
-            expected_term,
-            "Top level elaborator isnt working with abstraction"
-        );
-    }
-
-    #[test]
-    fn test_prod_elaboration() {
-        let expected_term = Product(
-            "x".to_string(),
-            Box::new(Sort("TYPE".to_string())),
-            Box::new(Sort("TYPE".to_string())),
-        );
-
-        assert_eq!(
-            elaborate_type_product(
-                "x",
-                &Expression::VarUse("TYPE".to_string()),
-                &Expression::VarUse("TYPE".to_string())
-            ),
-            expected_term.clone(),
-            "Type abstraction elaboration isnt working as expected"
-        );
-        assert_eq!(
-            elaborate_expression(&Expression::TypeProduct(
-                "x".to_string(),
-                Box::new(Expression::VarUse("TYPE".to_string())),
-                Box::new(Expression::VarUse("TYPE".to_string())),
-            )),
-            expected_term,
-            "Top level elaborator isnt working with type abstraction"
-        );
-    }
-
-    #[test]
-    fn test_app_elaboration() {
-        let expected_term = Application(
-            Box::new(Variable("s".to_string(), NameKind::Const())),
-            Box::new(Variable("o".to_string(), NameKind::Const())),
-        );
-
-        assert_eq!(
-            elaborate_application(
-                &Expression::VarUse("s".to_string()),
-                &vec![Expression::VarUse("o".to_string())]
-            ),
-            expected_term.clone(),
-            "Application elaboration isnt working as expected"
-        );
-        assert_eq!(
-            elaborate_application(
-                &Expression::VarUse("f".to_string()),
-                &vec![
-                    Expression::VarUse("x".to_string()),
-                    Expression::VarUse("y".to_string())
-                ]
-            ),
-            Application(
-                Box::new(Application(
-                    Box::new(Variable("f".to_string(), NameKind::Const())),
-                    Box::new(Variable("x".to_string(), NameKind::Const())),
-                )),
-                Box::new(Variable("y".to_string(), NameKind::Const()))
-            ),
-            "Application elaboration isnt respecting associativity"
-        );
-        assert_eq!(
-            elaborate_expression(&Expression::Application(
-                Box::new(Expression::VarUse("s".to_string())),
-                vec![Expression::VarUse("o".to_string())],
-            )),
-            expected_term,
-            "Top level elaborator isnt working with applications"
-        );
-    }
-
-    #[test]
-    fn test_let_elaboration() {
-        assert_eq!(
-            Cic::elaborate_expression(&Expression::Let(
-                "x".to_string(),
-                Box::new(Some(Expression::VarUse("Complex".to_string()))),
-                Box::new(Expression::VarUse("i".to_string())),
-                Box::new(Expression::VarUse("x".to_string())),
-            )),
-            Ok(Let(
-                "x".to_string(),
-                Box::new(Some(Variable(
-                    "Complex".to_string(),
-                    NameKind::Const()
-                ))),
-                Box::new(Variable("i".to_string(), NameKind::Const())),
-                Box::new(Variable("x".to_string(), NameKind::Bound(0))),
-            )),
-            "Let elaboration isnt producing the proper term"
-        );
-        assert_eq!(
-            Cic::elaborate_expression(&Expression::Let(
-                "x".to_string(),
-                Box::new(None),
-                Box::new(Expression::VarUse("i".to_string())),
-                Box::new(Expression::VarUse("x".to_string())),
-            )),
-            Ok(Let(
-                "x".to_string(),
-                Box::new(None),
-                Box::new(Variable("i".to_string(), NameKind::Const())),
-                Box::new(Variable("x".to_string(), NameKind::Bound(0))),
-            )),
-            "Let elaboration cant cope with missing type annotation"
-        );
-    }
-
-    #[test]
-    fn test_match_elaboration() {
-        let expected_term = Match(
-            Box::new(Variable("t".to_string(), NameKind::Const())),
-            vec![
-                (
-                    Variable("o".to_string(), NameKind::Const()),
-                    Application(
-                        Box::new(Variable("s".to_string(), NameKind::Const())),
-                        Box::new(Variable("o".to_string(), NameKind::Const())),
-                    ),
-                ),
-                (
-                    Application(
-                        Box::new(Variable("s".to_string(), NameKind::Const())),
-                        Box::new(Variable("n".to_string(), NameKind::Const())),
-                    ),
-                    Variable("n".to_string(), NameKind::Const()),
-                ),
-            ],
-        );
-        let base_pattern = (
-            Expression::VarUse("o".to_string()),
-            Expression::Application(
-                Box::new(Expression::VarUse("s".to_string())),
-                vec![Expression::VarUse("o".to_string())],
-            ),
-        );
-        let inductive_patter = (
-            Expression::Application(
-                Box::new(Expression::VarUse("s".to_string())),
-                vec![Expression::VarUse("n".to_string())],
-            ),
-            Expression::VarUse("n".to_string()),
-        );
-
-        assert_eq!(
-            elaborate_match(
-                &Expression::VarUse("t".to_string()),
-                &vec![base_pattern.clone(), inductive_patter.clone()]
-            ),
-            expected_term,
-            "Match elaboration isnt working as expected"
-        );
-        assert_eq!(
-            elaborate_expression(&Expression::Match(
-                Box::new(Expression::VarUse("t".to_string())),
-                vec![base_pattern, inductive_patter]
-            )),
-            expected_term,
-            "Top level elaboration doesnt work with match"
-        );
-    }
-
-    #[test]
-    fn test_inductive_elaboration() {
-        let ariety = Expression::VarUse("TYPE".to_string());
-
-        let result = elaborate_inductive(
-            &"nat".to_string(),
-            &vec![],
-            &ariety,
-            &vec![
-                ("o".to_string(), Expression::VarUse("nat".to_string())),
-                (
-                    "s".to_string(),
-                    Expression::TypeProduct(
-                        "_".to_string(),
-                        Box::new(Expression::VarUse("nat".to_string())),
-                        Box::new(Expression::VarUse("nat".to_string())),
-                    ),
-                ),
-            ],
-        );
-        assert_eq!(
-            result,
-            Ok(CicStm::InductiveDef(
-                "nat".to_string(),
-                vec![],
-                Box::new(Sort("TYPE".to_string())),
-                vec![
-                    (
-                        "o".to_string(),
-                        Variable("nat".to_string(), NameKind::Const())
-                    ),
-                    (
-                        "s".to_string(),
-                        Product(
-                            "_".to_string(),
-                            Box::new(Variable(
-                                "nat".to_string(),
-                                NameKind::Const()
-                            )),
-                            Box::new(Variable(
-                                "nat".to_string(),
-                                NameKind::Const()
-                            )),
-                        )
-                    )
-                ]
-            )),
-            "Inductive elaboration isnt working with constant constructor"
-        );
-    }
-}
+#[path = "../../tests/type_theory/cic/elaboration.rs"]
+mod tests;

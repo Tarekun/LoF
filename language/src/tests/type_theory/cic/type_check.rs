@@ -463,9 +463,9 @@ mod application {
                         Box::new(Product(
                             "_".to_string(),
                             Box::new(unit.clone()),
-                            Box::new(Variable(type_var_name.to_string(), NameKind::Bound(0))),
+                            Box::new(Variable(type_var_name.to_string(), NameKind::Bound(2))),
                         )),
-                        Box::new(Variable(type_var_name.to_string(), NameKind::Bound(0))),
+                        Box::new(Variable(type_var_name.to_string(), NameKind::Bound(2))),
                     )),
                 )),
             ),
@@ -1305,7 +1305,7 @@ mod inductive {
                     Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                     Box::new(Product(
                         "_".to_string(),
-                        Box::new(Variable("T".to_string(), NameKind::Bound(0))),
+                        Box::new(Variable("T".to_string(), NameKind::Bound(1))),
                         Box::new(Sort("PROP".to_string()))
                     ))
                 ))
@@ -1330,11 +1330,11 @@ mod inductive {
                         Box::new(Application(
                             Box::new(Application(
                                 Box::new(Variable("Eq".to_string(), NameKind::Const())),
-                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                Box::new(Variable("T".to_string(), NameKind::Bound(1)))
                             )),
-                            Box::new(Variable("x".to_string(), NameKind::Bound(1)))
+                            Box::new(Variable("x".to_string(), NameKind::Bound(0)))
                         )),
-                        Box::new(Variable("x".to_string(), NameKind::Bound(1)))
+                        Box::new(Variable("x".to_string(), NameKind::Bound(0)))
                     ))
                 ))
             ),
@@ -1509,8 +1509,8 @@ mod inductive {
                         "t".to_string(),
                         Box::new(unit.clone()),
                         Box::new(Application(
-                            Box::new(Variable("er_Unit".to_string(), NameKind::Bound(0))),
-                            Box::new(Variable("t".to_string(), NameKind::Bound(2))),
+                            Box::new(Variable("er_Unit".to_string(), NameKind::Bound(2))),
+                            Box::new(Variable("t".to_string(), NameKind::Bound(0))),
                         )),
                     ))
                 ))
@@ -1544,15 +1544,15 @@ mod inductive {
                     Box::new(Product(
                         "c_1".to_string(),
                         Box::new(Application(
-                            Box::new(Variable("er_Bool".to_string(), NameKind::Bound(0))),
+                            Box::new(Variable("er_Bool".to_string(), NameKind::Bound(1))),
                             Box::new(Variable("false".to_string(), NameKind::Const())),
                         )),
                         Box::new(Product(
                             "t".to_string(),
                             Box::new(boolean.clone()),
                             Box::new(Application(
-                                Box::new(Variable("er_Bool".to_string(), NameKind::Bound(0))),
-                                Box::new(Variable("t".to_string(), NameKind::Bound(3))),
+                                Box::new(Variable("er_Bool".to_string(), NameKind::Bound(3))),
+                                Box::new(Variable("t".to_string(), NameKind::Bound(0))),
                             ))
                         ))
                     ))
@@ -1601,14 +1601,14 @@ mod inductive {
                             Box::new(Product(
                                 "ih_0".to_string(),
                                 Box::new(Application(
-                                    Box::new(Variable("er_Nat".to_string(), NameKind::Bound(0))),
-                                    Box::new(Variable("r_0".to_string(), NameKind::Bound(3)))
+                                    Box::new(Variable("er_Nat".to_string(), NameKind::Bound(2))),
+                                    Box::new(Variable("r_0".to_string(), NameKind::Bound(0)))
                                 )),
                                 Box::new(Application(
-                                    Box::new(Variable("er_Nat".to_string(), NameKind::Bound(0))),
+                                    Box::new(Variable("er_Nat".to_string(), NameKind::Bound(3))),
                                     Box::new(Application(
                                         Box::new(Variable("s".to_string(), NameKind::Const())),
-                                        Box::new(Variable("r_0".to_string(), NameKind::Bound(3)))
+                                        Box::new(Variable("r_0".to_string(), NameKind::Bound(1)))
                                     ))
                                 ))
                             ))
@@ -1617,8 +1617,8 @@ mod inductive {
                             "t".to_string(),
                             Box::new(nat.clone()),
                             Box::new(Application(
-                                Box::new(Variable("er_Nat".to_string(), NameKind::Bound(0))),
-                                Box::new(Variable("t".to_string(), NameKind::Bound(3)))
+                                Box::new(Variable("er_Nat".to_string(), NameKind::Bound(3))),
+                                Box::new(Variable("t".to_string(), NameKind::Bound(0)))
                             ))
                         ))
                     ))
@@ -1676,36 +1676,36 @@ mod inductive {
                     Box::new(Product(
                         "c_0".to_string(),
                         Box::new(Application(
-                            Box::new(Variable("er_List".to_string(), NameKind::Bound(1))),
+                            Box::new(Variable("er_List".to_string(), NameKind::Bound(0))),
                             Box::new(Application(
                                 Box::new(Variable("nil".to_string(), NameKind::Const())),
-                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                Box::new(Variable("T".to_string(), NameKind::Bound(1)))
                             )),
                         )),
                         Box::new(Product(
                             "c_1".to_string(),
                             Box::new(Product(
                                 "nr_0".to_string(),
-                                Box::new(Variable("T".to_string(), NameKind::Bound(0))),
+                                Box::new(Variable("T".to_string(), NameKind::Bound(2))),
                                 Box::new(Product(
                                     "r_1".to_string(),
                                     Box::new(Application(
                                         Box::new(list.clone()),
-                                        Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                        Box::new(Variable("T".to_string(), NameKind::Bound(3)))
                                     )),
                                     Box::new(Product(
                                         "ih_0".to_string(),
                                         Box::new(Application(
                                             Box::new(Variable(
-                                                "er_List".to_string(), NameKind::Bound(1)
+                                                "er_List".to_string(), NameKind::Bound(3)
                                             )),
                                             Box::new(Variable(
-                                                "r_1".to_string(), NameKind::Bound(5)
+                                                "r_1".to_string(), NameKind::Bound(0)
                                             ))
                                         )),
                                         Box::new(Application(
                                             Box::new(Variable(
-                                                "er_List".to_string(), NameKind::Bound(1)
+                                                "er_List".to_string(), NameKind::Bound(4)
                                             )),
                                             Box::new(Application(
                                                 Box::new(Application(
@@ -1714,15 +1714,15 @@ mod inductive {
                                                             "cons".to_string(), NameKind::Const()
                                                         )),
                                                         Box::new(Variable(
-                                                            "T".to_string(), NameKind::Bound(0)
+                                                            "T".to_string(), NameKind::Bound(5)
                                                         ))
                                                     )),
                                                     Box::new(Variable(
-                                                        "nr_0".to_string(), NameKind::Bound(4)
+                                                        "nr_0".to_string(), NameKind::Bound(2)
                                                     ))
                                                 )),
                                                 Box::new(Variable(
-                                                    "r_1".to_string(), NameKind::Bound(5)
+                                                    "r_1".to_string(), NameKind::Bound(1)
                                                 ))
                                             ))
                                         ))
@@ -1733,11 +1733,11 @@ mod inductive {
                                 "t".to_string(),
                                 Box::new(Application(
                                     Box::new(list.clone()),
-                                    Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                    Box::new(Variable("T".to_string(), NameKind::Bound(3)))
                                 )),
                                 Box::new(Application(
-                                    Box::new(Variable("er_List".to_string(), NameKind::Bound(1))),
-                                    Box::new(Variable("t".to_string(), NameKind::Bound(4)))
+                                    Box::new(Variable("er_List".to_string(), NameKind::Bound(3))),
+                                    Box::new(Variable("t".to_string(), NameKind::Bound(0)))
                                 ))
                             ))
                         )),
@@ -1796,7 +1796,7 @@ mod inductive {
             ),
 
             Product(
-                "T".to_string(), 
+                "T".to_string(),
                 Box::new(Sort("TYPE".to_string())),
                 Box::new(Product(
                     "er_Vec".to_string(),
@@ -1804,61 +1804,61 @@ mod inductive {
                         "len".to_string(),
                         Box::new(nat.clone()),
                         Box::new(Product(
-                            "instance".to_string(), 
+                            "instance".to_string(),
                             Box::new(Application(
                                 Box::new(Application(
-                                    Box::new(vec.clone()), 
-                                    Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                    Box::new(vec.clone()),
+                                    Box::new(Variable("T".to_string(), NameKind::Bound(1)))
                                 )),
-                                Box::new(Variable("len".to_string(), NameKind::Bound(2)))
-                            )), 
-                            Box::new(Sort("TYPE".to_string())) 
+                                Box::new(Variable("len".to_string(), NameKind::Bound(0)))
+                            )),
+                            Box::new(Sort("TYPE".to_string()))
                         ))
                     )),
                     Box::new(Product(
-                        "c_0".to_string(), 
+                        "c_0".to_string(),
                         Box::new(Application(
                             Box::new(Application(
-                                Box::new(Variable("er_Vec".to_string(), NameKind::Bound(1))), 
+                                Box::new(Variable("er_Vec".to_string(), NameKind::Bound(0))),
                                 Box::new(Variable("z".to_string(), NameKind::Const()))
                             )),
                             Box::new(Application(
                                 Box::new(Variable("nul".to_string(), NameKind::Const())),
-                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                Box::new(Variable("T".to_string(), NameKind::Bound(1)))
                             ))
                         )),
                         Box::new(Product(
                             "c_1".to_string(),
                             Box::new(Product(
-                                "nr_0".to_string(), 
-                                Box::new(Variable("T".to_string(), NameKind::Bound(0))), 
+                                "nr_0".to_string(),
+                                Box::new(Variable("T".to_string(), NameKind::Bound(2))),
                                 Box::new(Product(
                                     "nr_1".to_string(),
                                     Box::new(nat.clone()),
                                     Box::new(Product(
-                                        "r_2".to_string(), 
+                                        "r_2".to_string(),
                                         Box::new(Application(
                                             Box::new(Application(
-                                                Box::new(vec.clone()), 
-                                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                                Box::new(vec.clone()),
+                                                Box::new(Variable("T".to_string(), NameKind::Bound(4)))
                                             )),
-                                            Box::new(Variable("nr_1".to_string(), NameKind::Bound(5)))
-                                        )), 
+                                            Box::new(Variable("nr_1".to_string(), NameKind::Bound(0)))
+                                        )),
                                         Box::new(Product(
-                                            "ih_0".to_string(), 
+                                            "ih_0".to_string(),
                                             Box::new(Application(
                                                 Box::new(Application(
-                                                    Box::new(Variable("er_Vec".to_string(), NameKind::Bound(1))), 
-                                                    Box::new(Variable("nr_1".to_string(), NameKind::Bound(5)))
+                                                    Box::new(Variable("er_Vec".to_string(), NameKind::Bound(4))),
+                                                    Box::new(Variable("nr_1".to_string(), NameKind::Bound(1)))
                                                 )),
-                                                Box::new(Variable("r_2".to_string(), NameKind::Bound(6)))
-                                            )), 
+                                                Box::new(Variable("r_2".to_string(), NameKind::Bound(0)))
+                                            )),
                                             Box::new(Application(
                                                 Box::new(Application(
-                                                    Box::new(Variable("er_Vec".to_string(), NameKind::Bound(1))), 
+                                                    Box::new(Variable("er_Vec".to_string(), NameKind::Bound(5))),
                                                     Box::new(Application(
-                                                        Box::new(Variable("s".to_string(), NameKind::Const())), 
-                                                        Box::new(Variable("nr_1".to_string(), NameKind::Bound(5)))
+                                                        Box::new(Variable("s".to_string(), NameKind::Const())),
+                                                        Box::new(Variable("nr_1".to_string(), NameKind::Bound(2)))
                                                     ))
                                                 )),
                                                 Box::new(Application(
@@ -1866,16 +1866,16 @@ mod inductive {
                                                         Box::new(Application(
                                                             Box::new(Application(
                                                                 Box::new(Variable("cons".to_string(), NameKind::Const())),
-                                                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                                                Box::new(Variable("T".to_string(), NameKind::Bound(6)))
                                                             )),
-                                                            Box::new(Variable("nr_0".to_string(), NameKind::Bound(4)))
+                                                            Box::new(Variable("nr_0".to_string(), NameKind::Bound(3)))
                                                         )),
-                                                        Box::new(Variable("nr_1".to_string(), NameKind::Bound(5)))
+                                                        Box::new(Variable("nr_1".to_string(), NameKind::Bound(2)))
                                                     )),
-                                                    Box::new(Variable("r_2".to_string(), NameKind::Bound(6)))
+                                                    Box::new(Variable("r_2".to_string(), NameKind::Bound(1)))
                                                 ))
-                                            )) 
-                                        )) 
+                                            ))
+                                        ))
                                     ))
                                 ))
                             )),
@@ -1883,24 +1883,24 @@ mod inductive {
                                 "rp_0".to_string(),
                                 Box::new(nat.clone()),
                                 Box::new(Product(
-                                    "t".to_string(), 
+                                    "t".to_string(),
                                     Box::new(Application(
                                         Box::new(Application(
-                                            Box::new(vec.clone()), 
-                                            Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                            Box::new(vec.clone()),
+                                            Box::new(Variable("T".to_string(), NameKind::Bound(4)))
                                         )),
-                                        Box::new(Variable("rp_0".to_string(), NameKind::Bound(4)))
-                                    )), 
+                                        Box::new(Variable("rp_0".to_string(), NameKind::Bound(0)))
+                                    )),
                                     Box::new(Application(
                                         Box::new(Application(
-                                            Box::new(Variable("er_Vec".to_string(), NameKind::Bound(1))), 
-                                            Box::new(Variable("rp_0".to_string(), NameKind::Bound(4)))
+                                            Box::new(Variable("er_Vec".to_string(), NameKind::Bound(4))),
+                                            Box::new(Variable("rp_0".to_string(), NameKind::Bound(1)))
                                         )),
-                                        Box::new(Variable("t".to_string(), NameKind::Bound(5)))
-                                    )) 
+                                        Box::new(Variable("t".to_string(), NameKind::Bound(0)))
+                                    ))
                                 ))
                             ))
-                        )), 
+                        )),
                     ))
                 ))
             ),

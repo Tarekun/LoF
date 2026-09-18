@@ -775,11 +775,11 @@ fn test_plus_zero_one_unification() {
             ],
             Box::new(nat.clone()),
             Box::new(Match(
-                Box::new(Variable("n".to_string(), NameKind::Const())),
+                Box::new(Variable("n".to_string(), NameKind::Bound(1))),
                 vec![
                     (
                         Variable("z".to_string(), NameKind::Const()),
-                        Variable("m".to_string(), NameKind::Const()),
+                        Variable("m".to_string(), NameKind::Bound(0)),
                     ),
                     (
                         Application(
@@ -789,7 +789,7 @@ fn test_plus_zero_one_unification() {
                             )),
                             Box::new(Variable(
                                 "nn".to_string(),
-                                NameKind::Const(),
+                                NameKind::Bound(0),
                             )),
                         ),
                         Application(
@@ -805,12 +805,12 @@ fn test_plus_zero_one_unification() {
                                     )),
                                     Box::new(Variable(
                                         "nn".to_string(),
-                                        NameKind::Const(),
+                                        NameKind::Bound(0),
                                     )),
                                 )),
                                 Box::new(Variable(
                                     "m".to_string(),
-                                    NameKind::Const(),
+                                    NameKind::Bound(1),
                                 )),
                             )),
                         ),
