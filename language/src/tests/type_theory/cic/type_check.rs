@@ -1285,9 +1285,11 @@ mod inductive {
                     ("T".to_string(), TYPE.clone()),
                     ("x".to_string(), Variable("T".to_string(), NameKind::Bound(0)))
                 ],
+                // stated under the [T, x] parameter telescope, so `x` is the
+                // nearer binder and `T` the further one
                 &Product(
                     "_".to_string(),
-                    Box::new(Variable("T".to_string(), NameKind::Bound(0))),
+                    Box::new(Variable("T".to_string(), NameKind::Bound(1))),
                     Box::new(Sort("PROP".to_string()))
                 ),
                 &vec![(
@@ -1296,11 +1298,11 @@ mod inductive {
                         Box::new(Application(
                             Box::new(Application(
                                 Box::new(Variable("Eq".to_string(), NameKind::Const())),
-                                Box::new(Variable("T".to_string(), NameKind::Bound(0)))
+                                Box::new(Variable("T".to_string(), NameKind::Bound(1)))
                             )),
-                            Box::new(Variable("x".to_string(), NameKind::Bound(1)))
+                            Box::new(Variable("x".to_string(), NameKind::Bound(0)))
                         )),
-                        Box::new(Variable("x".to_string(), NameKind::Bound(1)))
+                        Box::new(Variable("x".to_string(), NameKind::Bound(0)))
                     )
                 )]
             )
@@ -1441,6 +1443,15 @@ mod inductive {
             Box::new(Variable("list".to_string(), NameKind::Const())),
             Box::new(Variable("T".to_string(), NameKind::Bound(0))),
         );
+        // `T` is the single parameter, so a reference to it is as far away as
+        // the position it is read from is deep: 0 in the constructor's own
+        // domain, 1 under the first Product, 2 under the second
+        let list_of_t_at = |dbi: i32| {
+            Application(
+                Box::new(Variable("list".to_string(), NameKind::Const())),
+                Box::new(Variable("T".to_string(), NameKind::Bound(dbi))),
+            )
+        };
         let constructors = vec![
             ("nil".to_string(), list_of_t.clone()),
             (
@@ -1450,8 +1461,8 @@ mod inductive {
                     Box::new(Variable("T".to_string(), NameKind::Bound(0))),
                     Box::new(Product(
                         "_".to_string(),
-                        Box::new(list_of_t.clone()),
-                        Box::new(list_of_t.clone()),
+                        Box::new(list_of_t_at(1)),
+                        Box::new(list_of_t_at(2)),
                     )),
                 ),
             ),
@@ -1462,11 +1473,14 @@ mod inductive {
                 "cons".to_string(),
                 Product(
                     "_".to_string(),
-                    Box::new(Variable("T_T".to_string(), NameKind::Bound(0))), //unbound variable
+                    // unbound variable. it has to be a `Const` to be one: a
+                    // `Bound` is resolved by its index, so an index that is in
+                    // range names the parameter whatever string it carries
+                    Box::new(Variable("T_T".to_string(), NameKind::Const())),
                     Box::new(Product(
                         "_".to_string(),
-                        Box::new(list_of_t.clone()),
-                        Box::new(list_of_t.clone()),
+                        Box::new(list_of_t_at(1)),
+                        Box::new(list_of_t_at(2)),
                     )),
                 ),
             ),

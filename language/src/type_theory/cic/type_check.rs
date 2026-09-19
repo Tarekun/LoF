@@ -7,6 +7,7 @@ use crate::{
                 application_args, apply_arguments, check_positivity,
                 clone_product_with_different_result, get_applied_function,
                 get_arg_types, get_prod_innermost, get_variables_as_terms,
+                pattern_binder_names,
                 index_variables, is_instance_of, make_multiarg_fun_type,
                 substitute,
             }, evaluation::evaluate_inductive, unification::cic_so_unification,
@@ -237,9 +238,29 @@ pub fn type_check_match(
         //body type checking
         let pattern_assumptions =
             type_constr_vars(environment, pattern, &constr_type)?;
+        // fetch bound variables in the patter and open them
+        let branch_binders = pattern_binder_names(pattern);
+        let opened_assumptions: Vec<(String, CicTerm)> = pattern_assumptions
+            .iter()
+            .map(|(assumption_name, assumption_type)| {
+                let opened_type = branch_binders
+                    .iter()
+                    .rev()
+                    .fold(assumption_type.to_owned(), |opened, binder_name| {
+                        Cic::type_open(&opened, binder_name)
+                    });
+                (assumption_name.to_owned(), opened_type)
+            })
+            .collect();
+        let opened_body = branch_binders
+            .iter()
+            .rev()
+            .fold(body.to_owned(), |opened, binder_name| {
+                Cic::term_open(&opened, binder_name)
+            });
         let body_type = environment
-            .with_local_assumptions(&pattern_assumptions, |local_env| {
-                Cic::type_check_term(body, local_env)
+            .with_local_assumptions(&opened_assumptions, |local_env| {
+                Cic::type_check_term(&opened_body, local_env)
             })?;
         if return_type.is_none() {
             return_type = Some(body_type);
@@ -494,12 +515,37 @@ pub fn type_check_inductive(
     let inductive_type = make_multiarg_fun_type(params, ariety);
     let _ = Cic::type_check_type(&inductive_type, environment)?;
 
+    // Each parameter's type is stated under the parameters preceding it, and
+    // every constructor under the whole parameter telescope. Those binders are
+    // not present in the terms themselves, so their references are naked De
+    // Bruijn indices whose meaning depends on the depth they are read at.
+    // Opening the telescope turns them into `Local`s, which the context can
+    // hand back at any depth without reindexing.
+    let mut opened_params: Vec<(String, CicTerm)> = vec![];
+    for (param_name, param_type) in params {
+        let opened_type = opened_params
+            .iter()
+            .rev()
+            .fold(param_type.clone(), |opened, (earlier_param, _)| {
+                Cic::type_open(&opened, earlier_param)
+            });
+        opened_params.push((param_name.to_owned(), opened_type));
+    }
+    let open_under_params = |typee: &CicTerm| {
+        params
+            .iter()
+            .rev()
+            .fold(typee.to_owned(), |opened, (param_name, _)| {
+                Cic::type_open(&opened, param_name)
+            })
+    };
+
     let inductive_assumptions: Vec<(String, CicTerm)> = 
         vec![
             (type_name.to_string(), inductive_type.clone())
         ]
             .into_iter()
-            .chain(params.clone().into_iter())
+            .chain(opened_params.into_iter())
             .collect();
 
     let mut constr_bindings = vec![];
@@ -507,8 +553,9 @@ pub fn type_check_inductive(
         &inductive_assumptions,
         |local_env| {
             for (constr_name, constr_type) in constructors {
-                let _ = Cic::type_check_type(constr_type, local_env)?;
-                for arg_type in get_arg_types(&constr_type) {
+                let opened_constr = open_under_params(constr_type);
+                let _ = Cic::type_check_type(&opened_constr, local_env)?;
+                for arg_type in get_arg_types(&opened_constr) {
                     if !check_positivity(&arg_type, &type_name) {
                         return Err(LofError::custom(format!("Inductive constructor {} has recursive argument with negative polarity", constr_name)));
                     }

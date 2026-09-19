@@ -40,6 +40,7 @@ pub fn index_variables_in_store(term: &CicTerm, store: &ElabStore) -> CicTerm {
         match term {
             Sort(_) => term.to_owned(),
             Meta(_) => term.to_owned(),
+            Variable(_, NameKind::Local()) => term.to_owned(),
             Variable(name, _) => match store.lookup_dbi(name) {
                 Some(dbi) => Variable(name.to_string(), NameKind::Bound(dbi)),
                 // unbound variables in the term get the global variable index
@@ -287,10 +288,6 @@ fn elaborate_match(
     branches: &Vec<(Expression, Expression)>,
     store: &ElabStore,
 ) -> CicTerm {
-    // which of a pattern's arguments bind is decided by `index_variables`
-    // from the elaborated pattern's own shape, so the rule lives in one
-    // place. Everything is elaborated in the ambient scope here and then
-    // re-indexed under it, which is what resolves those binders.
     let matched_term = elaborate_expression_rec(matched_exp, store);
     let mut branch_terms = vec![];
     for (pattern, body_exp) in branches {
@@ -300,6 +297,7 @@ fn elaborate_match(
         ));
     }
 
+    // cant be bother to implement this here, just call index_variables
     index_variables_in_store(
         &Match(Box::new(matched_term), branch_terms),
         store,

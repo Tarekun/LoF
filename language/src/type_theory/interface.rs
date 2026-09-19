@@ -204,6 +204,27 @@ pub trait Refiner: TypeTheory {
     ) -> Result<(), LofError>
     where
         Self: Sized;
+
+    /// Goes under a binder: `term` is that binder's body, and every reference
+    /// to the binder inside it becomes a locally free reference called `name`.
+    ///
+    /// A De Bruijn index only means anything relative to how deep it sits, so
+    /// a body carrying naked indices cannot be stored in the context and read
+    /// back at another depth without being renumbered. Opening it trades those
+    /// indices for names, which are depth invariant, so the body can be
+    /// checked, normalised, stored and compared wherever it ends up.
+    /// `term_close` is the inverse and is applied when the binder is rebuilt.
+    fn term_open(term: &Self::Term, name: &str) -> Self::Term;
+
+    /// Rebuilds a binder around `term`, turning the locally free `name` back
+    /// into the De Bruijn index that refers to it. Inverse of `term_open`.
+    fn term_close(term: &Self::Term, name: &str) -> Self::Term;
+
+    /// `term_open` for types
+    fn type_open(typee: &Self::Type, name: &str) -> Self::Type;
+
+    /// `term_close` for types
+    fn type_close(typee: &Self::Type, name: &str) -> Self::Type;
 }
 
 /// Reducer module, implements the execution of programs

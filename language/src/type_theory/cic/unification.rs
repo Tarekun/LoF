@@ -36,10 +36,17 @@ fn structurally_equal(term1: &CicTerm, term2: &CicTerm) -> bool {
         // idx == GLOBAL_INDEX is a current hack (global type names get assigned this value) but should be fixed
         (Meta(_), Variable(_, NameKind::Const()))
         | (Variable(_, NameKind::Const()), Meta(_)) => true,
-        (Variable(name1, dbi1), Variable(name2, dbi2)) => {
-            // same dbi1 and if they are global constants then also the constant symbols must be the same
-            dbi1 == dbi2 && (!is_constant(term1) || name1 == name2)
-        }
+        // free variables and constants must match by name
+        (
+            Variable(name1, NameKind::Local()),
+            Variable(name2, NameKind::Local()),
+        )
+        | (
+            Variable(name1, NameKind::Const()),
+            Variable(name2, NameKind::Const()),
+        ) => name1 == name2,
+        // bound variables must match by index, implementing α-equivalence
+        (Variable(_, dbi1), Variable(_, dbi2)) => dbi1 == dbi2,
         (Abstraction(_, type1, body1), Abstraction(_, type2, body2)) => {
             structurally_equal(type1, type2) && structurally_equal(body1, body2)
         }

@@ -8,7 +8,8 @@ use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::CicTerm::{Application, Product};
 use crate::type_theory::cic::cic_utils::{
-    make_multiarg_fun_type, substitute_and_lift, substitute_meta,
+    close_term, make_multiarg_fun_type, open_term, substitute_and_lift,
+    substitute_meta,
 };
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
@@ -21,9 +22,10 @@ use crate::type_theory::cic::unification::{
 };
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    i_type_check_abstraction, i_type_check_application, type_check_axiom,
-    type_check_fo_universal, type_check_function, type_check_global,
-    type_check_let, type_check_variable, u_type_check_theorem,
+    i_type_check_abstraction, i_type_check_application,
+    i_type_check_fo_universal, i_type_check_function, i_type_check_let,
+    type_check_axiom, type_check_global, type_check_variable,
+    u_type_check_theorem,
 };
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::Environment;
@@ -40,6 +42,10 @@ pub static PLACEHOLDER_DBI: i32 = -2;
 pub enum NameKind {
     /// De Bruijn index
     Bound(i32),
+    /// locally free name from a binder descended under,
+    /// whose type is in the context
+    Local(),
+    /// global irreducable constant
     Const(),
 }
 #[derive(PartialEq, Clone)]
@@ -156,7 +162,7 @@ impl Kernel for Cic {
                 )
             }
             CicTerm::Product(var_name, var_type, body) => {
-                type_check_fo_universal::<Cic>(
+                i_type_check_fo_universal::<Cic>(
                     environment,
                     var_name,
                     var_type,
@@ -184,7 +190,7 @@ impl Kernel for Cic {
                 type_check_match(environment, matched_term, branches)
             }
             CicTerm::Let(var_name, var_type, body, scope) => {
-                type_check_let(environment, var_name, var_type, body, scope)
+                i_type_check_let(environment, var_name, var_type, body, scope)
             }
             CicTerm::Meta(index) => {
                 //TODO handle this properly
@@ -238,7 +244,7 @@ impl Kernel for Cic {
                 )
             }
             CicStm::Fun(fun_name, args, out_type, body, is_rec) => {
-                type_check_function::<Cic, _, _>(
+                i_type_check_function::<Cic, _, _>(
                     environment,
                     fun_name,
                     args,
@@ -353,6 +359,19 @@ impl Refiner for Cic {
             environment,
         )?;
         Ok(())
+    }
+
+    fn term_open(term: &CicTerm, name: &str) -> CicTerm {
+        open_term(term, name)
+    }
+    fn term_close(term: &CicTerm, name: &str) -> CicTerm {
+        close_term(term, name)
+    }
+    fn type_open(typee: &CicTerm, name: &str) -> CicTerm {
+        open_term(typee, name)
+    }
+    fn type_close(typee: &CicTerm, name: &str) -> CicTerm {
+        close_term(typee, name)
     }
 }
 
