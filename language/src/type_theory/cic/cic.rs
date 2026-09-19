@@ -44,6 +44,12 @@ pub enum NameKind {
     Bound(i32),
     /// locally free name from a binder descended under,
     /// whose type is in the context
+    // TODO: keyed by name only, not a fresh atom id. Two different binders
+    // opened under the same name (e.g. a function parameter and a pattern
+    // variable that happen to share a name) collapse onto the same `Local`
+    // and become indistinguishable to `structurally_equal`/the context.
+    // Should carry a generated atom id instead (registered in the context,
+    // stripped again for display) to make each `open` truly fresh.
     Local(),
     /// global irreducable constant
     Const(),

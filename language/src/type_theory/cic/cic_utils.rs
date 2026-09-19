@@ -428,6 +428,8 @@ pub fn close_term(body: &CicTerm, name: &str) -> CicTerm {
 /// Given a `term` and a variable, returns a term where each instance of
 /// `var_name` is substituted with `arg`
 pub fn substitute(term: &CicTerm, target_name: &str, arg: &CicTerm) -> CicTerm {
+    // TODO: this is meant to be a plain name-based rewrite with no index
+    // bookkeeping
     substitute_base(term, target_name, arg)
 }
 /// `substitute` + also shifts indeces if binders are removed
