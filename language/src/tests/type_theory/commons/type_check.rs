@@ -4,7 +4,7 @@ use crate::{
         cic::cic::{
             Cic,
             CicTerm::{Sort, Variable},
-            GLOBAL_INDEX,
+            NameKind, GLOBAL_INDEX,
         },
         commons::type_check::u_type_check_theorem,
         interface::TypeTheory,
@@ -15,10 +15,10 @@ use crate::{
 fn test_u_type_check_theorem_registers_name() {
     let mut env = Cic::default_environment();
     env.add_to_context("Nat", &Sort("TYPE".to_string()));
-    env.add_to_context("z", &Variable("Nat".to_string(), GLOBAL_INDEX));
+    env.add_to_context("z", &Variable("Nat".to_string(), NameKind::Const()));
 
-    let formula = Variable("Nat".to_string(), GLOBAL_INDEX);
-    let proof_term = Variable("z".to_string(), GLOBAL_INDEX);
+    let formula = Variable("Nat".to_string(), NameKind::Const());
+    let proof_term = Variable("z".to_string(), NameKind::Const());
 
     assert!(
         u_type_check_theorem::<Cic>(

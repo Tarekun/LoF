@@ -65,17 +65,41 @@ pub fn i_type_check_abstraction<
     constructor: C,
 ) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(var_type, environment)?;
+    // opening var_name to a free variable inside body
+    let opened_body = T::term_open(body, var_name);
     environment.with_local_assumption(var_name, var_type, |local_env| {
-        let body_type = T::type_check_term(body, local_env)?;
+        let body_type = T::type_check_term(&opened_body, local_env)?;
         let type_cons = T::type_collect_unifications(var_type, local_env)?;
-        let body_cons = T::term_collect_unifications(body, local_env)?;
+        let body_cons = T::term_collect_unifications(&opened_body, local_env)?;
         let constraints = [type_cons, body_cons].concat();
         let substitution = T::solve_unifications(constraints, local_env)?;
 
         let var_type = T::type_apply_unifier(var_type, &substitution);
         let body_type = T::type_apply_unifier(&body_type, &substitution);
 
-        Ok(constructor(var_name.to_string(), var_type, body_type))
+        Ok(constructor(
+            var_name.to_string(),
+            var_type,
+            T::type_close(&body_type, var_name),
+        ))
+    })
+}
+
+/// `type_check_fo_universal` for systems that carry De Bruijn indices: the
+/// quantified body is opened so its references to the bound variable stop
+/// depending on the depth they are read at. Nothing is closed afterwards
+/// because what comes back is the body's sort, which binds nothing.
+pub fn i_type_check_fo_universal<T: TypeTheory + Kernel + Refiner>(
+    environment: &mut Environment<T>,
+    var_name: &str,
+    var_type: &T::Type,
+    predicate: &T::Type,
+) -> Result<T::Type, LofError> {
+    let _ = T::type_check_type(var_type, environment)?;
+    // opening var_name to a free variable inside predicate
+    let opened_predicate = T::type_open(predicate, var_name);
+    environment.with_local_assumption(var_name, var_type, |local_env| {
+        T::type_check_type(&opened_predicate, local_env)
     })
 }
 
@@ -207,6 +231,40 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
 //
 //########################### STATEMENTS TYPE CHECKING
 //
+/// Generic let definition type checking supporting type inference and
+/// open/closing of the bound variable within its scope
+pub fn i_type_check_let<T: TypeTheory + Kernel + Refiner>(
+    environment: &mut Environment<T>,
+    var_name: &str,
+    var_type: &Option<T::Type>,
+    body: &T::Term,
+    scope: &T::Term,
+) -> Result<T::Type, LofError> {
+    let body_type = T::type_check_term(body, environment)?;
+    let var_type = if var_type.is_none() {
+        body_type.to_owned()
+    } else {
+        var_type.to_owned().unwrap()
+    };
+
+    if T::base_type_equality(&var_type, &body_type).is_ok() {
+        let opened_scope = T::term_open(scope, var_name);
+        Ok(environment.with_local_substitution(
+            var_name,
+            body,
+            &Some(var_type),
+            // type of a let is the type of the scope term as it reduces to that
+            |local_env| T::type_check_term(&opened_scope, local_env),
+        )?)
+    } else {
+        Err(LofError::type_mismatch(
+            format!("let binding `{}`", var_name),
+            &var_type,
+            &body_type,
+        ))
+    }
+}
+
 /// Generic global definition type checking. Uses `T::type_check_type` on the variable type
 pub fn type_check_global<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
@@ -271,6 +329,91 @@ pub fn type_check_function<
     }
 
     // include fun_namefun_name into the context for following script
+    let _ = evaluate_fun::<T, _, _>(
+        environment,
+        fun_name,
+        args,
+        out_type,
+        body,
+        is_rec,
+        |args, out_type| constructor(args.to_owned(), out_type.to_owned()),
+        eta_wrap,
+    );
+    Ok(fun_type)
+}
+
+/// `type_check_function` for systems that carry De Bruijn indices.
+///
+/// An argument's type is stated under the arguments preceding it, and the
+/// return type and body under all of them, but none of those binders are
+/// present in the terms themselves. Their references are therefore naked
+/// indices, only meaningful at the depth they were elaborated at, so putting
+/// them in the context as they are hands them back wrong at any other depth.
+/// Opening the argument telescope first replaces them with `Local`s, which
+/// carry no depth at all. What gets stored in the environment afterwards is
+/// the original closed form, since that is what the rest of the program sees.
+pub fn i_type_check_function<
+    T: TypeTheory + Kernel + Refiner,
+    C: Fn(Vec<(String, T::Type)>, T::Type) -> T::Type,
+    E: Fn((String, T::Type), T::Term) -> T::Term,
+>(
+    environment: &mut Environment<T>,
+    fun_name: &str,
+    args: &Vec<(String, T::Type)>,
+    out_type: &T::Type,
+    body: &T::Term,
+    is_rec: &bool,
+    constructor: C,
+    eta_wrap: E,
+) -> Result<T::Type, LofError> {
+    let fun_type = constructor(args.to_owned(), out_type.to_owned());
+    let _ = T::type_check_type(&fun_type, environment);
+
+    // args contains a bunch of bound args that need to be opened both in subsequent args
+    // and in the body and return type of the function
+    let mut assumptions: Vec<(String, T::Type)> = vec![];
+    for (arg_name, arg_type) in args {
+        let opened_type = assumptions
+            .iter()
+            .rev()
+            .fold(arg_type.to_owned(), |opened, (earlier_arg, _)| {
+                T::type_open(&opened, earlier_arg)
+            });
+        assumptions.push((arg_name.to_owned(), opened_type));
+    }
+    let opened_out_type = args
+        .iter()
+        .rev()
+        .fold(out_type.to_owned(), |opened, (arg_name, _)| {
+            T::type_open(&opened, arg_name)
+        });
+    let opened_body = args
+        .iter()
+        .rev()
+        .fold(body.to_owned(), |opened, (arg_name, _)| {
+            T::term_open(&opened, arg_name)
+        });
+
+    if *is_rec {
+        // the recursive reference is not one of the binders the body was
+        // elaborated under, so it is added closed and does not open anything
+        assumptions.push((fun_name.to_string(), fun_type.clone()));
+        //TODO possibly include necessary checks on recursive functions
+    }
+
+    let body_type = environment
+        .with_local_assumptions(&assumptions, |local_env| {
+            T::type_check_term(&opened_body, local_env)
+        })?;
+    if T::base_type_equality(&opened_out_type, &body_type).is_err() {
+        return Err(LofError::type_mismatch(
+            format!("function `{}`", fun_name),
+            &opened_out_type,
+            &body_type,
+        ));
+    }
+
+    // include fun_name into the context for following script
     let _ = evaluate_fun::<T, _, _>(
         environment,
         fun_name,

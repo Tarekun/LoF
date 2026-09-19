@@ -76,3 +76,32 @@ impl<T: TypeTheory> UnifiedExpression<T> {
         }
     }
 }
+
+#[derive(Clone, Default)]
+pub struct ElabStore {
+    binders: Vec<String>,
+}
+impl ElabStore {
+    pub fn empty() -> Self {
+        ElabStore { binders: vec![] }
+    }
+
+    /// Adds a new binded name
+    pub fn push_name(&self, name: &str) -> ElabStore {
+        let mut binders = self.binders.clone();
+        binders.push(name.to_string());
+        ElabStore { binders }
+    }
+
+    /// Returns the De Brujin index for variable `name`. Names
+    /// included multiple times are treated LIFO to support shadowing
+    pub fn lookup_dbi(&self, name: &str) -> Option<i32> {
+        if name == "_" {
+            return None;
+        }
+        self.binders
+            .iter()
+            .rposition(|bound_name| bound_name == name)
+            .map(|position| (self.binders.len() - 1 - position) as i32)
+    }
+}

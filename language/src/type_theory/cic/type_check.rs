@@ -1,25 +1,17 @@
 use crate::{
-    error::LofError,
-    misc::{simple_map, simple_map_indexed},
-    type_theory::{
+    error::LofError, misc::{simple_map, simple_map_indexed}, type_theory::{
         cic::{
             cic::{
-                Cic,
-                CicTerm::{self, Application, Meta, Product, Sort, Variable},
-                GLOBAL_INDEX, PLACEHOLDER_DBI,
-            },
-            cic_utils::{
+                Cic, CicTerm::{self, Application, Meta, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI,
+            }, cic_utils::{
                 application_args, apply_arguments, check_positivity,
                 clone_product_with_different_result, get_applied_function,
                 get_arg_types, get_prod_innermost, get_variables_as_terms,
+                pattern_binder_names,
                 index_variables, is_instance_of, make_multiarg_fun_type,
                 substitute,
-            },
-            evaluation::evaluate_inductive, unification::cic_so_unification,
-        },
-        commons::type_check::type_check_variable,
-        environment::Environment,
-        interface::{Kernel, Refiner},
+            }, evaluation::evaluate_inductive, unification::cic_so_unification,
+        }, commons::type_check::type_check_variable, environment::Environment, interface::{Kernel, Refiner},
     },
 };
 use tracing::error;
@@ -246,9 +238,29 @@ pub fn type_check_match(
         //body type checking
         let pattern_assumptions =
             type_constr_vars(environment, pattern, &constr_type)?;
+        // fetch bound variables in the patter and open them
+        let branch_binders = pattern_binder_names(pattern);
+        let opened_assumptions: Vec<(String, CicTerm)> = pattern_assumptions
+            .iter()
+            .map(|(assumption_name, assumption_type)| {
+                let opened_type = branch_binders
+                    .iter()
+                    .rev()
+                    .fold(assumption_type.to_owned(), |opened, binder_name| {
+                        Cic::type_open(&opened, binder_name)
+                    });
+                (assumption_name.to_owned(), opened_type)
+            })
+            .collect();
+        let opened_body = branch_binders
+            .iter()
+            .rev()
+            .fold(body.to_owned(), |opened, binder_name| {
+                Cic::term_open(&opened, binder_name)
+            });
         let body_type = environment
-            .with_local_assumptions(&pattern_assumptions, |local_env| {
-                Cic::type_check_term(body, local_env)
+            .with_local_assumptions(&opened_assumptions, |local_env| {
+                Cic::type_check_term(&opened_body, local_env)
             })?;
         if return_type.is_none() {
             return_type = Some(body_type);
@@ -285,7 +297,7 @@ pub fn inductive_eliminator(
     fn make_left_param_vars(params: Vec<(String, CicTerm)>) -> Vec<CicTerm> {
         params
             .iter()
-            .map(|(var_name, _)| Variable(var_name.to_owned(), PLACEHOLDER_DBI))
+            .map(|(var_name, _)| Variable(var_name.to_owned(), NameKind::Bound(PLACEHOLDER_DBI)))
             .collect()
     }
     /// Creation of the first parameters ( a :: α\[A\] )
@@ -301,7 +313,7 @@ pub fn inductive_eliminator(
         right_param_vars: Vec<CicTerm>,
     ) -> CicTerm {
         let instance_type =
-            apply_arguments(&Variable(type_name.to_string(), PLACEHOLDER_DBI), left_param_vars);
+            apply_arguments(&Variable(type_name.to_string(), NameKind::Bound(PLACEHOLDER_DBI)), left_param_vars);
         let instance_type = apply_arguments(&instance_type, right_param_vars);
         instance_type
     }
@@ -377,7 +389,7 @@ pub fn inductive_eliminator(
 
                 hypotheses.push(Application(
                     Box::new(result_with_rights.clone()),
-                    Box::new(Variable(arg_name, PLACEHOLDER_DBI)),
+                    Box::new(Variable(arg_name, NameKind::Bound(PLACEHOLDER_DBI))),
                 ));
             }
 
@@ -405,19 +417,19 @@ pub fn inductive_eliminator(
             );
 
             let constr_instance = apply_arguments(
-                &Variable(constr_name, PLACEHOLDER_DBI),
+                &Variable(constr_name, NameKind::Bound(PLACEHOLDER_DBI)),
                 left_param_vars.clone(),
             );
             let constr_instance = apply_arguments(
                 &constr_instance,
                 simple_map(non_recursive.clone(), |(arg_name, _)| {
-                    Variable(arg_name, PLACEHOLDER_DBI)
+                    Variable(arg_name, NameKind::Bound(PLACEHOLDER_DBI))
                 }),
             );
             let constr_instance = apply_arguments(
                 &constr_instance,
                 simple_map(recursive.clone(), |(arg_name, _)| {
-                    Variable(arg_name, PLACEHOLDER_DBI)
+                    Variable(arg_name, NameKind::Bound(PLACEHOLDER_DBI))
                 }),
             );
 
@@ -443,7 +455,7 @@ pub fn inductive_eliminator(
 
     let left_param_vars = make_left_param_vars(params.clone());
     // 0 is a placeholder value, the eliminator type is indexed when returned 
-    let result_var = Variable(format!("er_{}", type_name), PLACEHOLDER_DBI); // er = eliminator result, C in the paper
+    let result_var = Variable(format!("er_{}", type_name), NameKind::Bound(PLACEHOLDER_DBI)); // er = eliminator result, C in the paper
     let result_type =
         make_result_type(&type_name, left_param_vars.clone(), &ariety);
     let inductive_cases = make_inductive_cases(
@@ -458,9 +470,9 @@ pub fn inductive_eliminator(
         });
     let right_param_vars =
         simple_map(right_params.clone(), |(param_name, _)| {
-            Variable(param_name, PLACEHOLDER_DBI)
+            Variable(param_name, NameKind::Bound(PLACEHOLDER_DBI))
         });
-    let inductive_instace_var = Variable("t".to_string(), GLOBAL_INDEX);
+    let inductive_instace_var = Variable("t".to_string(), NameKind::Const());
     let inductive_instace = make_instance_type(
         &type_name,
         left_param_vars,
@@ -503,12 +515,37 @@ pub fn type_check_inductive(
     let inductive_type = make_multiarg_fun_type(params, ariety);
     let _ = Cic::type_check_type(&inductive_type, environment)?;
 
+    // Each parameter's type is stated under the parameters preceding it, and
+    // every constructor under the whole parameter telescope. Those binders are
+    // not present in the terms themselves, so their references are naked De
+    // Bruijn indices whose meaning depends on the depth they are read at.
+    // Opening the telescope turns them into `Local`s, which the context can
+    // hand back at any depth without reindexing.
+    let mut opened_params: Vec<(String, CicTerm)> = vec![];
+    for (param_name, param_type) in params {
+        let opened_type = opened_params
+            .iter()
+            .rev()
+            .fold(param_type.clone(), |opened, (earlier_param, _)| {
+                Cic::type_open(&opened, earlier_param)
+            });
+        opened_params.push((param_name.to_owned(), opened_type));
+    }
+    let open_under_params = |typee: &CicTerm| {
+        params
+            .iter()
+            .rev()
+            .fold(typee.to_owned(), |opened, (param_name, _)| {
+                Cic::type_open(&opened, param_name)
+            })
+    };
+
     let inductive_assumptions: Vec<(String, CicTerm)> = 
         vec![
             (type_name.to_string(), inductive_type.clone())
         ]
             .into_iter()
-            .chain(params.clone().into_iter())
+            .chain(opened_params.into_iter())
             .collect();
 
     let mut constr_bindings = vec![];
@@ -516,8 +553,9 @@ pub fn type_check_inductive(
         &inductive_assumptions,
         |local_env| {
             for (constr_name, constr_type) in constructors {
-                let _ = Cic::type_check_type(constr_type, local_env)?;
-                for arg_type in get_arg_types(&constr_type) {
+                let opened_constr = open_under_params(constr_type);
+                let _ = Cic::type_check_type(&opened_constr, local_env)?;
+                for arg_type in get_arg_types(&opened_constr) {
                     if !check_positivity(&arg_type, &type_name) {
                         return Err(LofError::custom(format!("Inductive constructor {} has recursive argument with negative polarity", constr_name)));
                     }
@@ -537,7 +575,7 @@ pub fn type_check_inductive(
         ariety,
         &constr_bindings,
     );
-    Ok(Variable("Unit".to_string(), GLOBAL_INDEX))
+    Ok(Variable("Unit".to_string(), NameKind::Const()))
 }
 
 #[cfg(test)]

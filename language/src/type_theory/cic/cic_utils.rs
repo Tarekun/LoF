@@ -3,11 +3,11 @@ use super::cic::CicTerm::{
 };
 use super::cic::{Cic, CicTerm};
 use crate::misc::simple_map;
-use crate::type_theory::cic::cic::{
-    FIRST_INDEX, GLOBAL_INDEX, PLACEHOLDER_DBI,
+use crate::type_theory::cic::cic::{NameKind, PLACEHOLDER_DBI};
+use crate::type_theory::cic::elaboration::index_variables_in_store;
+use crate::type_theory::commons::utils::{
+    generic_multiarg_fun_type, ElabStore,
 };
-use crate::type_theory::commons::utils::generic_multiarg_fun_type;
-use std::collections::HashMap;
 use std::fmt;
 
 fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -15,10 +15,14 @@ fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // (sort name)
         Sort(name) => write!(f, "{}", name),
         // (var name)
-        Variable(name, dbi) => {
-            let dbi_text = if *dbi == GLOBAL_INDEX {
-                "G"
-            } else if *dbi == PLACEHOLDER_DBI {
+        Variable(name, NameKind::Const()) => {
+            write!(f, "{}|G", name)
+        }
+        Variable(name, NameKind::Local()) => {
+            write!(f, "{}|L", name)
+        }
+        Variable(name, NameKind::Bound(dbi)) => {
+            let dbi_text = if *dbi == PLACEHOLDER_DBI {
                 "P"
             } else {
                 &dbi.to_string()
@@ -70,7 +74,8 @@ pub fn get_variables_as_terms(fun_type: &CicTerm) -> Vec<CicTerm> {
         match fun_type {
             Product(var_name, _domain, codomain) => {
                 let mut rec: Vec<CicTerm> = solver(codomain, index + 1);
-                let mut result = vec![Variable(var_name.to_owned(), index)];
+                let mut result =
+                    vec![Variable(var_name.to_owned(), NameKind::Bound(index))];
                 result.append(&mut rec);
                 result
             }
@@ -184,7 +189,7 @@ pub fn is_instance_of(term: &CicTerm, name: &str) -> bool {
 /// Returns `true` if `term` corresponds to a constant symbol, `false` otherwise
 pub fn is_constant(term: &CicTerm) -> bool {
     match term {
-        Variable(_, dbi) => *dbi == GLOBAL_INDEX,
+        Variable(_, NameKind::Const()) => true,
         _ => false,
     }
 }
@@ -273,71 +278,321 @@ pub fn substitute_meta(term: &CicTerm, target: &i32, arg: &CicTerm) -> CicTerm {
     }
 }
 
+/// The binder names a match pattern introduces, depth first left to right:
+/// every variable sitting in an argument position of the pattern's
+/// constructor spine, at any nesting depth. Mirrors the rule the elaborator
+/// uses when it extends a branch's scope, so a branch body's indices line up
+/// with the telescope the pattern actually opened.
+pub fn pattern_binder_names(pattern: &CicTerm) -> Vec<String> {
+    match pattern {
+        Application(_, _) => application_args(pattern)
+            .iter()
+            .flat_map(|arg| match arg {
+                Variable(name, _) => vec![name.to_string()],
+                Application(_, _) => pattern_binder_names(arg),
+                _ => vec![],
+            })
+            .collect(),
+        _ => vec![],
+    }
+}
+
+/// How many binders a match pattern introduces for its branch
+fn pattern_binder_count(pattern: &CicTerm) -> i32 {
+    pattern_binder_names(pattern).len() as i32
+}
+
+/// Replaces every occurrence of the binder `body` is the body of with a
+/// locally free reference called `name`, ie the `open` of a locally nameless
+/// representation.
+pub fn open_term(body: &CicTerm, name: &str) -> CicTerm {
+    fn solver(term: &CicTerm, name: &str, depth: i32) -> CicTerm {
+        match term {
+            Sort(_) | Meta(_) => term.clone(),
+            Variable(_, NameKind::Const()) | Variable(_, NameKind::Local()) => {
+                term.clone()
+            }
+            Variable(var_name, NameKind::Bound(dbi)) => {
+                if *dbi == depth {
+                    // shi to open
+                    Variable(name.to_string(), NameKind::Local())
+                } else if *dbi > depth {
+                    // refers past the binder being opened, and that binder is
+                    // now gone from the telescope, so it moves one closer.
+                    Variable(var_name.to_string(), NameKind::Bound(dbi - 1))
+                } else {
+                    // bound by a binder inside `term`, untouched
+                    Variable(var_name.to_string(), NameKind::Bound(*dbi))
+                }
+            }
+            Application(left, right) => Application(
+                Box::new(solver(left, name, depth)),
+                Box::new(solver(right, name, depth)),
+            ),
+            Abstraction(var_name, domain, codomain) => Abstraction(
+                var_name.to_string(),
+                Box::new(solver(domain, name, depth)),
+                Box::new(solver(codomain, name, depth + 1)),
+            ),
+            Product(var_name, domain, codomain) => Product(
+                var_name.to_string(),
+                Box::new(solver(domain, name, depth)),
+                Box::new(solver(codomain, name, depth + 1)),
+            ),
+            Let(var_name, var_type, definition, scope) => Let(
+                var_name.to_string(),
+                Box::new(
+                    (**var_type).as_ref().map(|t| solver(t, name, depth + 1)),
+                ),
+                Box::new(solver(definition, name, depth)),
+                Box::new(solver(scope, name, depth + 1)),
+            ),
+            Match(matched_term, branches) => Match(
+                Box::new(solver(matched_term, name, depth)),
+                simple_map(branches.clone(), |(pattern, branch_body)| {
+                    // a pattern opens one binder per variable it introduces,
+                    // and the branch was elaborated under all of them
+                    let inner = depth + pattern_binder_count(&pattern);
+                    (
+                        solver(&pattern, name, inner),
+                        solver(&branch_body, name, inner),
+                    )
+                }),
+            ),
+        }
+    }
+
+    solver(body, name, 0)
+}
+
+/// Inverse of `open_term`: turns the locally free `name` back into the De
+/// Bruijn index of the binder being rebuilt around `body`.
+pub fn close_term(body: &CicTerm, name: &str) -> CicTerm {
+    fn solver(term: &CicTerm, name: &str, depth: i32) -> CicTerm {
+        match term {
+            Sort(_) | Meta(_) => term.clone(),
+            Variable(_, NameKind::Const()) => term.clone(),
+            Variable(var_name, NameKind::Bound(dbi)) => {
+                if *dbi >= depth {
+                    // a binder is being put back in front of it
+                    Variable(var_name.to_string(), NameKind::Bound(dbi + 1))
+                } else {
+                    term.clone()
+                }
+            }
+            Variable(var_name, NameKind::Local()) => {
+                if var_name == name {
+                    Variable(var_name.to_string(), NameKind::Bound(depth))
+                } else {
+                    term.clone()
+                }
+            }
+            Application(left, right) => Application(
+                Box::new(solver(left, name, depth)),
+                Box::new(solver(right, name, depth)),
+            ),
+            Abstraction(var_name, domain, codomain) => Abstraction(
+                var_name.to_string(),
+                Box::new(solver(domain, name, depth)),
+                Box::new(solver(codomain, name, depth + 1)),
+            ),
+            Product(var_name, domain, codomain) => Product(
+                var_name.to_string(),
+                Box::new(solver(domain, name, depth)),
+                Box::new(solver(codomain, name, depth + 1)),
+            ),
+            Let(var_name, var_type, definition, scope) => Let(
+                var_name.to_string(),
+                Box::new(
+                    (**var_type).as_ref().map(|t| solver(t, name, depth + 1)),
+                ),
+                Box::new(solver(definition, name, depth)),
+                Box::new(solver(scope, name, depth + 1)),
+            ),
+            Match(matched_term, branches) => Match(
+                Box::new(solver(matched_term, name, depth)),
+                simple_map(branches.clone(), |(pattern, branch_body)| {
+                    let inner = depth + pattern_binder_count(&pattern);
+                    (
+                        solver(&pattern, name, inner),
+                        solver(&branch_body, name, inner),
+                    )
+                }),
+            ),
+        }
+    }
+
+    solver(body, name, 0)
+}
+
 /// Given a `term` and a variable, returns a term where each instance of
 /// `var_name` is substituted with `arg`
 pub fn substitute(term: &CicTerm, target_name: &str, arg: &CicTerm) -> CicTerm {
-    match term {
-        Sort(_) => term.clone(),
-        Variable(var_name, _) => {
-            if var_name == target_name {
-                arg.clone()
-            } else {
-                term.clone()
+    // TODO: this is meant to be a plain name-based rewrite with no index
+    // bookkeeping
+    substitute_base(term, target_name, arg)
+}
+/// `substitute` + also shifts indeces if binders are removed
+pub fn substitute_and_lift(
+    term: &CicTerm,
+    target_name: &str,
+    arg: &CicTerm,
+) -> CicTerm {
+    substitute_base(term, target_name, arg)
+}
+
+fn substitute_base(
+    term: &CicTerm,
+    target_name: &str,
+    arg: &CicTerm,
+) -> CicTerm {
+    /// Increases every free `Bound` index in `term` by `amount` — "free" meaning
+    /// it refers past `term`'s own binders, tracked via `cutoff`. Needed
+    /// whenever a substituted argument is spliced back in `amount` binders
+    /// deeper than where it was originally computed, so its own escaping
+    /// references keep pointing to the same external things instead of being
+    /// captured by binders they were just moved underneath.
+    fn shift(term: &CicTerm, amount: i32) -> CicTerm {
+        fn solver(term: &CicTerm, amount: i32, cutoff: i32) -> CicTerm {
+            match term {
+                Sort(_) => term.clone(),
+                Meta(_) => term.clone(),
+                // a `Local` names a context entry rather than a position,
+                // so no amount of extra enclosing binders can change it --
+                // this is exactly the property `open` buys us.
+                Variable(_, NameKind::Local()) => term.clone(),
+                Variable(_, NameKind::Const()) => term.clone(),
+                Variable(var_name, NameKind::Bound(dbi)) => {
+                    if *dbi >= cutoff {
+                        Variable(
+                            var_name.to_string(),
+                            NameKind::Bound(dbi + amount),
+                        )
+                    } else {
+                        term.clone()
+                    }
+                }
+                Application(left, right) => Application(
+                    Box::new(solver(left, amount, cutoff)),
+                    Box::new(solver(right, amount, cutoff)),
+                ),
+                Abstraction(var_name, domain, codomain) => Abstraction(
+                    var_name.to_string(),
+                    Box::new(solver(domain, amount, cutoff)),
+                    Box::new(solver(codomain, amount, cutoff + 1)),
+                ),
+                Product(var_name, domain, codomain) => Product(
+                    var_name.to_string(),
+                    Box::new(solver(domain, amount, cutoff)),
+                    Box::new(solver(codomain, amount, cutoff + 1)),
+                ),
+                Let(var_name, var_type, body, scope) => Let(
+                    var_name.to_string(),
+                    Box::new(
+                        (**var_type)
+                            .as_ref()
+                            .map(|t| solver(t, amount, cutoff + 1)),
+                    ),
+                    Box::new(solver(body, amount, cutoff)),
+                    Box::new(solver(scope, amount, cutoff + 1)),
+                ),
+                Match(matched_term, branches) => Match(
+                    Box::new(solver(matched_term, amount, cutoff)),
+                    simple_map(branches.clone(), |(pattern, body)| {
+                        // the branch sits under one binder per pattern
+                        // variable, exactly as the elaborator numbered it
+                        let inner = cutoff + pattern_binder_count(&pattern);
+                        (
+                            solver(&pattern, amount, inner),
+                            solver(&body, amount, inner),
+                        )
+                    }),
+                ),
             }
         }
-        Application(left, right) => Application(
-            Box::new(substitute(left, target_name, arg)),
-            Box::new(substitute(right, target_name, arg)),
-        ),
-        // TODO: dont carry substitution if names match to implement overriding of names
-        Abstraction(var_name, domain, codomain) => Abstraction(
-            var_name.to_string(),
-            Box::new(substitute(domain, target_name, arg)),
-            Box::new(substitute(codomain, target_name, arg)),
-        ),
-        Product(var_name, domain, codomain) => Product(
-            var_name.to_string(),
-            Box::new(substitute(domain, target_name, arg)),
-            Box::new(substitute(codomain, target_name, arg)),
-        ),
-        Let(var_name, var_type, body, scope) => {
-            let var_type = if var_type.is_some() {
-                Some(substitute(
-                    &(**var_type).as_ref().unwrap(),
-                    target_name,
-                    arg,
-                ))
-            } else {
-                None
-            };
-            let body = substitute(body, target_name, arg);
-            // the name is overridden in `body`'s scope
-            let scope = if var_name != target_name {
-                substitute(scope, target_name, arg)
-            } else {
-                (**scope).to_owned()
-            };
 
-            Let(
-                var_name.to_string(),
-                Box::new(var_type),
-                Box::new(body),
-                Box::new(scope),
-            )
+        if amount == 0 {
+            term.clone()
+        } else {
+            solver(term, amount, 0)
         }
-        Match(matched_term, branches) => Match(
-            Box::new(substitute(matched_term, target_name, arg)),
-            //TODO i dont want to clone branches here tbh
-            simple_map(branches.clone(), |(pattern, body)| {
-                (
-                    substitute(&pattern, target_name, arg),
-                    substitute(&body, target_name, arg),
-                )
-            }),
-        ),
-        //TODO implementare qua la sostituzione delle metavariabili?
-        Meta(_) => term.clone(),
     }
+
+    // `depth` is how many binders we've descended through since the start
+    // of this substitution: a `Bound` reference exactly at `depth` is the
+    // one being removed (it gets `arg`, shifted so its own escaping
+    // references still point outside correctly); one further out
+    // (`dbi > depth`) has lost a binder and must be decremented; one more
+    // local (`dbi < depth`, e.g. bound by a nested binder of the same
+    // name) refers to something else entirely and is left alone. This is
+    // what lets shadowing "just work" without a separate name-based check.
+    fn solver(
+        term: &CicTerm,
+        target_name: &str,
+        arg: &CicTerm,
+        depth: i32,
+    ) -> CicTerm {
+        match term {
+            Sort(_) => term.clone(),
+            Meta(_) => term.clone(),
+            // both consts and locally free vars are treated irreduceable
+            Variable(_, NameKind::Const()) => term.clone(),
+            Variable(_, NameKind::Local()) => term.clone(),
+            Variable(var_name, NameKind::Bound(dbi)) => {
+                if var_name == target_name && *dbi == depth {
+                    shift(arg, depth)
+                    // arg.clone()
+                } else if *dbi > depth {
+                    Variable(var_name.to_string(), NameKind::Bound(dbi - 1))
+                } else {
+                    term.clone()
+                }
+            }
+            Application(left, right) => Application(
+                Box::new(solver(left, target_name, arg, depth)),
+                Box::new(solver(right, target_name, arg, depth)),
+            ),
+            Abstraction(var_name, domain, codomain) => Abstraction(
+                var_name.to_string(),
+                Box::new(solver(domain, target_name, arg, depth)),
+                Box::new(solver(codomain, target_name, arg, depth + 1)),
+            ),
+            Product(var_name, domain, codomain) => Product(
+                var_name.to_string(),
+                Box::new(solver(domain, target_name, arg, depth)),
+                Box::new(solver(codomain, target_name, arg, depth + 1)),
+            ),
+            Let(var_name, var_type, body, scope) => {
+                let var_type = (**var_type)
+                    .as_ref()
+                    .map(|t| solver(t, target_name, arg, depth + 1));
+                let body = solver(body, target_name, arg, depth);
+                let scope = solver(scope, target_name, arg, depth + 1);
+
+                Let(
+                    var_name.to_string(),
+                    Box::new(var_type),
+                    Box::new(body),
+                    Box::new(scope),
+                )
+            }
+            Match(matched_term, branches) => Match(
+                Box::new(solver(matched_term, target_name, arg, depth)),
+                //TODO i dont want to clone branches here tbh
+                simple_map(branches.clone(), |(pattern, body)| {
+                    // the branch sits under one binder per pattern variable,
+                    // exactly as the elaborator numbered it
+                    let inner = depth + pattern_binder_count(&pattern);
+                    (
+                        solver(&pattern, target_name, arg, inner),
+                        solver(&body, target_name, arg, inner),
+                    )
+                }),
+            ),
+        }
+    }
+
+    solver(term, target_name, arg, 0)
 }
 
 /// Creates the CIC type of a function with named arguments `arg_types`
@@ -357,77 +612,7 @@ pub fn make_multiarg_fun_type(
 
 /// Given a term, it enumerates variables with De Bruijn indexes properly
 pub fn index_variables(term: &CicTerm) -> CicTerm {
-    fn solver(
-        term: &CicTerm,
-        current_dbi: i32,
-        //TODO this doesnt support shadowing of already defined names
-        bound_vars: &mut HashMap<String, i32>,
-    ) -> CicTerm {
-        match term {
-            Sort(_) => term.to_owned(),
-            Meta(_) => term.to_owned(),
-            Variable(name, _) => match bound_vars.get(name) {
-                Some(dbi) => Variable(name.to_string(), *dbi),
-                // unbound variables in the term get the global variable index
-                None => Variable(name.to_string(), GLOBAL_INDEX),
-            },
-            Abstraction(var_name, var_type, body) => {
-                bound_vars.insert(var_name.to_string(), current_dbi);
-
-                Abstraction(
-                    var_name.to_string(),
-                    Box::new(solver(var_type, current_dbi + 1, bound_vars)),
-                    Box::new(solver(body, current_dbi + 1, bound_vars)),
-                )
-            }
-            Product(var_name, var_type, body) => {
-                bound_vars.insert(var_name.to_string(), current_dbi);
-
-                Product(
-                    var_name.to_string(),
-                    Box::new(solver(var_type, current_dbi + 1, bound_vars)),
-                    Box::new(solver(body, current_dbi + 1, bound_vars)),
-                )
-            }
-            Let(var_name, var_type, body, scope) => {
-                bound_vars.insert(var_name.to_string(), current_dbi);
-                let var_type = if var_type.is_some() {
-                    Some(solver(
-                        &(**var_type).as_ref().unwrap(),
-                        current_dbi + 1,
-                        bound_vars,
-                    ))
-                } else {
-                    None
-                };
-
-                Let(
-                    var_name.to_string(),
-                    Box::new(var_type),
-                    Box::new(solver(body, current_dbi + 1, bound_vars)),
-                    Box::new(solver(scope, current_dbi + 1, bound_vars)),
-                )
-            }
-            Application(left, right) => Application(
-                Box::new(solver(left, current_dbi, bound_vars)),
-                Box::new(solver(right, current_dbi, bound_vars)),
-            ),
-            Match(matched_term, branches) => {
-                let matched_term =
-                    solver(matched_term, current_dbi, bound_vars);
-                // TODO reimplement this
-                // this code needs to distinguish between type argument (terms)
-                // and constructor argument (variables)
-                // each pattern creates binding for each constructor argument
-                // after this body does the same thing starting from the last index
-                // used in the pattern
-
-                Match(Box::new(matched_term), branches.to_owned())
-            }
-        }
-    }
-
-    solver(term, FIRST_INDEX, &mut HashMap::new())
+    index_variables_in_store(term, &ElabStore::empty())
 }
 
 /// Returns `term` where every occurance of `var_name` as a variable
@@ -436,7 +621,7 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
     substitute(
         &term,
         var_name,
-        &Variable(var_name.to_string(), GLOBAL_INDEX),
+        &Variable(var_name.to_string(), NameKind::Const()),
     )
 }
 //########################### UNIT TESTS
@@ -444,15 +629,81 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
 mod unit_tests {
     use crate::type_theory::cic::{
         cic::{
-            CicTerm::{Abstraction, Sort, Variable},
-            GLOBAL_INDEX, PLACEHOLDER_DBI,
+            CicTerm::{Abstraction, Application, Match, Sort, Variable},
+            NameKind, PLACEHOLDER_DBI,
         },
         cic_utils::{index_variables, swap_proof_hole},
     };
 
+    fn placeholder(name: &str) -> crate::type_theory::cic::cic::CicTerm {
+        Variable(name.to_string(), NameKind::Bound(PLACEHOLDER_DBI))
+    }
+    fn free(name: &str) -> crate::type_theory::cic::cic::CicTerm {
+        Variable(name.to_string(), NameKind::Const())
+    }
+    fn bound(name: &str, dbi: i32) -> crate::type_theory::cic::cic::CicTerm {
+        Variable(name.to_string(), NameKind::Bound(dbi))
+    }
+
+    #[test]
+    fn test_open_close_roundtrip_on_a_telescope_body() {
+        use crate::type_theory::cic::cic::CicTerm::{Application, Product};
+        use crate::type_theory::cic::cic_utils::{close_term, open_term};
+
+        // body of `Π T:TYPE. Π P:(T -> PROP). <here>`, exactly the shape of
+        // the `Exists` constructor: T sits at index 1, P at index 0, and both
+        // get deeper as the body nests
+        let body = Product(
+            "t".to_string(),
+            Box::new(Variable("T".to_string(), NameKind::Bound(1))),
+            Box::new(Product(
+                "_".to_string(),
+                Box::new(Application(
+                    Box::new(Variable("P".to_string(), NameKind::Bound(1))),
+                    Box::new(Variable("t".to_string(), NameKind::Bound(0))),
+                )),
+                Box::new(Application(
+                    Box::new(Variable("T".to_string(), NameKind::Bound(3))),
+                    Box::new(Variable("P".to_string(), NameKind::Bound(2))),
+                )),
+            )),
+        );
+
+        // opening innermost first peels the whole telescope
+        let opened = open_term(&open_term(&body, "P"), "T");
+        let expected_opened = Product(
+            "t".to_string(),
+            Box::new(Variable("T".to_string(), NameKind::Local())),
+            Box::new(Product(
+                "_".to_string(),
+                Box::new(Application(
+                    Box::new(Variable("P".to_string(), NameKind::Local())),
+                    Box::new(Variable("t".to_string(), NameKind::Bound(0))),
+                )),
+                Box::new(Application(
+                    Box::new(Variable("T".to_string(), NameKind::Local())),
+                    Box::new(Variable("P".to_string(), NameKind::Local())),
+                )),
+            )),
+        );
+        assert_eq!(
+            opened, expected_opened,
+            "open must turn every reference to a telescope binder into a \
+             depth invariant Local, whatever depth it occurs at, and leave \
+             the binders internal to the body (`t`) alone"
+        );
+
+        // and closing in the mirror order must give back exactly the original
+        assert_eq!(
+            close_term(&close_term(&opened, "T"), "P"),
+            body,
+            "close must be the inverse of open"
+        );
+    }
+
     #[test]
     fn test_swap_proof_hole_preserves_abstraction_shape() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let hole = Sort("THIS_IS_A_PARTIAL_PROOF_HOLE".to_string());
         let outer_abstraction = Abstraction(
             "n".to_string(),
@@ -500,8 +751,11 @@ mod unit_tests {
     #[test]
     fn test_index_variables() {
         assert_eq!(
-            index_variables(&Variable("x".to_string(), PLACEHOLDER_DBI)),
-            Variable("x".to_string(), GLOBAL_INDEX),
+            index_variables(&Variable(
+                "x".to_string(),
+                NameKind::Bound(PLACEHOLDER_DBI)
+            )),
+            Variable("x".to_string(), NameKind::Const()),
             "Variable indexer doesnt use the global index properly"
         );
 
@@ -509,12 +763,15 @@ mod unit_tests {
             index_variables(&Abstraction(
                 "y".to_string(),
                 Box::new(Sort("TYPE".to_string())),
-                Box::new(Variable("y".to_string(), PLACEHOLDER_DBI)),
+                Box::new(Variable(
+                    "y".to_string(),
+                    NameKind::Bound(PLACEHOLDER_DBI)
+                )),
             )),
             Abstraction(
                 "y".to_string(),
                 Box::new(Sort("TYPE".to_string())),
-                Box::new(Variable("y".to_string(), 0)),
+                Box::new(Variable("y".to_string(), NameKind::Bound(0))),
             ),
             "Abstraction indexing not working"
         );
@@ -522,20 +779,26 @@ mod unit_tests {
         assert_eq!(
             index_variables(&Abstraction(
                 "a".to_string(),
-                Box::new(Variable("Unit".to_string(), PLACEHOLDER_DBI)),
+                Box::new(Variable(
+                    "Unit".to_string(),
+                    NameKind::Bound(PLACEHOLDER_DBI)
+                )),
                 Box::new(Abstraction(
                     "b".to_string(),
                     Box::new(Sort("TYPE".to_string())),
-                    Box::new(Variable("b".to_string(), PLACEHOLDER_DBI)),
+                    Box::new(Variable(
+                        "b".to_string(),
+                        NameKind::Bound(PLACEHOLDER_DBI)
+                    )),
                 )),
             )),
             Abstraction(
                 "a".to_string(),
-                Box::new(Variable("Unit".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("Unit".to_string(), NameKind::Const())),
                 Box::new(Abstraction(
                     "b".to_string(),
                     Box::new(Sort("TYPE".to_string())),
-                    Box::new(Variable("b".to_string(), 1)),
+                    Box::new(Variable("b".to_string(), NameKind::Bound(0))),
                 )),
             )
         );
@@ -777,6 +1040,151 @@ mod unit_tests {
     // }
 
     // #[test]
+    #[test]
+    fn test_index_variables_binds_match_pattern_arguments() {
+        // match t { o => s(o), s(n) => n }
+        // `o` is a nullary constructor: a bare pattern binds nothing, so both
+        // occurrences stay free. `n` sits in an argument position of `s`, so
+        // it binds over the pattern *and* the branch body.
+        let term = Match(
+            Box::new(placeholder("t")),
+            vec![
+                (
+                    placeholder("o"),
+                    Application(
+                        Box::new(placeholder("s")),
+                        Box::new(placeholder("o")),
+                    ),
+                ),
+                (
+                    Application(
+                        Box::new(placeholder("s")),
+                        Box::new(placeholder("n")),
+                    ),
+                    placeholder("n"),
+                ),
+            ],
+        );
+
+        assert_eq!(
+            index_variables(&term),
+            Match(
+                Box::new(free("t")),
+                vec![
+                    (
+                        free("o"),
+                        Application(Box::new(free("s")), Box::new(free("o"))),
+                    ),
+                    (
+                        Application(
+                            Box::new(free("s")),
+                            Box::new(bound("n", 0)),
+                        ),
+                        bound("n", 0),
+                    ),
+                ],
+            ),
+            "match pattern arguments must be indexed as binders of their branch"
+        );
+    }
+
+    #[test]
+    fn test_index_variables_binds_nested_match_pattern_arguments() {
+        // match t { cons(h, cons(h2, ll)) => h }
+        // three binders, depth-first left-to-right: h is outermost so it gets
+        // the highest index, ll is innermost so it gets 0.
+        let pattern = Application(
+            Box::new(Application(
+                Box::new(placeholder("cons")),
+                Box::new(placeholder("h")),
+            )),
+            Box::new(Application(
+                Box::new(Application(
+                    Box::new(placeholder("cons")),
+                    Box::new(placeholder("h2")),
+                )),
+                Box::new(placeholder("ll")),
+            )),
+        );
+        let term = Match(
+            Box::new(placeholder("t")),
+            vec![(pattern, placeholder("h"))],
+        );
+
+        assert_eq!(
+            index_variables(&term),
+            Match(
+                Box::new(free("t")),
+                vec![(
+                    Application(
+                        Box::new(Application(
+                            Box::new(free("cons")),
+                            Box::new(bound("h", 2)),
+                        )),
+                        Box::new(Application(
+                            Box::new(Application(
+                                Box::new(free("cons")),
+                                Box::new(bound("h2", 1)),
+                            )),
+                            Box::new(bound("ll", 0)),
+                        )),
+                    ),
+                    bound("h", 2),
+                )],
+            ),
+            "nested pattern arguments must all bind, outermost getting the highest index"
+        );
+    }
+
+    #[test]
+    fn test_index_variables_match_binders_shadow_and_stack_on_outer_scope() {
+        // \T. \l. match l { cons(T, h, ll) => T }
+        // the pattern rebinds `T`, shadowing the abstraction's own `T`, and
+        // references from the branch body must count the pattern's binders.
+        let pattern = Application(
+            Box::new(Application(
+                Box::new(Application(
+                    Box::new(placeholder("cons")),
+                    Box::new(placeholder("T")),
+                )),
+                Box::new(placeholder("h")),
+            )),
+            Box::new(placeholder("ll")),
+        );
+        let term = Abstraction(
+            "T".to_string(),
+            Box::new(Sort("TYPE".to_string())),
+            Box::new(Abstraction(
+                "l".to_string(),
+                Box::new(placeholder("T")),
+                Box::new(Match(
+                    Box::new(placeholder("l")),
+                    vec![(pattern, placeholder("T"))],
+                )),
+            )),
+        );
+
+        let indexed = index_variables(&term);
+        let branch_body = match &indexed {
+            Abstraction(_, _, outer_body) => match &**outer_body {
+                Abstraction(_, _, inner_body) => match &**inner_body {
+                    Match(_, branches) => branches[0].1.clone(),
+                    other => panic!("expected a Match, got {:?}", other),
+                },
+                other => panic!("expected an Abstraction, got {:?}", other),
+            },
+            other => panic!("expected an Abstraction, got {:?}", other),
+        };
+
+        // scope is [T, l, T, h, ll]: the pattern's own `T` shadows the
+        // abstraction's, so the body resolves to it at distance 2
+        assert_eq!(
+            branch_body,
+            bound("T", 2),
+            "a pattern binder must shadow an outer binder of the same name"
+        );
+    }
+
     // fn test_index_variables() {
     //     // Test index variables function
     //     let var = Variable("x".to_string(), 0);

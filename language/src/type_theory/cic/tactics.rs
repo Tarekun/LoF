@@ -137,7 +137,7 @@ mod unit_tests {
                     CicTerm::{
                         Abstraction, Application, Meta, Product, Sort, Variable,
                     },
-                    GLOBAL_INDEX,
+                    NameKind,
                 },
                 tactics::{
                     type_check_exact, type_check_intro, type_check_tactic,
@@ -149,7 +149,7 @@ mod unit_tests {
 
     #[test]
     fn test_intro() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
 
         assert_eq!(
@@ -234,14 +234,14 @@ mod unit_tests {
 
     #[test]
     fn test_intro_exposes_variable_to_environment_and_reindexes_codomain() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
 
         let target = Product(
             "n".to_string(),
             Box::new(nat.clone()),
-            Box::new(Variable("n".to_string(), 0)),
+            Box::new(Variable("n".to_string(), NameKind::Bound(0))),
         );
 
         let (_, subgoals) = type_check_intro(
@@ -260,21 +260,21 @@ mod unit_tests {
         );
         assert_eq!(
             subgoals,
-            vec![Variable("n".to_string(), GLOBAL_INDEX)],
+            vec![Variable("n".to_string(), NameKind::Const())],
             "intro doesnt mark introduced name as a constant"
         );
     }
 
     #[test]
     fn test_exact() {
-        let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-        let boolean = Variable("Bool".to_string(), GLOBAL_INDEX);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let boolean = Variable("Bool".to_string(), NameKind::Const());
         let mut test_env = Cic::default_environment();
         test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
         test_env.add_to_context("Bool", &Sort("TYPE".to_string()));
         test_env.add_to_context("n", &nat);
 
-        let proof_term = Variable("n".to_string(), GLOBAL_INDEX);
+        let proof_term = Variable("n".to_string(), NameKind::Const());
         assert_eq!(
             type_check_exact(
                 &mut test_env,
@@ -300,9 +300,9 @@ mod unit_tests {
     #[test]
     fn test_apply() {
         let mut test_env = Cic::default_environment();
-        let premise1 = Variable("Premise1".to_string(), GLOBAL_INDEX);
-        let premise2 = Variable("Premise2".to_string(), GLOBAL_INDEX);
-        let conclusion = Variable("Conclusion".to_string(), GLOBAL_INDEX);
+        let premise1 = Variable("Premise1".to_string(), NameKind::Const());
+        let premise2 = Variable("Premise2".to_string(), NameKind::Const());
+        let conclusion = Variable("Conclusion".to_string(), NameKind::Const());
         test_env.add_to_context("Premise1", &Sort("PROP".to_string()));
         test_env.add_to_context("Premise2", &Sort("PROP".to_string()));
         test_env.add_to_context("Conclusion", &Sort("PROP".to_string()));
@@ -313,7 +313,8 @@ mod unit_tests {
             Box::new(conclusion.clone()),
         );
         test_env.add_to_context("simple_lemma", &simple_implication);
-        let simple_lemma = Variable("simple_lemma".to_string(), GLOBAL_INDEX);
+        let simple_lemma =
+            Variable("simple_lemma".to_string(), NameKind::Const());
         let hole = Cic::proof_hole();
 
         let (proof, subgoals) = Cic::type_check_tactic(
@@ -340,7 +341,8 @@ mod unit_tests {
             )),
         );
         test_env.add_to_context("double_lemma", &double_implication);
-        let double_lemma = Variable("double_lemma".to_string(), GLOBAL_INDEX);
+        let double_lemma =
+            Variable("double_lemma".to_string(), NameKind::Const());
         let (_, subgoals) = Cic::type_check_tactic(
             &mut test_env,
             &Apply(double_lemma),

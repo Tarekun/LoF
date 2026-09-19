@@ -336,7 +336,7 @@ mod unit_tests {
         cic::cic::{
             Cic,
             CicTerm::{self, Sort, Variable},
-            GLOBAL_INDEX,
+            NameKind,
         },
         environment::Environment,
         interface::TypeTheory,
@@ -409,14 +409,17 @@ mod unit_tests {
             "Environment signals unbound variable as bound"
         );
 
-        test_env.add_to_context("a", &Variable("a".to_string(), GLOBAL_INDEX));
+        test_env
+            .add_to_context("a", &Variable("a".to_string(), NameKind::Const()));
         assert!(
             test_env.is_var_bound("a"),
             "Environment signals bound variable as unbound"
         );
 
-        test_env
-            .add_substitution("b", &Variable("a".to_string(), GLOBAL_INDEX));
+        test_env.add_substitution(
+            "b",
+            &Variable("a".to_string(), NameKind::Const()),
+        );
         assert!(
             test_env.is_var_bound("b"),
             "Environment signals bound variable as unbound if it was introduced as a substitution"
@@ -473,7 +476,8 @@ mod unit_tests {
     fn test_with_local_substitution() {
         let mut test_env = Cic::default_environment();
         let var_name = "local_var";
-        let substitution_term = Variable(var_name.to_string(), GLOBAL_INDEX);
+        let substitution_term =
+            Variable(var_name.to_string(), NameKind::Const());
 
         test_env.with_local_substitution(
             var_name,
@@ -500,12 +504,12 @@ mod unit_tests {
         let var_names_and_terms = vec![
             (
                 "var1".to_string(),
-                Variable("term1".to_string(), GLOBAL_INDEX),
+                Variable("term1".to_string(), NameKind::Const()),
                 None,
             ),
             (
                 "var2".to_string(),
-                Variable("term2".to_string(), GLOBAL_INDEX),
+                Variable("term2".to_string(), NameKind::Const()),
                 None,
             ),
         ];
@@ -532,8 +536,8 @@ mod unit_tests {
     fn test_active_context_reading() {
         let mut test_env: Environment<Cic> =
             Environment::with_defaults(vec![], vec![], vec![]);
-        let nat = CicTerm::Variable("Nat".to_string(), GLOBAL_INDEX);
-        let boolean = CicTerm::Variable("Bool".to_string(), GLOBAL_INDEX);
+        let nat = CicTerm::Variable("Nat".to_string(), NameKind::Const());
+        let boolean = CicTerm::Variable("Bool".to_string(), NameKind::Const());
 
         test_env.add_to_context("x", &nat);
         test_env.add_to_context("y", &boolean);

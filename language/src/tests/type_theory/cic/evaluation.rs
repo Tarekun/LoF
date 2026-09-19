@@ -2,14 +2,11 @@ use crate::type_theory::{
     cic::{
         cic::{
             Cic,
-            CicTerm::{
-                Abstraction, Application, Let, Product, Sort, Variable,
-            },
-            GLOBAL_INDEX,
+            CicTerm::{Abstraction, Application, Let, Product, Sort, Variable},
+            NameKind,
         },
         evaluation::{
-            matches_pattern, one_step_reduction, reduce_match,
-            reduce_variable,
+            matches_pattern, one_step_reduction, reduce_match, reduce_variable,
         },
     },
     interface::TypeTheory,
@@ -17,8 +14,8 @@ use crate::type_theory::{
 
 #[test]
 fn test_check_pattern_matching() {
-    let zero = Variable("z".to_string(), GLOBAL_INDEX);
-    let succ = Variable("s".to_string(), GLOBAL_INDEX);
+    let zero = Variable("z".to_string(), NameKind::Const());
+    let succ = Variable("s".to_string(), NameKind::Const());
 
     assert!(
         matches_pattern(&zero, &zero),
@@ -33,7 +30,10 @@ fn test_check_pattern_matching() {
             &Application(Box::new(succ.clone()), Box::new(zero.clone())),
             &Application(
                 Box::new(succ.clone()),
-                Box::new(Variable("renamed_argument".to_string(), 0)),
+                Box::new(Variable(
+                    "renamed_argument".to_string(),
+                    NameKind::Bound(0)
+                )),
             )
         ),
         "Pattern matching refutes application with renamed argument"
@@ -42,13 +42,13 @@ fn test_check_pattern_matching() {
         !matches_pattern(
             &Application(
                 Box::new(Application(
-                    Box::new(Variable("cons".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("cons".to_string(), NameKind::Const())),
                     Box::new(zero.clone()),
                 )),
-                Box::new(Variable("l".to_string(), GLOBAL_INDEX))
+                Box::new(Variable("l".to_string(), NameKind::Const()))
             ),
             &Application(
-                Box::new(Variable("cons".to_string(), GLOBAL_INDEX)),
+                Box::new(Variable("cons".to_string(), NameKind::Const())),
                 Box::new(zero),
             )
         ),
@@ -61,7 +61,7 @@ fn test_var_reduction() {
     let mut test_env = Cic::default_environment();
     test_env.add_substitution_with_type(
         "test",
-        &Variable("Unit".to_string(), GLOBAL_INDEX),
+        &Variable("Unit".to_string(), NameKind::Const()),
         &Sort("TYPE".to_string()),
     );
 
@@ -69,37 +69,33 @@ fn test_var_reduction() {
         reduce_variable(
             &test_env,
             "constant",
-            &Variable("constant".to_string(), GLOBAL_INDEX),
+            &Variable("constant".to_string(), NameKind::Const()),
         ),
-        Variable("constant".to_string(), GLOBAL_INDEX),
+        Variable("constant".to_string(), NameKind::Const()),
         "Constant δ-reduces to something other than itself"
     );
     assert_eq!(
         reduce_variable(
             &test_env,
             "test",
-            &Variable("test".to_string(), 0)
+            &Variable("test".to_string(), NameKind::Bound(0))
         ),
-        Variable("Unit".to_string(), GLOBAL_INDEX),
+        Variable("Unit".to_string(), NameKind::Const()),
         "Defined variable doesnt δ-reduce to its body"
     );
 }
 
 #[test]
 fn test_app_reduction() {
-    let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-    let succ = Variable("s".to_string(), GLOBAL_INDEX);
-    let zero = Variable("z".to_string(), GLOBAL_INDEX);
+    let nat = Variable("Nat".to_string(), NameKind::Const());
+    let succ = Variable("s".to_string(), NameKind::Const());
+    let zero = Variable("z".to_string(), NameKind::Const());
     let mut test_env = Cic::default_environment();
     test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
     test_env.add_to_context("z", &nat);
     test_env.add_to_context(
         "s",
-        &Product(
-            "".to_string(),
-            Box::new(nat.clone()),
-            Box::new(nat.clone()),
-        ),
+        &Product("".to_string(), Box::new(nat.clone()), Box::new(nat.clone())),
     );
     test_env.add_substitution_with_type(
         "add_one",
@@ -108,7 +104,7 @@ fn test_app_reduction() {
             Box::new(nat.clone()),
             Box::new(Application(
                 Box::new(succ.clone()),
-                Box::new(Variable("n".to_string(), 0)),
+                Box::new(Variable("n".to_string(), NameKind::Bound(0))),
             )),
         ),
         &Product(
@@ -130,13 +126,13 @@ fn test_app_reduction() {
         one_step_reduction(
             &mut test_env,
             &Application(
-                Box::new(Variable("add_one".to_string(), GLOBAL_INDEX)),
-                Box::new(Variable("arg".to_string(), GLOBAL_INDEX))
+                Box::new(Variable("add_one".to_string(), NameKind::Const())),
+                Box::new(Variable("arg".to_string(), NameKind::Const()))
             )
         ),
         Application(
             Box::new(succ.clone()),
-            Box::new(Variable("arg".to_string(), GLOBAL_INDEX)),
+            Box::new(Variable("arg".to_string(), NameKind::Const())),
         ),
         "Function application doesnt reduce to the function body with substituted variable"
     );
@@ -145,7 +141,7 @@ fn test_app_reduction() {
 #[test]
 fn test_let_reduction() {
     let mut test_env = Cic::default_environment();
-    let zero = Variable("z".to_string(), GLOBAL_INDEX);
+    let zero = Variable("z".to_string(), NameKind::Const());
     test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
 
     assert_eq!(
@@ -155,7 +151,7 @@ fn test_let_reduction() {
                 "n".to_string(),
                 Box::new(None),
                 Box::new(zero.clone()),
-                Box::new(Variable("n".to_string(), 0)),
+                Box::new(Variable("n".to_string(), NameKind::Bound(0))),
             ),
         ),
         zero.to_owned(),
@@ -165,16 +161,16 @@ fn test_let_reduction() {
 
 #[test]
 fn test_match_reduction() {
-    let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-    let succ = Variable("s".to_string(), GLOBAL_INDEX);
+    let nat = Variable("Nat".to_string(), NameKind::Const());
+    let succ = Variable("s".to_string(), NameKind::Const());
     let mut test_env = Cic::default_environment();
-    let zero = Variable("z".to_string(), GLOBAL_INDEX);
+    let zero = Variable("z".to_string(), NameKind::Const());
     let succ_pattern = Application(
         Box::new(succ.clone()),
-        Box::new(Variable("n".to_string(), 0)),
+        Box::new(Variable("n".to_string(), NameKind::Bound(0))),
     );
-    let true_term = Variable("true".to_string(), GLOBAL_INDEX);
-    let false_term = Variable("false".to_string(), GLOBAL_INDEX);
+    let true_term = Variable("true".to_string(), NameKind::Const());
+    let false_term = Variable("false".to_string(), NameKind::Const());
 
     test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
     test_env.add_to_context("z", &nat.clone());
@@ -203,7 +199,7 @@ fn test_match_reduction() {
     assert_eq!(
         reduce_match(
             &mut test_env,
-            &Variable("x".to_string(), 0),
+            &Variable("x".to_string(), NameKind::Bound(0)),
             &vec![
                 (zero.clone(), true_term.clone()),
                 (succ_pattern.clone(), false_term.clone())
@@ -217,7 +213,7 @@ fn test_match_reduction() {
             &mut test_env,
             &Application(
                 Box::new(succ),
-                Box::new(Variable("z".to_string(), GLOBAL_INDEX))
+                Box::new(Variable("z".to_string(), NameKind::Const()))
             ),
             &vec![
                 (zero.clone(), true_term.clone()),
@@ -231,16 +227,17 @@ fn test_match_reduction() {
 
 #[test]
 fn test_match_reduction_binds_pattern_variables() {
-    let nat = Variable("Nat".to_string(), GLOBAL_INDEX);
-    let succ = Variable("s".to_string(), GLOBAL_INDEX);
-    let zero = Variable("z".to_string(), GLOBAL_INDEX);
+    let nat = Variable("Nat".to_string(), NameKind::Const());
+    let succ = Variable("s".to_string(), NameKind::Const());
+    let zero = Variable("z".to_string(), NameKind::Const());
     let mut test_env = Cic::default_environment();
     // pattern `s(n)` whose body just returns the bound variable `n`
     let succ_pattern = Application(
         Box::new(succ.clone()),
-        Box::new(Variable("n".to_string(), GLOBAL_INDEX)),
+        Box::new(Variable("n".to_string(), NameKind::Bound(0))),
     );
-    let body_returning_bound_var = Variable("n".to_string(), GLOBAL_INDEX);
+    let body_returning_bound_var =
+        Variable("n".to_string(), NameKind::Bound(0));
 
     test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
     test_env.add_to_context("z", &nat.clone());

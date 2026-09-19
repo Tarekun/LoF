@@ -4,7 +4,7 @@ use super::cic::{Cic, CicStm, CicTerm};
 use super::cic_utils::make_multiarg_fun_type;
 use crate::error::LofError;
 use crate::type_theory::cic::cic_utils::{
-    application_args, get_applied_function, substitute,
+    application_args, get_applied_function, index_variables, substitute,
 };
 use crate::type_theory::cic::type_check::inductive_eliminator;
 use crate::type_theory::commons::evaluation::{
@@ -127,11 +127,13 @@ pub fn evaluate_inductive(
     constructors: &Vec<(String, CicTerm)>,
 ) -> Result<(), LofError> {
     let ind_type = make_multiarg_fun_type(params, ariety);
+    let ind_type = index_variables(&ind_type);
     environment.add_to_context(name, &ind_type);
 
     let mut constr_set = vec![];
     for (constr_name, constr_type) in constructors {
         let constr_type = make_multiarg_fun_type(&params, constr_type);
+        let constr_type = index_variables(&constr_type);
         environment.add_to_context(constr_name, &constr_type);
         constr_set.push((constr_name.to_string(), constr_type));
     }

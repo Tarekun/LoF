@@ -8,7 +8,8 @@ use crate::parser::api::{Expression, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::CicTerm::{Application, Product};
 use crate::type_theory::cic::cic_utils::{
-    make_multiarg_fun_type, substitute, substitute_meta,
+    close_term, make_multiarg_fun_type, open_term, substitute_and_lift,
+    substitute_meta,
 };
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
@@ -21,9 +22,10 @@ use crate::type_theory::cic::unification::{
 };
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    i_type_check_abstraction, i_type_check_application, type_check_axiom,
-    type_check_fo_universal, type_check_function, type_check_global,
-    type_check_let, type_check_variable, u_type_check_theorem,
+    i_type_check_abstraction, i_type_check_application,
+    i_type_check_fo_universal, i_type_check_function, i_type_check_let,
+    type_check_axiom, type_check_global, type_check_variable,
+    u_type_check_theorem,
 };
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::Environment;
@@ -37,11 +39,27 @@ pub static GLOBAL_INDEX: i32 = -1;
 pub static PLACEHOLDER_DBI: i32 = -2;
 
 #[derive(PartialEq, Clone)]
+pub enum NameKind {
+    /// De Bruijn index
+    Bound(i32),
+    /// locally free name from a binder descended under,
+    /// whose type is in the context
+    // TODO: keyed by name only, not a fresh atom id. Two different binders
+    // opened under the same name (e.g. a function parameter and a pattern
+    // variable that happen to share a name) collapse onto the same `Local`
+    // and become indistinguishable to `structurally_equal`/the context.
+    // Should carry a generated atom id instead (registered in the context,
+    // stripped again for display) to make each `open` truly fresh.
+    Local(),
+    /// global irreducable constant
+    Const(),
+}
+#[derive(PartialEq, Clone)]
 pub enum CicTerm {
     /// (sort name)
     Sort(String),
-    /// (var name, De Bruijn index)
-    Variable(String, i32),
+    /// (var name, name kind)
+    Variable(String, NameKind),
     /// (var name, var type, body)
     Abstraction(String, Box<CicTerm>, Box<CicTerm>), //add bodytype?
     /// (var name, var type, body)
@@ -150,7 +168,7 @@ impl Kernel for Cic {
                 )
             }
             CicTerm::Product(var_name, var_type, body) => {
-                type_check_fo_universal::<Cic>(
+                i_type_check_fo_universal::<Cic>(
                     environment,
                     var_name,
                     var_type,
@@ -178,7 +196,7 @@ impl Kernel for Cic {
                 type_check_match(environment, matched_term, branches)
             }
             CicTerm::Let(var_name, var_type, body, scope) => {
-                type_check_let(environment, var_name, var_type, body, scope)
+                i_type_check_let(environment, var_name, var_type, body, scope)
             }
             CicTerm::Meta(index) => {
                 //TODO handle this properly
@@ -232,7 +250,7 @@ impl Kernel for Cic {
                 )
             }
             CicStm::Fun(fun_name, args, out_type, body, is_rec) => {
-                type_check_function::<Cic, _, _>(
+                i_type_check_function::<Cic, _, _>(
                     environment,
                     fun_name,
                     args,
@@ -348,11 +366,24 @@ impl Refiner for Cic {
         )?;
         Ok(())
     }
+
+    fn term_open(term: &CicTerm, name: &str) -> CicTerm {
+        open_term(term, name)
+    }
+    fn term_close(term: &CicTerm, name: &str) -> CicTerm {
+        close_term(term, name)
+    }
+    fn type_open(typee: &CicTerm, name: &str) -> CicTerm {
+        open_term(typee, name)
+    }
+    fn type_close(typee: &CicTerm, name: &str) -> CicTerm {
+        close_term(typee, name)
+    }
 }
 
 impl Reducer for Cic {
     fn substitute(term: &CicTerm, var_name: &str, body: &CicTerm) -> CicTerm {
-        substitute(term, var_name, body)
+        substitute_and_lift(term, var_name, body)
     }
 
     fn normalize_expression(
