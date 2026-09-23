@@ -624,6 +624,13 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
         &Variable(var_name.to_string(), NameKind::Const()),
     )
 }
+
+/// Given an inductive type (family) name, return the name
+/// of the respective eliminator
+// pub fn eliminator_name_from_type(type_name: &str) -> String {
+//     format!("e_{}", name)
+// }
+// pub fn type_name_from_eliminator(elim)
 //########################### UNIT TESTS
 #[cfg(test)]
 mod unit_tests {

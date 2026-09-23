@@ -3,7 +3,7 @@ use crate::type_theory::{
         cic::{
             Cic,
             CicTerm::{Abstraction, Application, Let, Product, Sort, Variable},
-            NameKind,
+            NameKind, FIRST_INDEX,
         },
         evaluation::{
             matches_pattern, one_step_reduction, reduce_match, reduce_variable,
@@ -262,4 +262,152 @@ fn test_match_reduction_binds_pattern_variables() {
         zero,
         "Match reduction doesnt substitute the constructor argument for the pattern's bound variable in the branch body"
     );
+}
+
+/// An inductive's auto-generated eliminator must actually *compute* when
+/// applied to a concrete constructor, not just type check: without that,
+/// anything defined through an eliminator has no definitional behaviour and
+/// even a ground equation becomes unprovable by reflexivity.
+mod eliminator_iota_reduction {
+    use super::*;
+    use crate::type_theory::cic::cic::CicTerm;
+    use crate::type_theory::environment::Environment;
+
+    /// `Nat`, its constructors and `e_Nat` - registered the way
+    /// `evaluate_inductive` registers a real inductive definition.
+    fn nat_environment() -> Environment<Cic> {
+        let mut env = Cic::default_environment();
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        env.add_to_context("Nat", &Sort("TYPE".to_string()));
+        env.add_to_context("z", &nat);
+        env.add_to_context(
+            "s",
+            &Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone()),
+            ),
+        );
+        env.add_to_inductive_store(
+            "Nat",
+            vec![
+                ("z".to_string(), nat.clone()),
+                (
+                    "s".to_string(),
+                    Product(
+                        "_".to_string(),
+                        Box::new(nat.clone()),
+                        Box::new(nat.clone()),
+                    ),
+                ),
+            ],
+            0,
+        );
+        env
+    }
+
+    fn apply(function: CicTerm, arguments: Vec<CicTerm>) -> CicTerm {
+        arguments.into_iter().fold(function, |acc, argument| {
+            Application(Box::new(acc), Box::new(argument))
+        })
+    }
+
+    #[test]
+    fn test_eliminator_reduces_to_the_base_case_on_zero() {
+        let env = nat_environment();
+        let motive = Variable("C".to_string(), NameKind::Const());
+        let base = Variable("base".to_string(), NameKind::Const());
+        let step = Variable("step".to_string(), NameKind::Const());
+
+        let term = apply(
+            Variable("e_Nat".to_string(), NameKind::Const()),
+            vec![
+                motive,
+                base.clone(),
+                step,
+                Variable("z".to_string(), NameKind::Const()),
+            ],
+        );
+
+        assert_eq!(
+            one_step_reduction(&env, &term),
+            base,
+            "e_Nat applied to `z` must ι-reduce to its base case"
+        );
+    }
+
+    #[test]
+    fn test_eliminator_reduces_to_the_step_case_with_an_induction_hypothesis() {
+        let env = nat_environment();
+        let motive = Variable("C".to_string(), NameKind::Const());
+        let base = Variable("base".to_string(), NameKind::Const());
+        let step = Variable("step".to_string(), NameKind::Const());
+        let zero = Variable("z".to_string(), NameKind::Const());
+        let one = Application(
+            Box::new(Variable("s".to_string(), NameKind::Const())),
+            Box::new(zero.clone()),
+        );
+
+        let term = apply(
+            Variable("e_Nat".to_string(), NameKind::Const()),
+            vec![motive.clone(), base.clone(), step.clone(), one],
+        );
+
+        // step applied to the predecessor and to the eliminator re-applied
+        // to that predecessor (the induction hypothesis)
+        let expected = apply(
+            step.clone(),
+            vec![
+                zero.clone(),
+                apply(
+                    Variable("e_Nat".to_string(), NameKind::Const()),
+                    vec![motive, base, step, zero],
+                ),
+            ],
+        );
+
+        assert_eq!(
+            one_step_reduction(&env, &term),
+            expected,
+            "e_Nat applied to `s(z)` must ι-reduce to the step case, with the eliminator re-applied to `z` as the induction hypothesis"
+        );
+    }
+
+    #[test]
+    fn test_eliminator_is_stuck_on_an_opaque_scrutinee() {
+        let env = nat_environment();
+        let term = apply(
+            Variable("e_Nat".to_string(), NameKind::Const()),
+            vec![
+                Variable("C".to_string(), NameKind::Const()),
+                Variable("base".to_string(), NameKind::Const()),
+                Variable("step".to_string(), NameKind::Const()),
+                // an open variable, not a constructor application: what
+                // an inductive proof's step case actually has in hand
+                Variable("n".to_string(), NameKind::Local()),
+            ],
+        );
+
+        assert_eq!(
+            one_step_reduction(&env, &term),
+            term,
+            "an eliminator whose scrutinee isn't constructor-headed must stay stuck rather than picking a branch"
+        );
+
+        let under_binder = apply(
+            Variable("e_Nat".to_string(), NameKind::Const()),
+            vec![
+                Variable("C".to_string(), NameKind::Const()),
+                Variable("base".to_string(), NameKind::Const()),
+                Variable("step".to_string(), NameKind::Const()),
+                Variable("n".to_string(), NameKind::Bound(FIRST_INDEX)),
+            ],
+        );
+
+        assert_eq!(
+            one_step_reduction(&env, &under_binder),
+            under_binder,
+            "a still-bound scrutinee must stay stuck too: only a `Const`-headed constructor application is a redex"
+        );
+    }
 }
