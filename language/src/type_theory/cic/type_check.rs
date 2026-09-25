@@ -405,11 +405,46 @@ pub fn inductive_eliminator(
             .map(|(var_name, _)| Variable(var_name.to_owned(), NameKind::Bound(PLACEHOLDER_DBI)))
             .collect()
     }
+    /// The name each binder of a Pi-chain gets in the generated
+    /// eliminator: its own, unless it is anonymous.
+    ///
+    /// `index_variables` resolves the eliminator's references by name at
+    /// the end, and it deliberately refuses to bind `_`. So an anonymous
+    /// binder needs a generated name (an index family's `Nat -> TYPE`
+    /// ariety would otherwise leave `Vec(T, _)` pointing at nothing), and
+    /// a named one must keep its own - renaming `vcons`' `n` to `nr_0`
+    /// while its later argument types still say `n` would strand those
+    /// references just the same.
+    fn binder_names(fun_type: &CicTerm, prefix: &str) -> Vec<String> {
+        let mut names = vec![];
+        let mut remaining = fun_type;
+        while let Product(binder, _, codomain) = remaining {
+            let index = names.len();
+            names.push(if binder == "_" {
+                format!("{}_{}", prefix, index)
+            } else {
+                binder.to_owned()
+            });
+            remaining = codomain;
+        }
+
+        names
+    }
+    /// `fun_type`'s leading Pi-chain, rebuilt with `names` as its binders
+    fn rename_binders(fun_type: &CicTerm, names: &[String]) -> CicTerm {
+        match (fun_type, names.split_first()) {
+            (Product(_, domain, codomain), Some((name, rest))) => Product(
+                name.to_owned(),
+                domain.to_owned(),
+                Box::new(rename_binders(codomain, rest)),
+            ),
+            _ => fun_type.to_owned(),
+        }
+    }
     /// Creation of the first parameters ( a :: α\[A\] )
     fn make_right_param_vars(ariety: &CicTerm) -> Vec<CicTerm> {
-        // TODO might need to rename right_params, i think they're all anonymous
-        let right_params: Vec<CicTerm> = get_variables_as_terms(ariety);
-        right_params
+        let named = rename_binders(ariety, &binder_names(ariety, "rp"));
+        get_variables_as_terms(&named)
     }
     /// Creation of the full inductive type (P A a) instanciated
     fn make_instance_type(
@@ -434,8 +469,10 @@ pub fn inductive_eliminator(
         let instance_type =
             make_instance_type(type_name, left_param_vars, right_params);
 
+        // the motive quantifies over the same indices the instance type
+        // mentions, so both sides have to spell them the same way
         clone_product_with_different_result(
-            &ariety,
+            &rename_binders(ariety, &binder_names(ariety, "rp")),
             Product(
                 "instance".to_string(),
                 Box::new(instance_type),
@@ -455,24 +492,24 @@ pub fn inductive_eliminator(
         type_name: String,
     ) -> Vec<CicTerm> {
         fn split_recursive_arguments(
-            arg_types: Vec<CicTerm>,
+            arg_types: Vec<(String, CicTerm)>,
             type_name: &str,
         ) -> (Vec<(String, CicTerm)>, Vec<(String, CicTerm)>) {
             let mut are_recursive = false;
             let mut recursive = vec![];
             let mut non_recursive = vec![];
 
-            for (index, arg_type) in arg_types.into_iter().enumerate() {
+            for (arg_name, arg_type) in arg_types {
                 //TODO: switch to reference check instead of instance
                 if is_instance_of(&arg_type, type_name) {
                     are_recursive = true;
-                    recursive.push(((format!("r_{}", index)), arg_type));
+                    recursive.push((arg_name, arg_type));
                 } else if are_recursive {
                     // TODO this could be an error case, should cover it?
                     error!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
                     error!("THE UNEXPECTED ERROR HAPPEND");
                 } else {
-                    non_recursive.push(((format!("nr_{}", index)), arg_type));
+                    non_recursive.push((arg_name, arg_type));
                 }
             }
 
@@ -510,8 +547,13 @@ pub fn inductive_eliminator(
             right_params.drain(0..left_params_len); // da crab a drainer frfr
             let result_with_rights = apply_arguments(&result_var, right_params);
 
-            // TODO might need to rename args, i think they're all anonymous
-            let arg_types = get_arg_types(&constr_type);
+            // an argument keeps its declared name where it has one, so a
+            // later argument's type (`Vec(T,n)` in `vcons`) still refers to it
+            let arg_names = binder_names(&constr_type, "a");
+            let arg_types: Vec<(String, CicTerm)> = arg_names
+                .into_iter()
+                .zip(get_arg_types(&constr_type))
+                .collect();
             // in the paper non_recursive are called b and recursive u
             let (non_recursive, recursive) =
                 split_recursive_arguments(arg_types, &type_name);

@@ -1718,10 +1718,10 @@ mod inductive {
                         Box::new(Product(
                             "c_1".to_string(),
                             Box::new(Product(
-                                "nr_0".to_string(),
+                                "elem".to_string(),
                                 Box::new(Variable("T".to_string(), NameKind::Bound(2))),
                                 Box::new(Product(
-                                    "r_1".to_string(),
+                                    "l".to_string(),
                                     Box::new(Application(
                                         Box::new(list.clone()),
                                         Box::new(Variable("T".to_string(), NameKind::Bound(3)))
@@ -1733,7 +1733,7 @@ mod inductive {
                                                 "er_List".to_string(), NameKind::Bound(3)
                                             )),
                                             Box::new(Variable(
-                                                "r_1".to_string(), NameKind::Bound(0)
+                                                "l".to_string(), NameKind::Bound(0)
                                             ))
                                         )),
                                         Box::new(Application(
@@ -1751,11 +1751,11 @@ mod inductive {
                                                         ))
                                                     )),
                                                     Box::new(Variable(
-                                                        "nr_0".to_string(), NameKind::Bound(2)
+                                                        "elem".to_string(), NameKind::Bound(2)
                                                     ))
                                                 )),
                                                 Box::new(Variable(
-                                                    "r_1".to_string(), NameKind::Bound(1)
+                                                    "l".to_string(), NameKind::Bound(1)
                                                 ))
                                             ))
                                         ))
