@@ -1,10 +1,11 @@
 use super::cic::CicTerm::{
     Abstraction, Application, Let, Match, Meta, Proj, Product, Sort, Variable,
 };
-use super::cic::{Cic, CicTerm, GLOBAL_INDEX, PLACEHOLDER_DBI};
+use super::cic::{Cic, CicTerm, NameKind, FIRST_INDEX};
 use super::cic_utils::{
-    apply_arguments, application_args, get_applied_function, get_arg_types,
-    get_prod_innermost, is_instance_of, substitute,
+    apply_arguments, application_args, close_term, get_applied_function,
+    get_prod_innermost, is_instance_of, open_term, pattern_binder_names,
+    substitute,
 };
 use crate::error::LofError;
 use std::collections::HashMap;
@@ -71,10 +72,10 @@ fn transport_term_inner(
 
         Variable(name, dbi) => {
             if name == &config.type_a {
-                Ok(Variable(config.type_b.clone(), *dbi))
+                Ok(Variable(config.type_b.clone(), dbi.clone()))
             } else if let Some(new_name) = config.lifted_names.get(name) {
-                Ok(Variable(new_name.clone(), *dbi))
-            } else if *dbi == GLOBAL_INDEX
+                Ok(Variable(new_name.clone(), dbi.clone()))
+            } else if matches!(dbi, NameKind::Const())
                 && is_constructor_of(environment, &config.type_a, name)
             {
                 dep_constr_of(config, name)
@@ -152,7 +153,7 @@ fn transport_term_inner(
                 .collect::<Result<Vec<_>, _>>()?;
 
             match &head {
-                Variable(name, dbi) if *dbi == GLOBAL_INDEX => {
+                Variable(name, NameKind::Const()) => {
                     if is_constructor_of(environment, &config.type_a, name) {
                         Ok(apply_arguments(
                             &dep_constr_of(config, name)?,
@@ -162,7 +163,10 @@ fn transport_term_inner(
                         config.lifted_names.get(name)
                     {
                         Ok(apply_arguments(
-                            &Variable(new_name.to_owned(), GLOBAL_INDEX),
+                            &Variable(
+                                new_name.to_owned(),
+                                NameKind::Const(),
+                            ),
                             transported_args,
                         ))
                     } else if *name == format!("e_{}", config.type_a) {
@@ -287,7 +291,7 @@ fn repair_minor_premises(
         .get_inductive_param_count(&config.type_a)
         .unwrap_or(0);
     let Some(constructors) =
-        environment.get_inductive_constructors(&config.type_a).cloned()
+        environment.get_constructor_signatures(&config.type_a).cloned()
     else {
         return Ok(transported_args.to_vec());
     };
@@ -375,12 +379,15 @@ fn repair_premise(
         // `dep_elim`'s declaration
         binders
             .push((premise_binder.to_owned(), (**domain).to_owned()));
+        // both sides are opened over the same locally free name, so the
+        // goal and the body talk about this binder in the same vocabulary
+        // while the rewrite below works under it
         let renamed = substitute(
             codomain,
             expected_binder,
-            &Variable(premise_binder.to_owned(), PLACEHOLDER_DBI),
+            &Variable(premise_binder.to_owned(), NameKind::Local()),
         );
-        let next_body = (**premise_body).to_owned();
+        let next_body = open_term(premise_body, premise_binder);
         goal = renamed;
         body = next_body;
     }
@@ -395,8 +402,10 @@ fn repair_premise(
         return Ok(premise.to_owned());
     }
 
+    // rebuilding a binder closes the locally free name it was opened over
     Ok(eta_expand::<Cic, _>(&binders, &repaired_body, |(name, ty), acc| {
-        Abstraction(name, Box::new(ty), Box::new(acc))
+        let closed = close_term(&acc, &name);
+        Abstraction(name, Box::new(ty), Box::new(closed))
     }))
 }
 //
@@ -543,6 +552,75 @@ fn instantiate_iota(
 }
 //
 //
+/// Substitutes every *locally free* occurrence of `name` - a `Const`
+/// (a global) or a `Local` (a binder the caller has descended under and
+/// opened) - with `replacement`. De Bruijn `Bound` references are left
+/// alone: they name a position, not a symbol, so they are never what a
+/// by-name rewrite means.
+///
+/// The kernel's own `substitute` cannot serve here. It is the engine of
+/// β-reduction and so works by index, removing exactly the binder at the
+/// current depth; transport instead needs to rewrite a symbol that no
+/// enclosing binder introduces - unfolding a lifted definition, or fixing
+/// a constructor pattern's parameter slots to their actual values.
+fn substitute_free_name(
+    term: &CicTerm,
+    name: &str,
+    replacement: &CicTerm,
+) -> CicTerm {
+    match term {
+        Variable(var_name, NameKind::Const())
+        | Variable(var_name, NameKind::Local())
+            if var_name == name =>
+        {
+            replacement.to_owned()
+        }
+        Sort(_) | Meta(_) | Variable(_, _) => term.to_owned(),
+        Application(left, right) => Application(
+            Box::new(substitute_free_name(left, name, replacement)),
+            Box::new(substitute_free_name(right, name, replacement)),
+        ),
+        Abstraction(binder, domain, body) => Abstraction(
+            binder.to_owned(),
+            Box::new(substitute_free_name(domain, name, replacement)),
+            Box::new(substitute_free_name(body, name, replacement)),
+        ),
+        Product(binder, domain, codomain) => Product(
+            binder.to_owned(),
+            Box::new(substitute_free_name(domain, name, replacement)),
+            Box::new(substitute_free_name(codomain, name, replacement)),
+        ),
+        Let(binder, var_type, body, scope) => Let(
+            binder.to_owned(),
+            Box::new(
+                (**var_type)
+                    .as_ref()
+                    .map(|t| substitute_free_name(t, name, replacement)),
+            ),
+            Box::new(substitute_free_name(body, name, replacement)),
+            Box::new(substitute_free_name(scope, name, replacement)),
+        ),
+        Proj(type_name, field_index, target) => Proj(
+            type_name.to_owned(),
+            *field_index,
+            Box::new(substitute_free_name(target, name, replacement)),
+        ),
+        Match(scrutinee, branches) => Match(
+            Box::new(substitute_free_name(scrutinee, name, replacement)),
+            branches
+                .iter()
+                .map(|(pattern, body)| {
+                    (
+                        pattern.to_owned(),
+                        substitute_free_name(body, name, replacement),
+                    )
+                })
+                .collect(),
+        ),
+    }
+}
+//
+//
 /// Beta (and let) reduction only - no unfolding of definitions, no
 /// eliminator computation. Used to instantiate a `dep_elim` premise type
 /// (the motive applied to a DepConstr image) without inlining every
@@ -594,7 +672,8 @@ fn unfold_lifted_names(
     let mut unfolded = term.to_owned();
     for lifted in config.lifted_names.values() {
         if let Some((_, definition)) = environment.get_from_deltas(lifted) {
-            unfolded = substitute(&unfolded, lifted, &definition);
+            unfolded =
+                substitute_free_name(&unfolded, lifted, &definition);
         }
     }
 
@@ -632,7 +711,7 @@ pub(crate) fn abstract_convertible_occurrence(
             && &Cic::normalize_term(environment, haystack) == needle
         {
             *found = Some(haystack.to_owned());
-            return Variable(fresh_name.to_string(), PLACEHOLDER_DBI);
+            return Variable(fresh_name.to_string(), NameKind::Local());
         }
 
         match haystack {
@@ -850,41 +929,44 @@ fn build_eq_rewrite(
     payload: &CicTerm,
     proof: &CicTerm,
 ) -> CicTerm {
-    let bound =
-        Variable(abstracted_name.to_string(), PLACEHOLDER_DBI);
+    // Built locally-nameless: the reference to the motive's own binder is
+    // a locally free `Local` name, turned into its De Bruijn index by
+    // `close_term` when that binder is put back in front of the body. The
+    // inner `_rewrite_h`/`_rewrite_x` binders are never referred to, so
+    // they need no closing pass of their own.
+    let bound = Variable(abstracted_name.to_string(), NameKind::Local());
 
+    let motive_body = Abstraction(
+        "_rewrite_h".to_string(),
+        Box::new(apply_arguments(
+            &Variable("Eq".to_string(), NameKind::Const()),
+            vec![equation_type.to_owned(), from.to_owned(), bound],
+        )),
+        Box::new(Product(
+            "_rewrite_x".to_string(),
+            Box::new(abstracted_goal.to_owned()),
+            Box::new(goal.to_owned()),
+        )),
+    );
     let motive = Abstraction(
         abstracted_name.to_string(),
         Box::new(equation_type.to_owned()),
-        Box::new(Abstraction(
-            "_rewrite_h".to_string(),
-            Box::new(apply_arguments(
-                &Variable("Eq".to_string(), GLOBAL_INDEX),
-                vec![
-                    equation_type.to_owned(),
-                    from.to_owned(),
-                    bound,
-                ],
-            )),
-            Box::new(Product(
-                "_rewrite_x".to_string(),
-                Box::new(abstracted_goal.to_owned()),
-                Box::new(goal.to_owned()),
-            )),
-        )),
+        Box::new(close_term(&motive_body, abstracted_name)),
     );
 
     let coercion =
-        apply_arguments(&Variable("e_Eq".to_string(), GLOBAL_INDEX), vec![
+        apply_arguments(&Variable("e_Eq".to_string(), NameKind::Const()), vec![
             equation_type.to_owned(),
             from.to_owned(),
             motive,
+            // λ_rewrite_x:goal. _rewrite_x - the identity, its body being
+            // the binder it sits directly under
             Abstraction(
                 "_rewrite_x".to_string(),
                 Box::new(goal.to_owned()),
                 Box::new(Variable(
                     "_rewrite_x".to_string(),
-                    PLACEHOLDER_DBI,
+                    NameKind::Bound(FIRST_INDEX),
                 )),
             ),
             to.to_owned(),
@@ -1023,7 +1105,7 @@ fn transport_definition_inner(
 
             let final_result_type = get_prod_innermost(new_type).to_owned();
             let constructors = environment
-                .get_inductive_constructors(&config.type_a)
+                .get_constructor_signatures(&config.type_a)
                 .cloned()
                 .ok_or_else(|| {
                     LofError::custom(format!(
@@ -1084,7 +1166,7 @@ fn transport_definition_inner(
             // the motive's domain is the *applied* target type
             // (`PackedVec(Tp)`), not the bare type former
             let motive_domain = apply_arguments(
-                &Variable(config.type_b.clone(), GLOBAL_INDEX),
+                &Variable(config.type_b.clone(), NameKind::Const()),
                 transported_params.clone(),
             );
             let motive = Abstraction(
@@ -1157,7 +1239,7 @@ fn build_minor_premise(
         .iter()
         .find(|(pattern, _)| {
             get_applied_function(pattern)
-                == Variable(ctor_name.to_string(), GLOBAL_INDEX)
+                == Variable(ctor_name.to_string(), NameKind::Const())
         })
         .cloned()
         .ok_or_else(|| {
@@ -1174,9 +1256,20 @@ fn build_minor_premise(
             _ => None,
         })
         .collect();
-    let ctor_arg_types = get_arg_types(ctor_type);
-
-    let mut transported_body = body;
+    // The branch body was elaborated under the telescope its pattern
+    // opens, so its pattern variables are De Bruijn references into that
+    // telescope. The premise being built here has a *different* telescope
+    // (an induction hypothesis is interleaved after each recursive
+    // argument), so those references are opened into locally free names
+    // for the whole rebuild and closed again, in the new order, at the end.
+    let branch_binders = pattern_binder_names(&pattern);
+    let mut transported_body =
+        branch_binders.iter().rev().fold(body, |opened, binder_name| {
+            open_term(&opened, binder_name)
+        });
+    // likewise, each constructor argument's declared type is stated in
+    // terms of the constructor's own earlier binders
+    let ctor_arg_types = opened_arg_types(ctor_type);
 
     // A pattern in this language spells out the type's parameters too
     // (`cons(A, h, ll)`), but the eliminator's case doesn't rebind them -
@@ -1188,7 +1281,7 @@ fn build_minor_premise(
         pattern_arg_names.iter().take(skipped).zip(param_values.iter())
     {
         transported_body =
-            substitute(&transported_body, param_name, param_value);
+            substitute_free_name(&transported_body, param_name, param_value);
     }
     let pattern_arg_names = &pattern_arg_names[skipped..];
     let ctor_arg_types = if ctor_arg_types.len() >= skipped {
@@ -1212,7 +1305,7 @@ fn build_minor_premise(
                 .iter()
                 .zip(param_values.iter())
                 .fold(arg_type.to_owned(), |acc, (param_name, param_value)| {
-                    substitute(&acc, param_name, param_value)
+                    substitute_free_name(&acc, param_name, param_value)
                 })
         })
         .collect();
@@ -1243,8 +1336,26 @@ fn build_minor_premise(
     Ok(eta_expand::<Cic, _>(
         &binders,
         &transported_body,
-        |(name, ty), acc| Abstraction(name, Box::new(ty), Box::new(acc)),
+        |(name, ty), acc| {
+            let closed = close_term(&acc, &name);
+            Abstraction(name, Box::new(ty), Box::new(closed))
+        },
     ))
+}
+
+/// The domains of a function type's leading Pi-chain, each opened over the
+/// binders before it, so a later argument's type refers to an earlier
+/// argument by a locally free name rather than by an index into a
+/// telescope that is about to be rebuilt differently.
+fn opened_arg_types(fun_type: &CicTerm) -> Vec<CicTerm> {
+    let mut domains = vec![];
+    let mut remaining = fun_type.to_owned();
+    while let Product(binder, domain, codomain) = remaining {
+        domains.push(*domain);
+        remaining = open_term(&codomain, &binder);
+    }
+
+    domains
 }
 
 /// Replaces every occurrence of `fun_name(rec_arg_name, ...)` (a
@@ -1268,10 +1379,10 @@ fn replace_self_call(
         let recurses_on_sub_term = args.iter().any(
             |arg| matches!(arg, Variable(n, _) if n == rec_arg_name),
         );
-        if head == Variable(fun_name.to_string(), GLOBAL_INDEX)
+        if head == Variable(fun_name.to_string(), NameKind::Const())
             && recurses_on_sub_term
         {
-            return Variable(ih_name.to_string(), PLACEHOLDER_DBI);
+            return Variable(ih_name.to_string(), NameKind::Local());
         }
     }
 
