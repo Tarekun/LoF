@@ -35,7 +35,7 @@ Maps predicate symbol names to their argument type lists. Used by SUP and FOL to
 
 ### `inductive_store`
 
-Maps an inductive type name to its `(constructor_name, constructor_type)` list **in declaration order**, paired with the type's left-parameter count. Populated once, when the inductive is checked. The order matters beyond `get_constructors_for`'s exhaustiveness use: it's what lets an eliminator application line its per-constructor cases up positionally against the inductive's own constructors (see `get_inductive_constructors`, and [systems/transport.md](systems/transport.md), which relies on that alignment to repair a `dep_elim` application case by case). The param count is what lets a generated eliminator's motive/cases/instance be located by position inside an `e_<Type>` application.
+Maps an inductive type name to its `(constructor_name, constructor_type)` list **in declaration order**, paired with the type's left-parameter count. Populated once, when the inductive is checked. The order matters beyond `get_constructors_for`'s exhaustiveness use: it's what lets an eliminator application line its per-constructor cases up positionally against the inductive's own constructors (see `get_constructor_signatures`, and [systems/transport.md](systems/transport.md), which relies on that alignment to repair a `dep_elim` application case by case). The param count is what lets a generated eliminator's motive/cases/instance be located by position inside an `e_<Type>` application.
 
 ### `equivalences`
 
@@ -73,7 +73,7 @@ env.get_context()                  // flattened snapshot: HashMap<String, T::Typ
 env.get_deltas()                   // flattened snapshot: HashMap<String, T::Term>
 env.get_constants()                // set of all bound names
 env.get_constructors_for(name)     // -> Option<HashSet<String>>, constructor names for an inductive type
-env.get_inductive_constructors(name) // -> Option<&Vec<(String, T::Type)>>, in declaration order
+env.get_constructor_signatures(name) // -> Option<&Vec<(String, T::Type)>>, in declaration order
 env.get_inductive_param_count(name)  // -> Option<usize>, the type's left-parameter count
 env.get_equivalence(name)          // -> Option<&EquivConfig<T>>
 env.get_equivalence_mut(name)      // -> Option<&mut EquivConfig<T>>, for growing `lifted_names`

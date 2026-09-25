@@ -586,8 +586,8 @@ fn elaborate_equivalence(
 
     Ok(CicStm::Equivalence(
         name.to_string(),
-        Box::new(Variable(type_a_name, GLOBAL_INDEX)),
-        Box::new(Variable(type_b_name, GLOBAL_INDEX)),
+        Box::new(Variable(type_a_name, NameKind::Const())),
+        Box::new(Variable(type_b_name, NameKind::Const())),
         Box::new(forward_term),
         Box::new(backward_term),
         Box::new(section_term),

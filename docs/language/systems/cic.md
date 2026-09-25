@@ -9,12 +9,13 @@ CIC is the primary type system. It supports dependent types, inductive type defi
 ```rust
 pub enum CicTerm {
     Sort(String),                                  // TYPE, PROP
-    Variable(String, i32),                         // x, De Bruijn index
+    Variable(String, NameKind),                    // x, bound / locally free / constant
     Abstraction(String, Box<CicTerm>, Box<CicTerm>), // λx:A. b
     Product(String, Box<CicTerm>, Box<CicTerm>),     // Πx:A. B  (∀x:A. B)
     Application(Box<CicTerm>, Box<CicTerm>),          // f a  (binary)
     Match(Box<CicTerm>, Vec<(CicTerm, CicTerm)>),     // match t with …
     Let(String, Box<Option<CicTerm>>, Box<CicTerm>, Box<CicTerm>), // let x := b in s
+    Proj(String, usize, Box<CicTerm>),             // t.i    kernel-only, see η below
     Meta(i32),                                     // ?[n]  metavariable
 }
 ```
@@ -33,7 +34,13 @@ Both are axiomatically given type `TYPE` in the default environment.
 
 ### Variables and De Bruijn Indices
 
-Variables carry both a name (for display) and a De Bruijn index. The index `-1` (`GLOBAL_INDEX`) marks globally defined names. The index `-2` (`PLACEHOLDER_DBI`) is a temporary marker during elaboration. Bound variables use non-negative indices starting at `0` (`FIRST_INDEX`).
+Variables carry a name (for display, and as the key substitution and unification use) plus a `NameKind` saying what that name refers to:
+
+- `Bound(i32)` — a De Bruijn index into the enclosing telescope, counting from `0` (`FIRST_INDEX`) at the nearest binder. This is what makes α-equivalence structural.
+- `Local()` — a locally free name: a binder that has been *opened* (`open_term`/`Refiner::term_open`) because the kernel descended under it and put its type in the context. Carrying no index, it is immune to shifting, which is what lets a sub-term be moved between depths. `close_term`/`Refiner::term_close` turns it back into the right index when the binder is rebuilt.
+- `Const()` — a global, irreducible symbol (a `global`/`fun`/`axiom`/`theorem` name, a constructor, a generated eliminator).
+
+`PLACEHOLDER_DBI` (`-2`) remains as a `Bound` index used while a term is being assembled out of order — notably by `inductive_eliminator` — and is resolved by the `index_variables` pass that runs over the finished term.
 
 ### Metavariables
 
@@ -104,15 +111,16 @@ Standard VAR rule: look up `x` in `Γ`, return its type.
 
 ## Reduction
 
-`one_step_reduction` in `cic/evaluation.rs` dispatches only on `Variable`, `Application`, `Let` and `Match`; every other term (`Sort`, `Product`, `Abstraction`, `Meta`) is returned unchanged, so reduction never descends under an un-applied `Abstraction`/`Product` binder:
+`one_step_reduction` in `cic/evaluation.rs` dispatches on `Variable`, `Application`, `Let`, `Match`, `Proj`, `Product` and `Abstraction`; `Sort` and `Meta` are returned unchanged:
 - **δ-reduction** (`reduce_variable`): a variable with a definition in `deltas` reduces to its body, otherwise it's a constant and is returned as-is.
 - **β-reduction** (`reduce_application`): both the function and the argument are first fully normalized (`Cic::normalize_term`); if the normalized function is an `Abstraction(x, _, body)`, the result is `body[x := normalized_arg]`, otherwise the application is rebuilt from the normalized parts.
 - **let-reduction** (`reduce_let`): the bound term is fully normalized, then substituted for the variable in the scope (`scope[x := normalized_body]`).
-- **match-reduction** (`reduce_match`): the scrutinee is fully normalized and matched structurally, in branch order, against each pattern (`matches_pattern`, which compares the applied head and arity); on the first match every pattern variable is substituted with the corresponding argument taken from the scrutinee (`substitute_pattern_variables`/`substitute_pattern_arg`), recursing so that variables nested inside constructor sub-patterns (e.g. the `nn` in `s(nn)`) are bound too, not just the top-level ones. A scrutinee that normalizes to something not headed by any of the branches' constructors - an open variable, as happens throughout an inductive proof's step case - leaves the `match` as its own normal form rather than being an error.
+- **match-reduction** (`reduce_match`): the scrutinee is reduced one step and matched structurally, in branch order, against each pattern (`matches_pattern`, which compares the applied head and arity); on the first match every pattern variable is substituted with the corresponding argument taken from the scrutinee (`substitute_pattern_variables`/`substitute_pattern_arg`), recursing so that variables nested inside constructor sub-patterns (e.g. the `nn` in `s(nn)`) are bound too, not just the top-level ones. A scrutinee that normalizes to something not headed by any of the branches' constructors - an open variable, as happens throughout an inductive proof's step case - leaves the `match` as its own normal form rather than being an error.
+- **ι-reduction of eliminators** (`try_iota_reduction`): a fully applied `e_<Type>(params.., motive, case_1..case_k, instance)` whose `instance` is a concrete constructor application computes to the matching case, applied to that constructor's own arguments (the leading parameter slots dropped, since the eliminator already fixed them) with an induction hypothesis - the same eliminator re-applied to the sub-term - inserted after each recursive one. Indexed families are handled: a recursive occurrence's hypothesis is rebuilt with that occurrence's *own* indices, read off its declared type after substituting the constructor's earlier arguments, so `vcons`'s recursive `Vec(T,n)` argument yields `n` rather than the outer `s(n)`.
+- **η-conversion for single-constructor inductives** (`eta_eligible_constructor`/`eta_expand_target`): when a `match`'s scrutinee or an eliminator's instance is *not* constructor-headed, and its type has exactly one constructor, no indices and no recursive argument, that opaque value is expanded into `C(params.., t.0, .., t.k-1)` and the rule proceeds. The fields are `Proj` nodes. Eligibility is not mere conservatism: the no-indices condition is what keeps `Eq` out, since η for it would say every proof of `Eq(T,x,y)` *is* `refl`, ie hand out UIP/axiom K for free, and the no-recursion condition is what makes the rule terminate.
+- **ι-reduction of projections** (`reduce_proj`): `C(params.., a_0..a_k).i` computes to `a_i`. On an opaque target - the case `Proj` exists for - the projection is its own normal form. It deliberately does not η-expand its own target, which is what stops the expansion from re-triggering on its own output forever; `generic_term_normalization` has no fuel, so such a rule would hang rather than fail.
 
-- **ι-reduction of eliminators** (`try_reduce_eliminator_application`): a fully applied `e_<Type>(params.., motive, case_1..case_k, indices.., instance)` whose `instance` is a concrete constructor application computes to the matching case, applied to that constructor's arguments with an induction hypothesis (the same eliminator re-applied to the sub-term) inserted after each recursive one. Indexed families are handled: the index count is recovered from the application's arity, and a recursive occurrence's hypothesis is rebuilt with that occurrence's own indices. A scrutinee that isn't constructor-headed leaves the application stuck, which is the normal situation inside an inductive proof's step case.
-
-Reduction also descends into `Product`/`Abstraction` domains and bodies, one step at a time, so a redex embedded under a binder - eg a motive applied to a bound variable, exactly what an eliminator's generated types produce - is reduced too. Without that, two Pi-types equal only up to an under-binder redex are never recognized as such, since unification normalizes both sides before comparing.
+Reduction also descends into `Product`/`Abstraction` domains and bodies, one step at a time, so a redex embedded under a binder - eg a motive applied to a bound variable, exactly what an eliminator's generated types produce - is reduced too. Without that, two Pi-types equal only up to an under-binder redex are never recognized as such, since unification normalizes both sides before comparing. A *single* step rather than a nested full normalization: `generic_term_normalization` already iterates to a fixed point, so nesting one here would make the work exponential in binder depth.
 
 `generic_term_normalization` from `commons/evaluation.rs` drives the fixed-point iteration: apply `one_step_reduction` repeatedly until the term is unchanged.
 

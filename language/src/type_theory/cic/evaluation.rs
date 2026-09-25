@@ -9,7 +9,9 @@ use crate::type_theory::cic::cic_utils::{
     application_args, apply_arguments, get_applied_function, index_variables,
     is_instance_of, substitute,
 };
+use crate::type_theory::cic::transport::transport_definition;
 use crate::type_theory::cic::type_check::inductive_eliminator;
+use crate::type_theory::commons::transport::EquivConfig;
 use crate::type_theory::commons::evaluation::{
     evaluate_axiom, evaluate_fun, evaluate_global, evaluate_theorem,
     reduce_application, reduce_let, reduce_variable,
