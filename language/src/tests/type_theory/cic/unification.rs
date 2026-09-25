@@ -210,6 +210,91 @@ mod constraint_collection {
     }
 
     #[test]
+    fn test_collect_unifications_opens_binders_before_descending() {
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let mut env = Cic::default_environment();
+        env.add_to_context("Nat", &Sort("TYPE".to_string()));
+        // P : Nat -> TYPE, a type family, so that `k`'s second argument type
+        // mentions its first argument
+        env.add_to_context(
+            "P",
+            &Product(
+                "x".to_string(),
+                Box::new(nat.clone()),
+                Box::new(Sort("TYPE".to_string())),
+            ),
+        );
+        // k : Πx:Nat. Πy:(P x). Nat
+        env.add_to_context(
+            "k",
+            &Product(
+                "x".to_string(),
+                Box::new(nat.clone()),
+                Box::new(Product(
+                    "y".to_string(),
+                    Box::new(Application(
+                        Box::new(Variable("P".to_string(), NameKind::Const())),
+                        Box::new(Variable(
+                            "x".to_string(),
+                            NameKind::Bound(FIRST_INDEX),
+                        )),
+                    )),
+                    Box::new(nat.clone()),
+                )),
+            ),
+        );
+
+        // `λa:Nat. λw:(P a). k(a, w)`: inside the inner body `a` sits two
+        // binders deep, while in `w`'s own domain it sits one binder deep
+        let p_of = |dbi: i32| {
+            Application(
+                Box::new(Variable("P".to_string(), NameKind::Const())),
+                Box::new(Variable("a".to_string(), NameKind::Bound(dbi))),
+            )
+        };
+        let term = Abstraction(
+            "a".to_string(),
+            Box::new(nat.clone()),
+            Box::new(Abstraction(
+                "w".to_string(),
+                Box::new(p_of(FIRST_INDEX)),
+                Box::new(Application(
+                    Box::new(Application(
+                        Box::new(Variable("k".to_string(), NameKind::Const())),
+                        Box::new(Variable(
+                            "a".to_string(),
+                            NameKind::Bound(FIRST_INDEX + 1),
+                        )),
+                    )),
+                    Box::new(Variable(
+                        "w".to_string(),
+                        NameKind::Bound(FIRST_INDEX),
+                    )),
+                )),
+            )),
+        );
+
+        let constraints = cic_collect_unifications(&term, &mut env).expect(
+            "collecting under a binder must open it: left closed, `k`'s declared second argument type and `w`'s own type disagree on `a`'s index and the constraint is rejected by the occurs check",
+        );
+
+        let opened_p = Application(
+            Box::new(Variable("P".to_string(), NameKind::Const())),
+            Box::new(Variable("a".to_string(), NameKind::Local())),
+        );
+        assert!(
+            constraints.contains(&(opened_p.clone(), opened_p)),
+            "the dependent argument constraint must be stated in terms of the opened binder, found {:?}",
+            constraints
+        );
+        assert!(
+            !format!("{:?}", constraints).contains("a|0"),
+            "no collected constraint may still carry an index pointing at a binder that was descended through, found {:?}",
+            constraints
+        );
+    }
+
+    #[test]
     fn test_collect_unifications_works_with_bindings() {
         let mut env = Cic::default_environment();
         env.add_to_context("Nat", &Sort("TYPE".to_string()));

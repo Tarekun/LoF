@@ -6,7 +6,7 @@ use crate::error::LofError;
 use crate::type_theory::cic::cic::{Cic, NameKind};
 use crate::type_theory::cic::cic_utils::{
     application_args, get_applied_function, get_arg_types, is_constant,
-    substitute, substitute_meta,
+    open_term, pattern_binder_names, substitute, substitute_meta,
 };
 use crate::type_theory::cic::type_check::type_constr_vars;
 use crate::type_theory::commons::unification::{ucs, Substitution};
@@ -262,10 +262,11 @@ pub fn cic_collect_unifications(
     match term {
         Abstraction(var_name, var_type, body) => {
             let type_cons = cic_collect_unifications(var_type, environment)?;
+            let opened_body = open_term(body, var_name);
             let body_cons = environment.with_local_assumption(
                 var_name,
                 var_type,
-                |local_env| cic_collect_unifications(body, local_env),
+                |local_env| cic_collect_unifications(&opened_body, local_env),
             )?;
 
             Ok([type_cons, body_cons].concat())
@@ -287,15 +288,18 @@ pub fn cic_collect_unifications(
         }
         Product(var_name, domain, codomain) => {
             let domain_cons = cic_collect_unifications(domain, environment)?;
+            let opened_codomain = open_term(codomain, var_name);
             let codomain_cons = environment.with_local_assumption(
                 var_name,
                 domain,
-                |local_env| cic_collect_unifications(codomain, local_env),
+                |local_env| {
+                    cic_collect_unifications(&opened_codomain, local_env)
+                },
             )?;
 
             Ok([domain_cons, codomain_cons].concat())
         }
-        Let(_, opt_type, body, scope) => {
+        Let(var_name, opt_type, body, scope) => {
             let type_cons = match &**opt_type {
                 Some(var_type) => {
                     cic_collect_unifications(var_type, environment)?
@@ -304,7 +308,13 @@ pub fn cic_collect_unifications(
                 None => vec![],
             };
             let body_cons = cic_collect_unifications(body, environment)?;
-            let scope_cons = cic_collect_unifications(scope, environment)?;
+            let opened_scope = open_term(scope, var_name);
+            let scope_cons = environment.with_local_substitution(
+                var_name,
+                body,
+                &(**opt_type).to_owned(),
+                |local_env| cic_collect_unifications(&opened_scope, local_env),
+            )?;
 
             Ok([type_cons, body_cons, scope_cons].concat())
         }
@@ -320,9 +330,34 @@ pub fn cic_collect_unifications(
                     Cic::type_check_term(&constructor, environment)?;
                 let pattern_assumptions =
                     type_constr_vars(environment, pattern, &constr_type)?;
+                // a branch sits under one binder per pattern variable, so it
+                // gets opened once per binder - innermost last, mirroring
+                // `type_check_match`
+                let branch_binders = pattern_binder_names(pattern);
+                let opened_assumptions: Vec<(String, CicTerm)> =
+                    pattern_assumptions
+                        .iter()
+                        .map(|(assumption_name, assumption_type)| {
+                            let opened_type = branch_binders.iter().rev().fold(
+                                assumption_type.to_owned(),
+                                |opened, binder_name| {
+                                    open_term(&opened, binder_name)
+                                },
+                            );
+                            (assumption_name.to_owned(), opened_type)
+                        })
+                        .collect();
+                let opened_body = branch_binders
+                    .iter()
+                    .rev()
+                    .fold(body.to_owned(), |opened, binder_name| {
+                        open_term(&opened, binder_name)
+                    });
                 let body_cons = environment.with_local_assumptions(
-                    &pattern_assumptions,
-                    |local_env| cic_collect_unifications(body, local_env),
+                    &opened_assumptions,
+                    |local_env| {
+                        cic_collect_unifications(&opened_body, local_env)
+                    },
                 )?;
                 branch_cons.extend(body_cons);
             }

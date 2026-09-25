@@ -1,10 +1,13 @@
 use super::cic::CicStm::{Axiom, Fun, Global, Theorem};
-use super::cic::CicTerm::{Abstraction, Application, Let, Match, Variable};
-use super::cic::{Cic, CicStm, CicTerm};
+use super::cic::CicTerm::{
+    Abstraction, Application, Let, Match, Product, Variable,
+};
+use super::cic::{Cic, CicStm, CicTerm, NameKind};
 use super::cic_utils::make_multiarg_fun_type;
 use crate::error::LofError;
 use crate::type_theory::cic::cic_utils::{
-    application_args, get_applied_function, index_variables, substitute,
+    application_args, apply_arguments, get_applied_function, index_variables,
+    is_instance_of, substitute,
 };
 use crate::type_theory::cic::type_check::inductive_eliminator;
 use crate::type_theory::commons::evaluation::{
@@ -13,7 +16,6 @@ use crate::type_theory::commons::evaluation::{
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::Reducer;
-use core::panic;
 
 //########################### TERM βδ-REDUCTION
 pub fn one_step_reduction(
@@ -24,28 +26,179 @@ pub fn one_step_reduction(
         Variable(var_name, _) => {
             reduce_variable::<Cic>(environment, var_name, term)
         }
-        Application(left, right) => reduce_application::<Cic, _, _>(
-            environment,
-            left,
-            right,
-            |fun_reduced| match fun_reduced {
-                Abstraction(var_name, _, body) => {
-                    Some((var_name.to_string(), (**body).to_owned()))
-                }
-                _ => None,
-            },
-            |left_reduced, right_reduced| {
-                Application(Box::new(left_reduced), Box::new(right_reduced))
-            },
-        ),
+        Application(left, right) => {
+            if let Some(iota_reduced) = try_iota_reduction(environment, term) {
+                iota_reduced
+            } else {
+                reduce_application::<Cic, _, _>(
+                    environment,
+                    left,
+                    right,
+                    |fun_reduced| match fun_reduced {
+                        Abstraction(var_name, _, body) => {
+                            Some((var_name.to_string(), (**body).to_owned()))
+                        }
+                        _ => None,
+                    },
+                    |left_reduced, right_reduced| {
+                        Application(
+                            Box::new(left_reduced),
+                            Box::new(right_reduced),
+                        )
+                    },
+                )
+            }
+        }
         Let(var_name, var_type, body, scope) => {
             reduce_let(environment, var_name, var_type, body, scope)
         }
         Match(matched_term, branches) => {
             reduce_match(environment, matched_term, branches)
         }
+        Product(var_name, domain, codomain) => Product(
+            var_name.to_string(),
+            Box::new(one_step_reduction(environment, domain)),
+            Box::new(one_step_reduction(environment, codomain)),
+        ),
+        Abstraction(var_name, domain, body) => Abstraction(
+            var_name.to_string(),
+            Box::new(one_step_reduction(environment, domain)),
+            Box::new(one_step_reduction(environment, body)),
+        ),
         _ => term.clone(),
     }
+}
+//
+//
+/// ι-reduction for an auto-generated eliminator: given a fully applied
+/// `e_<Type>(params.., motive, case_1..case_k, instance)` whose `instance`
+/// is a concrete constructor application `ctor_i(params.., args..)`,
+/// computes to `case_i` applied to those args, with an inductive hypothesis.
+///
+/// A reference can be Inductive Definitions in the System Coq: Rules and
+/// Properties by Paulin
+fn try_iota_reduction(
+    environment: &Environment<Cic>,
+    term: &CicTerm,
+) -> Option<CicTerm> {
+    /// The inductive type corresponding to the eliminator used
+    fn eliminated_type(term: &CicTerm) -> Option<String> {
+        match get_applied_function(term) {
+            Variable(name, NameKind::Const()) => {
+                Some(name.strip_prefix("e_")?.to_string())
+            }
+            _ => None,
+        }
+    }
+
+    /// Splits the used constructor's name and the supplied arguments
+    fn split_instance(instance: &CicTerm) -> Option<(String, Vec<CicTerm>)> {
+        match get_applied_function(instance) {
+            Variable(name, NameKind::Const()) => {
+                Some((name, application_args(instance)))
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns argument types from constructor_type, reduced by `supplied_args`
+    /// by walking down `constructor_type`s Π chain
+    fn supplied_arg_types(
+        constructor_type: &CicTerm,
+        supplied_args: &[CicTerm],
+    ) -> Option<Vec<CicTerm>> {
+        let mut arg_types = vec![];
+        let mut remaining_type = constructor_type.to_owned();
+
+        for supplied in supplied_args {
+            match remaining_type {
+                Product(binder, domain, codomain) => {
+                    arg_types.push(*domain);
+                    remaining_type = substitute(&codomain, &binder, supplied);
+                }
+                // fewer Pi layers than supplied arguments: not a shape this
+                // rule understands
+                _ => return None,
+            }
+        }
+
+        Some(arg_types)
+    }
+
+    fn inductive_hypothesis(
+        type_name: &str,
+        leading_args: &[CicTerm],
+        param_count: usize,
+        occurrence: &CicTerm,
+        occurrence_type: &CicTerm,
+    ) -> Option<CicTerm> {
+        let occurrence_args = application_args(occurrence_type);
+        if occurrence_args.len() < param_count {
+            return None;
+        }
+
+        let mut hypothesis_args = leading_args.to_vec();
+        hypothesis_args.extend_from_slice(&occurrence_args[param_count..]);
+        // recursive occurance pushed as last arg for the eliminator
+        // ie the instance the eliminator is applied to
+        hypothesis_args.push(occurrence.to_owned());
+
+        Some(apply_arguments(
+            //TODO i need to review this im not sure why ud need to reuse
+            //the eliminator here instead of the motive
+            &Variable(format!("e_{}", type_name), NameKind::Const()),
+            hypothesis_args,
+        ))
+    }
+
+    let type_name = eliminated_type(term)?;
+    let param_count = environment.get_inductive_param_count(&type_name)?;
+    let constructors = environment.get_constructor_signatures(&type_name)?;
+
+    // #params + motive + #cases + instance
+    let fixed_args = param_count + 1 + constructors.len() + 1;
+    let args = application_args(term);
+    // partial application nothing to compute
+    if args.len() < fixed_args {
+        return None;
+    }
+
+    let (constructor_name, instance_args) = split_instance(args.last()?)?;
+    if instance_args.len() < param_count {
+        return None;
+    }
+    let constructor_index = constructors
+        .iter()
+        .position(|(name, _)| name == &constructor_name)?;
+    let arg_types =
+        supplied_arg_types(&constructors[constructor_index].1, &instance_args)?;
+
+    // left params are already fixed by the eliminator's own arguments, only
+    // whats past them is fed to the case
+    let own_args = &instance_args[param_count..];
+    let own_arg_types = &arg_types[param_count..];
+    // every argument except the instance, used for inductive hypothesis
+    let leading_args = &args[..param_count + 1 + constructors.len()];
+
+    // take the case corresponding to instance and apply arguments from the constructor (+IH)
+    let mut reduced = args[param_count + 1 + constructor_index].to_owned();
+    for (own_arg, own_arg_type) in own_args.iter().zip(own_arg_types.iter()) {
+        reduced = Application(Box::new(reduced), Box::new(own_arg.to_owned()));
+
+        // in case own_arg_type is this inductive type add an inductive hypothesis
+        if is_instance_of(own_arg_type, &type_name) {
+            let hypothesis = inductive_hypothesis(
+                &type_name,
+                leading_args,
+                param_count,
+                own_arg,
+                own_arg_type,
+            )?;
+            reduced = Application(Box::new(reduced), Box::new(hypothesis));
+        }
+    }
+
+    Some(reduced)
 }
 //
 //
@@ -65,10 +218,9 @@ fn reduce_match(
         }
     }
 
-    panic!(
-        "No pattern matched the term {:?}, if this is a type checking or exhaustiveness error, it should have been caught sooner",
-        matched_term
-    );
+    // fallback in case normalized_term is a free variable with no reduction
+    // to any constructor call
+    Match(Box::new(normalized_term), branches.to_owned())
 }
 //########################### TERM βδ-REDUCTION
 
