@@ -1,7 +1,7 @@
 use crate::type_theory::cic::cic::{
     Cic,
     CicTerm::{self, Abstraction, Application, Product, Sort, Variable},
-    GLOBAL_INDEX,
+    NameKind,
 };
 use crate::type_theory::commons::transport::EquivConfig;
 use crate::type_theory::interface::TypeTheory;
@@ -19,13 +19,13 @@ fn test_env() -> crate::type_theory::environment::Environment<Cic> {
     env.add_to_inductive_store(
         "A",
         vec![
-            ("az".to_string(), Variable("A".to_string(), GLOBAL_INDEX)),
+            ("az".to_string(), Variable("A".to_string(), NameKind::Const())),
             (
                 "as_".to_string(),
                 Product(
                     "_".to_string(),
-                    Box::new(Variable("A".to_string(), GLOBAL_INDEX)),
-                    Box::new(Variable("A".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("A".to_string(), NameKind::Const())),
+                    Box::new(Variable("A".to_string(), NameKind::Const())),
                 ),
             ),
         ],
@@ -38,24 +38,24 @@ fn test_config() -> EquivConfig<Cic> {
     let mut dep_constr = HashMap::new();
     dep_constr.insert(
         "az".to_string(),
-        Variable("bz".to_string(), GLOBAL_INDEX),
+        Variable("bz".to_string(), NameKind::Const()),
     );
-    dep_constr.insert("as_".to_string(), Variable("bs".to_string(), GLOBAL_INDEX));
+    dep_constr.insert("as_".to_string(), Variable("bs".to_string(), NameKind::Const()));
 
     EquivConfig {
         name: "AB".to_string(),
         type_a: "A".to_string(),
         type_b: "B".to_string(),
-        forward: Variable("a_to_b".to_string(), GLOBAL_INDEX),
-        backward: Variable("b_to_a".to_string(), GLOBAL_INDEX),
-        section: Variable("section_ab".to_string(), GLOBAL_INDEX),
-        retraction: Variable("retraction_ab".to_string(), GLOBAL_INDEX),
+        forward: Variable("a_to_b".to_string(), NameKind::Const()),
+        backward: Variable("b_to_a".to_string(), NameKind::Const()),
+        section: Variable("section_ab".to_string(), NameKind::Const()),
+        retraction: Variable("retraction_ab".to_string(), NameKind::Const()),
         dep_constr,
-        dep_elim: Variable("b_induction".to_string(), GLOBAL_INDEX),
+        dep_elim: Variable("b_induction".to_string(), NameKind::Const()),
         eta: Some(Abstraction(
             "x".to_string(),
-            Box::new(Variable("B".to_string(), GLOBAL_INDEX)),
-            Box::new(Variable("x".to_string(), 0)),
+            Box::new(Variable("B".to_string(), NameKind::Const())),
+            Box::new(Variable("x".to_string(), NameKind::Bound(0))),
         )),
         iota: HashMap::new(),
         lifted_names: HashMap::new(),
@@ -71,10 +71,10 @@ fn test_transport_type_variable() {
         super::transport_term(
             &mut env,
             &config,
-            &Variable("A".to_string(), GLOBAL_INDEX)
+            &Variable("A".to_string(), NameKind::Const())
         )
         .unwrap(),
-        Variable("B".to_string(), GLOBAL_INDEX),
+        Variable("B".to_string(), NameKind::Const()),
         "a bare occurrence of type_a should be rewritten to type_b"
     );
 }
@@ -88,10 +88,10 @@ fn test_transport_bare_constructor_uses_dep_constr() {
         super::transport_term(
             &mut env,
             &config,
-            &Variable("az".to_string(), GLOBAL_INDEX)
+            &Variable("az".to_string(), NameKind::Const())
         )
         .unwrap(),
-        Variable("bz".to_string(), GLOBAL_INDEX),
+        Variable("bz".to_string(), NameKind::Const()),
         "a bare 0-ary constructor should be rewritten to its dep_constr image"
     );
 }
@@ -103,12 +103,12 @@ fn test_transport_application_rewrites_constructor_head_and_args() {
 
     // as_(az) -> should become bs(bz)
     let term = Application(
-        Box::new(Variable("as_".to_string(), GLOBAL_INDEX)),
-        Box::new(Variable("az".to_string(), GLOBAL_INDEX)),
+        Box::new(Variable("as_".to_string(), NameKind::Const())),
+        Box::new(Variable("az".to_string(), NameKind::Const())),
     );
     let expected = Application(
-        Box::new(Variable("bs".to_string(), GLOBAL_INDEX)),
-        Box::new(Variable("bz".to_string(), GLOBAL_INDEX)),
+        Box::new(Variable("bs".to_string(), NameKind::Const())),
+        Box::new(Variable("bz".to_string(), NameKind::Const())),
     );
 
     assert_eq!(
@@ -126,13 +126,13 @@ fn test_transport_product_retypes_binder_and_recurses_into_body() {
     // forall n:A. az  ~>  forall n:B. bz
     let term = Product(
         "n".to_string(),
-        Box::new(Variable("A".to_string(), GLOBAL_INDEX)),
-        Box::new(Variable("az".to_string(), GLOBAL_INDEX)),
+        Box::new(Variable("A".to_string(), NameKind::Const())),
+        Box::new(Variable("az".to_string(), NameKind::Const())),
     );
     let expected = Product(
         "n".to_string(),
-        Box::new(Variable("B".to_string(), GLOBAL_INDEX)),
-        Box::new(Variable("bz".to_string(), GLOBAL_INDEX)),
+        Box::new(Variable("B".to_string(), NameKind::Const())),
+        Box::new(Variable("bz".to_string(), NameKind::Const())),
     );
 
     assert_eq!(
@@ -148,22 +148,22 @@ fn test_transport_eliminator_application_uses_dep_elim() {
     let config = test_config();
 
     // e_A(motive, c0, c1) -> b_induction(transported_motive, c0, c1)
-    let motive = Variable("A".to_string(), GLOBAL_INDEX);
+    let motive = Variable("A".to_string(), NameKind::Const());
     let term = Application(
         Box::new(Application(
-            Box::new(Variable("e_A".to_string(), GLOBAL_INDEX)),
+            Box::new(Variable("e_A".to_string(), NameKind::Const())),
             Box::new(motive.clone()),
         )),
-        Box::new(Variable("c0".to_string(), GLOBAL_INDEX)),
+        Box::new(Variable("c0".to_string(), NameKind::Const())),
     );
 
     let result = super::transport_term(&mut env, &config, &term).unwrap();
     let expected = Application(
         Box::new(Application(
-            Box::new(Variable("b_induction".to_string(), GLOBAL_INDEX)),
-            Box::new(Variable("B".to_string(), GLOBAL_INDEX)),
+            Box::new(Variable("b_induction".to_string(), NameKind::Const())),
+            Box::new(Variable("B".to_string(), NameKind::Const())),
         )),
-        Box::new(Variable("c0".to_string(), GLOBAL_INDEX)),
+        Box::new(Variable("c0".to_string(), NameKind::Const())),
     );
 
     assert_eq!(
@@ -181,12 +181,12 @@ fn test_transport_lifted_name_is_substituted() {
         .insert("old_fun".to_string(), "new_fun".to_string());
 
     let term = Application(
-        Box::new(Variable("old_fun".to_string(), GLOBAL_INDEX)),
-        Box::new(Variable("az".to_string(), GLOBAL_INDEX)),
+        Box::new(Variable("old_fun".to_string(), NameKind::Const())),
+        Box::new(Variable("az".to_string(), NameKind::Const())),
     );
     let expected = Application(
-        Box::new(Variable("new_fun".to_string(), GLOBAL_INDEX)),
-        Box::new(Variable("bz".to_string(), GLOBAL_INDEX)),
+        Box::new(Variable("new_fun".to_string(), NameKind::Const())),
+        Box::new(Variable("bz".to_string(), NameKind::Const())),
     );
 
     assert_eq!(
@@ -196,7 +196,7 @@ fn test_transport_lifted_name_is_substituted() {
     );
 
     // an unrelated, un-lifted name should pass through untouched
-    let unrelated = Variable("unrelated_fun".to_string(), GLOBAL_INDEX);
+    let unrelated = Variable("unrelated_fun".to_string(), NameKind::Const());
     assert_eq!(
         super::transport_term(&mut env, &config, &unrelated).unwrap(),
         unrelated,
@@ -214,7 +214,7 @@ fn test_transport_missing_dep_constr_entry_is_an_error() {
         super::transport_term(
             &mut env,
             &config,
-            &Variable("az".to_string(), GLOBAL_INDEX)
+            &Variable("az".to_string(), NameKind::Const())
         )
         .is_err(),
         "transporting a constructor with no registered dep_constr entry must fail, not silently pass the old constructor through"
@@ -227,24 +227,24 @@ fn test_transport_raw_match_over_type_a_is_rejected() {
     let config = test_config();
 
     let term = CicTerm::Match(
-        Box::new(Variable("n".to_string(), 0)),
+        Box::new(Variable("n".to_string(), NameKind::Bound(0))),
         vec![
             (
-                Variable("az".to_string(), GLOBAL_INDEX),
-                Variable("az".to_string(), GLOBAL_INDEX),
+                Variable("az".to_string(), NameKind::Const()),
+                Variable("az".to_string(), NameKind::Const()),
             ),
             (
                 Application(
-                    Box::new(Variable("as_".to_string(), GLOBAL_INDEX)),
-                    Box::new(Variable("nn".to_string(), GLOBAL_INDEX)),
+                    Box::new(Variable("as_".to_string(), NameKind::Const())),
+                    Box::new(Variable("nn".to_string(), NameKind::Const())),
                 ),
-                Variable("nn".to_string(), GLOBAL_INDEX),
+                Variable("nn".to_string(), NameKind::Const()),
             ),
         ],
     );
     env.with_local_assumption(
         "n",
-        &Variable("A".to_string(), GLOBAL_INDEX),
+        &Variable("A".to_string(), NameKind::Const()),
         |local_env| {
             assert!(
                 super::transport_term(local_env, &config, &term).is_err(),
@@ -265,10 +265,9 @@ mod iota_repair {
     use crate::type_theory::cic::transport::{
         abstract_convertible_occurrence, beta_normalize, first_order_match,
     };
-    use crate::type_theory::cic::cic::PLACEHOLDER_DBI;
 
     fn global(name: &str) -> CicTerm {
-        Variable(name.to_string(), GLOBAL_INDEX)
+        Variable(name.to_string(), NameKind::Const())
     }
 
     fn apply(function: CicTerm, arguments: Vec<CicTerm>) -> CicTerm {
@@ -293,7 +292,7 @@ mod iota_repair {
             Some((
                 apply(global("Eq"), vec![
                     global("B"),
-                    Variable("y".to_string(), PLACEHOLDER_DBI),
+                    Variable("y".to_string(), NameKind::Local()),
                     global("bz"),
                 ]),
                 redex,
@@ -332,7 +331,7 @@ mod iota_repair {
             global("motive"),
             global("bz"),
             global("the_step"),
-            apply(global("bs"), vec![Variable("r".to_string(), 0)]),
+            apply(global("bs"), vec![Variable("r".to_string(), NameKind::Bound(0))]),
         ]);
 
         let mut bindings = HashMap::new();
@@ -345,7 +344,7 @@ mod iota_repair {
         assert_eq!(bindings.get("step"), Some(&global("the_step")));
         assert_eq!(
             bindings.get("b"),
-            Some(&Variable("r".to_string(), 0)),
+            Some(&Variable("r".to_string(), NameKind::Bound(0))),
             "the constructor's own argument is recovered from under the DepConstr image"
         );
     }
@@ -374,10 +373,10 @@ mod iota_repair {
             Box::new(apply(global("Eq"), vec![
                 global("B"),
                 apply(global("plus"), vec![
-                    Variable("n".to_string(), 0),
+                    Variable("n".to_string(), NameKind::Bound(0)),
                     global("bz"),
                 ]),
-                Variable("n".to_string(), 0),
+                Variable("n".to_string(), NameKind::Bound(0)),
             ])),
         );
 

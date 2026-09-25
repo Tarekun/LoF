@@ -434,7 +434,7 @@ mod single_constructor_eta {
     }
 
     fn global(name: &str) -> CicTerm {
-        Variable(name.to_string(), GLOBAL_INDEX)
+        Variable(name.to_string(), NameKind::Const())
     }
 
     /// A `Box(A) := mk(A -> A -> Box(A))`-shaped world:
@@ -585,7 +585,7 @@ mod single_constructor_eta {
     fn test_projection_of_an_opaque_value_is_its_own_normal_form() {
         let env = eta_environment();
         let projection =
-            Proj("Boxed".to_string(), 0, Box::new(Variable("bx".to_string(), 0)));
+            Proj("Boxed".to_string(), 0, Box::new(Variable("bx".to_string(), NameKind::Bound(0))));
 
         assert_eq!(
             one_step_reduction(&env, &projection),
@@ -597,13 +597,17 @@ mod single_constructor_eta {
     #[test]
     fn test_match_on_an_opaque_single_constructor_scrutinee_now_reduces() {
         let env = eta_environment();
-        let scrutinee = Variable("bx".to_string(), 0);
+        let scrutinee = Variable("bx".to_string(), NameKind::Bound(0));
         // match bx with | mk(first, second) => second
+        // the pattern opens a two-binder telescope, so `first` sits at
+        // index 1 and `second` - the one the body returns - at index 0
+        let first = Variable("first".to_string(), NameKind::Bound(1));
+        let second = Variable("second".to_string(), NameKind::Bound(0));
         let term = Match(
             Box::new(scrutinee.clone()),
             vec![(
-                apply(global("mk"), vec![global("first"), global("second")]),
-                global("second"),
+                apply(global("mk"), vec![first, second.clone()]),
+                second,
             )],
         );
 
@@ -618,7 +622,7 @@ mod single_constructor_eta {
     fn test_match_on_an_opaque_multi_constructor_scrutinee_stays_stuck() {
         let env = eta_environment();
         let term = Match(
-            Box::new(Variable("n".to_string(), 0)),
+            Box::new(Variable("n".to_string(), NameKind::Bound(0))),
             vec![
                 (global("z"), global("base")),
                 (

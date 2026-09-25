@@ -210,28 +210,25 @@ the transported proof uses no axiom.
 Transport is a language feature, but making it work exposed gaps in the
 kernel that had never been exercised - nothing in the codebase had used a
 generated eliminator before, so no proof by induction had ever been checked.
-The following were fixed along the way:
+Some of these were found here and fixed on `main` separately (ι-reduction
+for generated eliminators, reduction under binders, a stuck `match` as a
+normal form, pattern variables as binding occurrences, and the
+locally-nameless `NameKind` representation that makes α-equivalence
+structural); this feature consumes them. The rest are the following:
 
-- **ι-reduction for generated eliminators.** `e_<Type>` applications had a
-  type but no computation rule, so anything defined through an eliminator
-  never reduced, even on a concrete constructor.
-  `try_reduce_eliminator_application` supplies it, including for indexed
-  families.
-- **Reduction under binders.** Normalization never descended into a
-  `Product`/`Abstraction`, so two Pi-types differing only by an
-  under-binder redex - the routine case when comparing an eliminator's
-  generated types - were never recognized as equal.
-- **A stuck `match` is a normal form**, not a panic: a scrutinee that is an
-  open variable is exactly what an inductive proof's step case produces.
+- **Generated eliminators kept their binder names.** `inductive_eliminator`
+  renamed every constructor argument to `nr_i`/`r_i` and left an indexed
+  family's anonymous ariety binders as `_`, while the argument *types* it
+  copied still referred to the original names. Since the finished
+  eliminator type is resolved by name (`index_variables`, which refuses to
+  bind `_`), both left dangling constants behind: `e_Vec`'s motive came out
+  as `Π_:Nat. Vec(T, _) -> TYPE`, so applying any indexed family's
+  eliminator failed with a spurious conflicting-substitution error. An
+  argument now keeps its declared name where it has one, and only a genuinely
+  anonymous binder gets a generated one.
 - **Substitution round-trips through unification.** Solved substitutions
   keyed by an ordinary variable (rather than a metavariable) were fed to a
   metavariable-only substitution function, panicking on the key.
-- **Pattern variables are binding occurrences.** Constraint collection
-  type-checked them as if they were references, so any term containing a
-  `match` failed the moment its enclosing abstraction was checked.
-- **Identity bindings.** `x ≐ x` where only one side is flagged global (an
-  artifact of indexing each elaborated fragment separately) was reported as
-  an occurs-check cycle.
 - **Eta for single-constructor inductives.** A `match` or `e_<Type>` whose
   target is an opaque value of a one-constructor type was permanently
   stuck. It now eta-expands into `C(params.., t.0, .., t.k-1)`, the fields

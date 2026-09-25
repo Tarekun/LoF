@@ -84,7 +84,7 @@ pub fn type_check_proj(
     }
 
     let constructors = environment
-        .get_inductive_constructors(type_name)
+        .get_constructor_signatures(type_name)
         .ok_or_else(|| {
             LofError::custom(format!("unknown inductive type '{}'", type_name))
         })?;
@@ -677,7 +677,7 @@ pub fn type_check_equivalence(
         iota,
     )?;
 
-    Ok(Variable("Unit".to_string(), GLOBAL_INDEX))
+    Ok(Variable("Unit".to_string(), NameKind::Const()))
 }
 
 /// Type-checks the declared target type/formula, then performs the actual
