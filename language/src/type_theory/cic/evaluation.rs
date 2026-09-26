@@ -7,7 +7,7 @@ use super::cic_utils::make_multiarg_fun_type;
 use crate::error::LofError;
 use crate::type_theory::cic::cic_utils::{
     application_args, apply_arguments, get_applied_function, index_variables,
-    is_instance_of, substitute,
+    is_instance_of, substitute, substitute_telescope,
 };
 use crate::type_theory::cic::transport::transport_definition;
 use crate::type_theory::cic::type_check::inductive_eliminator;
@@ -724,38 +724,41 @@ fn matches_pattern(term: &CicTerm, pattern: &CicTerm) -> bool {
     return (used == constructor) && (actual_args.len() == formal_args.len());
 }
 
+/// The sub-term the matched `term` supplies for each of `pattern`'s
+/// binders, in the order `pattern` opened them: depth first, left to
+/// right, the same order `pattern_binder_names` reports and the elaborator
+/// numbered the branch body under.
+fn pattern_bindings(term: &CicTerm, pattern: &CicTerm) -> Vec<CicTerm> {
+    let actual_args = application_args(term);
+    let formal_args = application_args(pattern);
+
+    formal_args
+        .iter()
+        .zip(actual_args.iter())
+        .flat_map(|(formal_arg, actual_arg)| match formal_arg {
+            Variable(_, _) => vec![(*actual_arg).to_owned()],
+            // a nested constructor sub-pattern (the `nn` in `s(nn)`) binds
+            // its own variables, against the matching sub-term
+            Application(_, _) => pattern_bindings(actual_arg, formal_arg),
+            // metavariables (`?`) and other patterns bind nothing
+            _ => vec![],
+        })
+        .collect()
+}
+
 /// Given the matched `term` and the `pattern`, substitutes every pattern
-/// variable the corresponding expression from `term` inside `body`
+/// variable with the corresponding expression from `term` inside `body`.
+///
+/// The whole telescope goes at once (`substitute_telescope`), which is not
+/// the same as calling `substitute` once per variable: see that function
+/// for why doing it one at a time leaves every binder but the innermost
+/// pointing at the wrong thing.
 fn substitute_pattern_variables(
     term: &CicTerm,
     pattern: &CicTerm,
     body: &CicTerm,
 ) -> CicTerm {
-    let actual_args = application_args(term);
-    let formal_args = application_args(pattern);
-
-    formal_args.iter().zip(actual_args.iter()).fold(
-        body.clone(),
-        |bound_body, (formal_arg, actual_arg)| {
-            substitute_pattern_arg(formal_arg, actual_arg, &bound_body)
-        },
-    )
-}
-
-/// Substitutes a single `formal_arg` from a pattern with the corresponding `actual_arg`
-fn substitute_pattern_arg(
-    formal_arg: &CicTerm,
-    actual_arg: &CicTerm,
-    body: &CicTerm,
-) -> CicTerm {
-    match formal_arg {
-        Variable(var_name, _) => substitute(body, var_name, actual_arg),
-        Application(_, _) => {
-            substitute_pattern_variables(actual_arg, formal_arg, body)
-        }
-        // metavariables (`?`) and other patterns bind nothing
-        _ => body.clone(),
-    }
+    substitute_telescope(body, &pattern_bindings(term, pattern))
 }
 //########################### HELPER FUNCTIONS
 

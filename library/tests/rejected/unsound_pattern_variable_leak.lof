@@ -1,0 +1,37 @@
+# Regression test, pinned as a fixture that must be REJECTED.
+#
+# `fst(mk(z, s(z)))` is `z`, so this file is false. It used to be accepted:
+# `substitute_pattern_variables` bound a pattern's variables one at a time
+# with the index-based `substitute`, which removes a single binder and
+# decrements everything pointing past it, so every variable but one was
+# left behind as a loose De Bruijn reference. A loose reference is an
+# ordinary non-constant variable as far as unification is concerned, so the
+# unifier was free to *bind* it, and the ground term `fst(mk(z, s(z)))`
+# unified with whatever it was compared against - making any equation about
+# it provable by `refl`.
+#
+# The positive direction (that `fst` and `snd` compute to the right
+# components at all) is library/tests/proofs/pattern_binder_reduction.lof.
+#
+# See also tests/type_theory/cic/evaluation.rs ::
+# multi_binder_pattern_substitution.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Pair : TYPE {
+  | mk : Nat -> Nat -> Pair
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+fun fst (p: Pair) : Nat {
+  match p with
+  | mk(a, b) => a,
+}
+
+# FALSE: fst(mk(z, s(z))) is z, not s(z)
+theorem fst_is_s_z : Eq(Nat, fst(mk(z, s(z))), s(z)) :=
+  (refl(Nat, s(z)))

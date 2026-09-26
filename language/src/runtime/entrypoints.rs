@@ -442,6 +442,38 @@ mod unit_tests {
         );
     }
 
+    /// Kernel-level fixtures that must be REJECTED, under
+    /// `library/tests/rejected/`. They live outside `library/tests/proofs`
+    /// because `test_dedicated_scripts` requires success.
+    ///
+    /// Each one states something false that the kernel once accepted, so a
+    /// fixture that starts passing means a soundness fix has been undone.
+    /// The matching positive direction lives in `library/tests/proofs`;
+    /// each fixture's own header says where.
+    #[test]
+    fn test_expected_rejections() {
+        let expectations = [(
+            "../library/tests/rejected/unsound_pattern_variable_leak.lof",
+            "Type mismatch",
+        )];
+
+        for (path, expected_fragment) in expectations {
+            let result = execute::<Cic>(&Config::new(TypeSystem::Cic), path);
+            let error = result.expect_err(&format!(
+                "{} states something false and must be rejected - if it now checks, a soundness fix has regressed",
+                path
+            ));
+            let rendered = format!("{:?}", error);
+            assert!(
+                rendered.contains(expected_fragment),
+                "{} was rejected, but not for the documented reason (expected something mentioning {:?}): {}",
+                path,
+                expected_fragment,
+                rendered
+            );
+        }
+    }
+
     /// The transport engine's documented boundaries, pinned as fixtures
     /// that must FAIL. They live outside `library/tests/proofs` so
     /// `test_dedicated_scripts` (which requires success) doesn't pick them

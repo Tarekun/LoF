@@ -1,0 +1,48 @@
+# Regression test: a definition may be written with the auto-generated
+# eliminator, not only with a `match`.
+#
+# `double` below is well typed: the motive is the constant family
+# `\k:Nat. Nat`, so `e_Nat`'s result type is `(\k:Nat. Nat) n`, which is
+# `Nat` after one beta step. `type_check_global` and `i_type_check_function`
+# used to compare the declared type against the inferred one with
+# `base_type_equality`, which goes to `cic_so_unification` - that takes no
+# `Environment`, so it reduces neither side, and a beta-redex is not
+# syntactically a `Nat`. Both were rejected with
+#   expected `Nat`, found `(\k:Nat. Nat) n`
+# even though an eliminator worked fine inside a *theorem*
+# (eliminator_smoke.lof), because `u_type_check_theorem` compares with
+# `types_unify`, which normalizes. CIC now uses `i_type_check_global` and
+# the same conversion check in `i_type_check_function`.
+#
+# See also tests/type_theory/cic/type_check.rs :: eliminator_defined_value.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+global double : Nat -> Nat :=
+  (\lambda n:Nat.
+    e_Nat(
+      (\lambda k:Nat. Nat),
+      z,
+      (\lambda kk:Nat. \lambda ih:Nat. s(s(ih))),
+      n));
+
+fun double_fun (n: Nat) : Nat {
+  e_Nat(
+    (\lambda k:Nat. Nat),
+    z,
+    (\lambda kk:Nat. \lambda ih:Nat. s(s(ih))),
+    n)
+}
+
+# and it computes, not just checks
+theorem double_two_is_four : Eq(Nat, double(s(s(z))), s(s(s(s(z))))) :=
+  (refl(Nat, s(s(s(s(z))))))
+
+theorem double_fun_two_is_four : Eq(Nat, double_fun(s(s(z))), s(s(s(s(z))))) :=
+  (refl(Nat, s(s(s(s(z))))))

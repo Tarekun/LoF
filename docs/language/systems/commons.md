@@ -63,13 +63,13 @@ Type checks the body, verifies the declared type matches (if given), extends the
 
 ### Statement checkers
 
-**`type_check_global<T>`**
+**`type_check_global<T>`** / **`i_type_check_global<T>`** (requires `Refiner`)
 
-Checks the body term, verifies the declared type unifies with it, then calls `evaluate_global` to add the name and definition to the environment.
+Checks the body term, verifies the declared type matches it, then calls `evaluate_global` to add the name and definition to the environment. The two differ only in how they compare: `type_check_global` uses `T::base_type_equality`, `i_type_check_global` uses `T::types_unify`, ie **conversion** rather than structural equality. CIC uses the latter — an eliminator application infers `motive(indices.., target)`, literally a redex, and `base_type_equality` goes to a solver that takes no `Environment` and so cannot reduce either side, which made `e_<Type>` usable in a proof but not in a definition.
 
-**`type_check_function<T, C, E>`**
+**`type_check_function<T, C, E>`** / **`i_type_check_function<T, C, E>`** (requires `Refiner`)
 
-Builds the function type from arguments and return type via the `constructor` closure. Under the assumption of all arguments (plus the function itself for recursive cases), type checks the body and verifies it matches the declared return type. Then calls `evaluate_fun` to add the curried function to the environment.
+Builds the function type from arguments and return type via the `constructor` closure. Under the assumption of all arguments (plus the function itself for recursive cases), type checks the body and verifies it matches the declared return type. Then calls `evaluate_fun` to add the curried function to the environment. The `i_` variant additionally opens the argument telescope (see `i_type_check_abstraction`) and compares the body's type against the declared return type by conversion, for the same reason as `i_type_check_global`.
 
 **`type_check_axiom<T>`**
 

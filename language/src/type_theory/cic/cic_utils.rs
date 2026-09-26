@@ -461,88 +461,178 @@ pub fn substitute_and_lift(
     substitute_base(term, target_name, arg)
 }
 
+/// Increases every free `Bound` index in `term` by `amount` — "free" meaning
+/// it refers past `term`'s own binders, tracked via `cutoff`. Needed
+/// whenever a substituted argument is spliced back in `amount` binders
+/// deeper than where it was originally computed, so its own escaping
+/// references keep pointing to the same external things instead of being
+/// captured by binders they were just moved underneath.
+fn shift(term: &CicTerm, amount: i32) -> CicTerm {
+    fn solver(term: &CicTerm, amount: i32, cutoff: i32) -> CicTerm {
+        match term {
+            Sort(_) => term.clone(),
+            Meta(_) => term.clone(),
+            Proj(type_name, field_index, target) => Proj(
+                type_name.to_string(),
+                *field_index,
+                Box::new(solver(target, amount, cutoff)),
+            ),
+            // a `Local` names a context entry rather than a position,
+            // so no amount of extra enclosing binders can change it --
+            // this is exactly the property `open` buys us.
+            Variable(_, NameKind::Local()) => term.clone(),
+            Variable(_, NameKind::Const()) => term.clone(),
+            Variable(var_name, NameKind::Bound(dbi)) => {
+                if *dbi >= cutoff {
+                    Variable(
+                        var_name.to_string(),
+                        NameKind::Bound(dbi + amount),
+                    )
+                } else {
+                    term.clone()
+                }
+            }
+            Application(left, right) => Application(
+                Box::new(solver(left, amount, cutoff)),
+                Box::new(solver(right, amount, cutoff)),
+            ),
+            Abstraction(var_name, domain, codomain) => Abstraction(
+                var_name.to_string(),
+                Box::new(solver(domain, amount, cutoff)),
+                Box::new(solver(codomain, amount, cutoff + 1)),
+            ),
+            Product(var_name, domain, codomain) => Product(
+                var_name.to_string(),
+                Box::new(solver(domain, amount, cutoff)),
+                Box::new(solver(codomain, amount, cutoff + 1)),
+            ),
+            Let(var_name, var_type, body, scope) => Let(
+                var_name.to_string(),
+                Box::new(
+                    (**var_type)
+                        .as_ref()
+                        .map(|t| solver(t, amount, cutoff + 1)),
+                ),
+                Box::new(solver(body, amount, cutoff)),
+                Box::new(solver(scope, amount, cutoff + 1)),
+            ),
+            Match(matched_term, branches) => Match(
+                Box::new(solver(matched_term, amount, cutoff)),
+                simple_map(branches.clone(), |(pattern, body)| {
+                    // the branch sits under one binder per pattern
+                    // variable, exactly as the elaborator numbered it
+                    let inner = cutoff + pattern_binder_count(&pattern);
+                    (
+                        solver(&pattern, amount, inner),
+                        solver(&body, amount, inner),
+                    )
+                }),
+            ),
+        }
+    }
+
+    if amount == 0 {
+        term.clone()
+    } else {
+        solver(term, amount, 0)
+    }
+}
+
+/// Substitutes a whole telescope of binders at once. `args` is given
+/// outermost binder first - the order `pattern_binder_names` reports and
+/// the elaborator numbered `body` under - so `args`'s last entry is the
+/// innermost binder, the one `body` refers to as index 0.
+///
+/// This has to be simultaneous. `substitute` removes *one* binder: besides
+/// replacing it, it decrements every index that pointed past it, since
+/// that binder is now gone. Applying it once per telescope entry therefore
+/// keeps decrementing the terms the earlier calls already spliced in -
+/// they came from outside the telescope and must not move at all - so
+/// every argument but the last came out shifted by however many
+/// substitutions followed it.
+pub fn substitute_telescope(body: &CicTerm, args: &[CicTerm]) -> CicTerm {
+    fn solver(term: &CicTerm, args: &[CicTerm], depth: i32) -> CicTerm {
+        let width = args.len() as i32;
+
+        match term {
+            Sort(_) | Meta(_) => term.clone(),
+            Variable(_, NameKind::Const()) | Variable(_, NameKind::Local()) => {
+                term.clone()
+            }
+            Variable(var_name, NameKind::Bound(dbi)) => {
+                let outward = dbi - depth;
+                if outward < 0 {
+                    // bound by one of `body`'s own binders
+                    term.clone()
+                } else if outward < width {
+                    // one of the telescope's binders: index 0 is the
+                    // innermost, ie `args`'s last entry. The argument comes
+                    // from outside the telescope, so it is shifted past the
+                    // binders it is being spliced under.
+                    let position = (width - 1 - outward) as usize;
+                    shift(&args[position], depth)
+                } else {
+                    // points past the telescope, which is now gone
+                    Variable(
+                        var_name.to_string(),
+                        NameKind::Bound(dbi - width),
+                    )
+                }
+            }
+            Proj(type_name, field_index, target) => Proj(
+                type_name.to_string(),
+                *field_index,
+                Box::new(solver(target, args, depth)),
+            ),
+            Application(left, right) => Application(
+                Box::new(solver(left, args, depth)),
+                Box::new(solver(right, args, depth)),
+            ),
+            Abstraction(var_name, domain, codomain) => Abstraction(
+                var_name.to_string(),
+                Box::new(solver(domain, args, depth)),
+                Box::new(solver(codomain, args, depth + 1)),
+            ),
+            Product(var_name, domain, codomain) => Product(
+                var_name.to_string(),
+                Box::new(solver(domain, args, depth)),
+                Box::new(solver(codomain, args, depth + 1)),
+            ),
+            Let(var_name, var_type, definition, scope) => Let(
+                var_name.to_string(),
+                Box::new(
+                    (**var_type).as_ref().map(|t| solver(t, args, depth + 1)),
+                ),
+                Box::new(solver(definition, args, depth)),
+                Box::new(solver(scope, args, depth + 1)),
+            ),
+            Match(matched_term, branches) => Match(
+                Box::new(solver(matched_term, args, depth)),
+                simple_map(branches.clone(), |(pattern, branch_body)| {
+                    // the branch sits under one binder per pattern variable,
+                    // exactly as the elaborator numbered it
+                    let inner = depth + pattern_binder_count(&pattern);
+                    (
+                        solver(&pattern, args, inner),
+                        solver(&branch_body, args, inner),
+                    )
+                }),
+            ),
+        }
+    }
+
+    if args.is_empty() {
+        return body.clone();
+    }
+
+    solver(body, args, 0)
+}
+
 fn substitute_base(
     term: &CicTerm,
     target_name: &str,
     arg: &CicTerm,
 ) -> CicTerm {
-    /// Increases every free `Bound` index in `term` by `amount` — "free" meaning
-    /// it refers past `term`'s own binders, tracked via `cutoff`. Needed
-    /// whenever a substituted argument is spliced back in `amount` binders
-    /// deeper than where it was originally computed, so its own escaping
-    /// references keep pointing to the same external things instead of being
-    /// captured by binders they were just moved underneath.
-    fn shift(term: &CicTerm, amount: i32) -> CicTerm {
-        fn solver(term: &CicTerm, amount: i32, cutoff: i32) -> CicTerm {
-            match term {
-                Sort(_) => term.clone(),
-                Meta(_) => term.clone(),
-                Proj(type_name, field_index, target) => Proj(
-                    type_name.to_string(),
-                    *field_index,
-                    Box::new(solver(target, amount, cutoff)),
-                ),
-                // a `Local` names a context entry rather than a position,
-                // so no amount of extra enclosing binders can change it --
-                // this is exactly the property `open` buys us.
-                Variable(_, NameKind::Local()) => term.clone(),
-                Variable(_, NameKind::Const()) => term.clone(),
-                Variable(var_name, NameKind::Bound(dbi)) => {
-                    if *dbi >= cutoff {
-                        Variable(
-                            var_name.to_string(),
-                            NameKind::Bound(dbi + amount),
-                        )
-                    } else {
-                        term.clone()
-                    }
-                }
-                Application(left, right) => Application(
-                    Box::new(solver(left, amount, cutoff)),
-                    Box::new(solver(right, amount, cutoff)),
-                ),
-                Abstraction(var_name, domain, codomain) => Abstraction(
-                    var_name.to_string(),
-                    Box::new(solver(domain, amount, cutoff)),
-                    Box::new(solver(codomain, amount, cutoff + 1)),
-                ),
-                Product(var_name, domain, codomain) => Product(
-                    var_name.to_string(),
-                    Box::new(solver(domain, amount, cutoff)),
-                    Box::new(solver(codomain, amount, cutoff + 1)),
-                ),
-                Let(var_name, var_type, body, scope) => Let(
-                    var_name.to_string(),
-                    Box::new(
-                        (**var_type)
-                            .as_ref()
-                            .map(|t| solver(t, amount, cutoff + 1)),
-                    ),
-                    Box::new(solver(body, amount, cutoff)),
-                    Box::new(solver(scope, amount, cutoff + 1)),
-                ),
-                Match(matched_term, branches) => Match(
-                    Box::new(solver(matched_term, amount, cutoff)),
-                    simple_map(branches.clone(), |(pattern, body)| {
-                        // the branch sits under one binder per pattern
-                        // variable, exactly as the elaborator numbered it
-                        let inner = cutoff + pattern_binder_count(&pattern);
-                        (
-                            solver(&pattern, amount, inner),
-                            solver(&body, amount, inner),
-                        )
-                    }),
-                ),
-            }
-        }
-
-        if amount == 0 {
-            term.clone()
-        } else {
-            solver(term, amount, 0)
-        }
-    }
-
     // `depth` is how many binders we've descended through since the start
     // of this substitution: a `Bound` reference exactly at `depth` is the
     // one being removed (it gets `arg`, shifted so its own escaping

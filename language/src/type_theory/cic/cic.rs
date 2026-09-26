@@ -25,8 +25,8 @@ use crate::type_theory::cic::unification::{
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
     i_type_check_abstraction, i_type_check_application,
-    i_type_check_fo_universal, i_type_check_function, i_type_check_let,
-    type_check_axiom, type_check_global, type_check_variable,
+    i_type_check_fo_universal, i_type_check_function, i_type_check_global,
+    i_type_check_let, type_check_axiom, type_check_variable,
     u_type_check_theorem,
 };
 use crate::type_theory::commons::unification::Substitution;
@@ -273,7 +273,9 @@ impl Kernel for Cic {
         debug!("Type-type checking of {:?}", stm);
         match stm {
             CicStm::Global(var_name, opt_type, body) => {
-                type_check_global::<Cic>(environment, var_name, opt_type, body)
+                i_type_check_global::<Cic>(
+                    environment, var_name, opt_type, body,
+                )
             }
             CicStm::Axiom(axiom_name, formula) => {
                 type_check_axiom::<Cic>(environment, axiom_name, formula)

@@ -1,0 +1,49 @@
+# Regression test: a `match` branch may refer to *any* of the variables its
+# pattern binds, not only the innermost one.
+#
+# `substitute_pattern_variables` (cic/evaluation.rs) used to bind them by
+# applying the index-based `substitute` once per variable. That removes one
+# binder per call and decrements every index pointing past it, so whichever
+# way the telescope was walked, all but one variable came out pointing at
+# the wrong thing - `fst` below computed to a loose variable rather than to
+# `z`. A loose variable is one the unifier may *bind*, so the ground term
+# `fst(mk(z, s(z)))` was convertible to anything and the false companion of
+# `fst_is_z` checked just as happily; that file lives in
+# library/tests/rejected/unsound_pattern_variable_leak.lof.
+#
+# The telescope is now substituted in one pass (`substitute_telescope`).
+# Both projections below are proved by reflexivity, so each one only checks
+# if its branch body reduces to the argument the pattern actually matched.
+#
+# See also tests/type_theory/cic/evaluation.rs ::
+# multi_binder_pattern_substitution.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Pair : TYPE {
+  | mk : Nat -> Nat -> Pair
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+# returns the *first* of the two variables `mk(a, b)` binds - the one the
+# old one-at-a-time substitution left dangling
+fun fst (p: Pair) : Nat {
+  match p with
+  | mk(a, b) => a,
+}
+
+# and the last, which is the one that always worked
+fun snd (p: Pair) : Nat {
+  match p with
+  | mk(a, b) => b,
+}
+
+theorem fst_is_z : Eq(Nat, fst(mk(z, s(z))), z) :=
+  (refl(Nat, z))
+
+theorem snd_is_s_z : Eq(Nat, snd(mk(z, s(z))), s(z)) :=
+  (refl(Nat, s(z)))

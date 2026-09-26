@@ -2088,3 +2088,117 @@ mod fun_stm {
         );
     }
 }
+
+/// A definition may be written with an eliminator, not only a `match`.
+///
+/// An eliminator application's inferred type is literally
+/// `motive(indices.., target)` - a beta-redex - and `type_check_global`
+/// and `i_type_check_function` used to compare the declared type against
+/// it with `base_type_equality`, which goes to `cic_so_unification`. That
+/// takes no `Environment` and so reduces neither side, and the two are not
+/// syntactically equal. Theorems were unaffected, `u_type_check_theorem`
+/// comparing with `types_unify`, which does normalize - so `e_<Type>`
+/// worked in a proof but not in a definition. CIC now routes both through
+/// the same conversion check.
+mod eliminator_defined_value {
+    use super::*;
+
+    fn apply(head: CicTerm, arguments: Vec<CicTerm>) -> CicTerm {
+        arguments.into_iter().fold(head, |acc, argument| {
+            Application(Box::new(acc), Box::new(argument))
+        })
+    }
+
+    /// `λn:Nat. e_Nat(λk:Nat. Nat, 0, λkk:Nat. λih:Nat. s(s(ih)), n)`,
+    /// ie `double`, written through the recursor instead of a `match`.
+    fn double_via_eliminator() -> CicTerm {
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let succ = Variable("s".to_string(), NameKind::Const());
+        let ih = Variable("ih".to_string(), NameKind::Bound(0));
+
+        Abstraction(
+            "n".to_string(),
+            Box::new(nat.clone()),
+            Box::new(apply(
+                Variable("e_Nat".to_string(), NameKind::Const()),
+                vec![
+                    // motive: this branch of the family is always `Nat`
+                    Abstraction(
+                        "k".to_string(),
+                        Box::new(nat.clone()),
+                        Box::new(nat.clone()),
+                    ),
+                    Variable("0".to_string(), NameKind::Const()),
+                    // step: λkk. λih. s(s(ih))
+                    Abstraction(
+                        "kk".to_string(),
+                        Box::new(nat.clone()),
+                        Box::new(Abstraction(
+                            "ih".to_string(),
+                            Box::new(nat.clone()),
+                            Box::new(Application(
+                                Box::new(succ.clone()),
+                                Box::new(Application(
+                                    Box::new(succ.clone()),
+                                    Box::new(ih),
+                                )),
+                            )),
+                        )),
+                    ),
+                    Variable("n".to_string(), NameKind::Bound(0)),
+                ],
+            )),
+        )
+    }
+
+    #[test]
+    fn test_global_defined_through_an_eliminator() {
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let mut test_env = packed_env();
+
+        let checked = Cic::type_check_stm(
+            &CicStm::Global(
+                "double".to_string(),
+                Some(Product(
+                    "_".to_string(),
+                    Box::new(nat.clone()),
+                    Box::new(nat.clone()),
+                )),
+                Box::new(double_via_eliminator()),
+            ),
+            &mut test_env,
+        );
+
+        assert!(
+            checked.is_ok(),
+            "a `global` whose body is an eliminator application must check against its declared type - the inferred type is the motive applied to the target, ie that type up to beta: {:?}",
+            checked.err()
+        );
+    }
+
+    #[test]
+    fn test_fun_defined_through_an_eliminator() {
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let mut test_env = packed_env();
+        let Abstraction(_, _, body) = double_via_eliminator() else {
+            panic!("double_via_eliminator builds an abstraction");
+        };
+
+        let checked = Cic::type_check_stm(
+            &Fun(
+                "double".to_string(),
+                vec![("n".to_string(), nat.clone())],
+                Box::new(nat.clone()),
+                body,
+                false,
+            ),
+            &mut test_env,
+        );
+
+        assert!(
+            checked.is_ok(),
+            "a `fun` whose body is an eliminator application must check against its declared return type, for the same reason: {:?}",
+            checked.err()
+        );
+    }
+}

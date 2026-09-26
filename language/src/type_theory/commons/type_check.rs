@@ -314,6 +314,39 @@ pub fn type_check_global<T: TypeTheory + Kernel>(
     }
 }
 
+/// `type_check_global` for systems that compare types up to conversion.
+///
+/// Same rule as `type_check_global`, except that the declared type and the
+/// body's inferred type are compared with `types_unify` - which normalizes
+/// both sides - instead of `base_type_equality`, which has no environment
+/// to reduce with. A definition whose body is an eliminator application
+/// needs that: `e_<Type>`'s result type is the motive applied to the
+/// target, so it *is* the declared type, but only after beta.
+pub fn i_type_check_global<T: TypeTheory + Kernel + Refiner>(
+    environment: &mut Environment<T>,
+    var_name: &str,
+    opt_type: &Option<T::Type>,
+    body: &T::Term,
+) -> Result<T::Type, LofError> {
+    let body_type = T::type_check_term(body, environment)?;
+    let var_type = match opt_type {
+        Some(declared) => declared.to_owned(),
+        None => body_type.to_owned(),
+    };
+    let _ = T::type_check_type(&var_type, environment)?;
+
+    if T::types_unify(environment, &var_type, &body_type).is_err() {
+        return Err(LofError::type_mismatch(
+            format!("global `{}`", var_name),
+            &var_type,
+            &body_type,
+        ));
+    }
+
+    let _ = evaluate_global::<T>(environment, var_name, &Some(var_type), body);
+    Ok(body_type)
+}
+
 /// Generic function definition type checking
 pub fn type_check_function<
     T: TypeTheory + Kernel,
@@ -422,17 +455,26 @@ pub fn i_type_check_function<
         //TODO possibly include necessary checks on recursive functions
     }
 
-    let body_type = environment
-        .with_local_assumptions(&assumptions, |local_env| {
-            T::type_check_term(&opened_body, local_env)
-        })?;
-    if T::base_type_equality(&opened_out_type, &body_type).is_err() {
-        return Err(LofError::type_mismatch(
-            format!("function `{}`", fun_name),
-            &opened_out_type,
-            &body_type,
-        ));
-    }
+    environment.with_local_assumptions(&assumptions, |local_env| {
+        let body_type = T::type_check_term(&opened_body, local_env)?;
+        // Conversion, not structural equality. A body written with an
+        // eliminator infers `motive(indices.., target)` - literally a redex
+        // - where the declared type is what that reduces to, and
+        // `base_type_equality` takes no environment so it can reduce
+        // neither side. `types_unify` normalizes both, which is also how
+        // `u_type_check_theorem` compares a proof against its statement:
+        // without it an eliminator can be used in a proof but not in a
+        // definition.
+        if T::types_unify(local_env, &opened_out_type, &body_type).is_err() {
+            return Err(LofError::type_mismatch(
+                format!("function `{}`", fun_name),
+                &opened_out_type,
+                &body_type,
+            ));
+        }
+
+        Ok(())
+    })?;
 
     // include fun_name into the context for following script
     let _ = evaluate_fun::<T, _, _>(
