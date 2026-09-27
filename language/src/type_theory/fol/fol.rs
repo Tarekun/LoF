@@ -1,6 +1,8 @@
 use super::elaboration::{elaborate_expression, elaborate_statement};
 use super::evaluation::{evaluate_statement, one_step_reduction};
-use super::type_check::{type_check_arrow, type_check_forall};
+use super::type_check::{
+    type_check_arrow, type_check_exist, type_check_forall,
+};
 use crate::error::LofError;
 use crate::misc::Union::{self, L, R};
 use crate::parser::api::{Expression, Statement, Tactic};
@@ -21,7 +23,7 @@ use crate::type_theory::fol::type_check::{
 };
 use crate::type_theory::grammars::fol::{
     FolFormula::{
-        self, Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
+        self, Arrow, Conjunction, Disjunction, Exist, ForAll, Not, Predicate,
     },
     FolTerm::{self, Abstraction, Application, Let, Tuple, Variable},
 };
@@ -173,9 +175,9 @@ impl Kernel for Fol {
             Disjunction(sub_formulas) => {
                 type_check_disjunction(environment, sub_formulas)
             }
-            _ => Err(LofError::unsupported(
-                "TODO: Existential type checking not yet supported",
-            )),
+            Exist(var_name, var_type, predicate) => {
+                type_check_exist(environment, var_name, var_type, predicate)
+            }
         }
     }
 

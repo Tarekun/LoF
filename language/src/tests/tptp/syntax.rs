@@ -77,7 +77,11 @@ mod unit_tests {
             role("negated_conjecture"),
             Ok(("", Role::NegatedConjecture))
         );
-        assert_eq!(role("type"), Ok(("", Role::Other("type".to_string()))));
+        assert_eq!(role("type"), Ok(("", Role::Type)));
+        assert_eq!(
+            role("plain_ish"),
+            Ok(("", Role::Other("plain_ish".to_string())))
+        );
     }
 
     #[test]

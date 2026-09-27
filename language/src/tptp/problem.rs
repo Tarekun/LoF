@@ -1,17 +1,19 @@
 pub use super::syntax::Role;
 use super::{
     cnf::{cnf_formula, make_clause},
-    fof::fof_formula,
+    fof::{fof_formula, tff_formula, Symbols},
     syntax::{
         lower_word, name, role, single_quoted, skip_annotations, sym, ws0,
     },
+    tff::{build_environment, type_declaration, TypeDeclaration},
 };
 use crate::{
     error::LofError,
     file_manager::read_file,
     parser::api::PResult,
     type_theory::{
-        fol::fol_utils::clausify,
+        environment::Environment,
+        fol::{fol::Fol, fol_utils::clausify},
         grammars::{
             cnf::{
                 CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
@@ -19,6 +21,7 @@ use crate::{
             },
             fol::FolFormula::{self, Conjunction},
         },
+        interface::Kernel,
     },
 };
 use nom::{
@@ -34,9 +37,11 @@ use std::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TptpFormula {
-    /// formula, constant and function symbols occurring in it
-    Fof(FolFormula, HashSet<String>),
+    /// `fof` or `tff` formula, non logical symbols occurring in it
+    Fol(FolFormula, Symbols),
     Cnf(CnfFormula),
+    /// `tff` type declaration
+    Declaration(TypeDeclaration),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -74,17 +79,28 @@ fn annotated_formula(input: &str) -> PResult<'_, TopLevel> {
             ))(input)?;
             (input, TopLevel::Include(path, selection))
         }
-        "fof" | "cnf" => {
+        "fof" | "tff" | "cnf" => {
             let (input, name) = name(input)?;
             let (input, _) = sym(",")(input)?;
             let (input, role) = role(input)?;
             let (input, _) = sym(",")(input)?;
-            let (input, formula) = if dialect == "fof" {
-                let (input, (formula, constants)) = fof_formula(input)?;
-                (input, TptpFormula::Fof(formula, constants))
-            } else {
-                let (input, formula) = cnf_formula(input)?;
-                (input, TptpFormula::Cnf(formula))
+            let (input, formula) = match (dialect, &role) {
+                ("tff", Role::Type) => {
+                    let (input, declaration) = type_declaration(input)?;
+                    (input, TptpFormula::Declaration(declaration))
+                }
+                ("tff", _) => {
+                    let (input, (formula, symbols)) = tff_formula(input)?;
+                    (input, TptpFormula::Fol(formula, symbols))
+                }
+                ("fof", _) => {
+                    let (input, (formula, symbols)) = fof_formula(input)?;
+                    (input, TptpFormula::Fol(formula, symbols))
+                }
+                _ => {
+                    let (input, formula) = cnf_formula(input)?;
+                    (input, TptpFormula::Cnf(formula))
+                }
             };
             let (input, _) = opt(preceded(sym(","), skip_annotations))(input)?;
             (
@@ -98,7 +114,7 @@ fn annotated_formula(input: &str) -> PResult<'_, TopLevel> {
         }
         other => {
             return Err(nom::Err::Failure(LofError::unsupported(format!(
-                "TPTP dialect '{}' is not supported, only 'fof' and 'cnf' are",
+                "TPTP dialect '{}' is not supported, only 'fof', 'tff' (TF0) and 'cnf' are",
                 other
             ))))
         }
@@ -341,8 +357,11 @@ fn clausify_fof(
 
 impl TptpProblem {
     /// Returns the clauses whose unsatisfiability proves the problem, ready for
-    /// SUP saturation: CNF inputs are taken as they are, FOF inputs are
-    /// clausified, and FOF conjectures are jointly negated before clausification
+    /// SUP saturation: CNF inputs are taken as they are, FOF/TFF inputs are
+    /// clausified, and FOF/TFF conjectures are jointly negated before
+    /// clausification. TFF sorts are erased and type declarations skipped
+    // TODO erasing sorts is only sound for monotonic problems (eg no axiom
+    // bounding the cardinality of a sort), check it or encode sorts as guards
     pub fn to_clauses(&self) -> Result<Vec<CnfFormula>, LofError> {
         let mut clauses = vec![];
         let mut errors = vec![];
@@ -352,14 +371,15 @@ impl TptpProblem {
         for (idx, input) in self.inputs.iter().enumerate() {
             match &input.formula {
                 TptpFormula::Cnf(clause) => clauses.push(clause.clone()),
-                TptpFormula::Fof(φ, constants)
+                TptpFormula::Declaration(_) => {}
+                TptpFormula::Fol(φ, symbols)
                     if input.role == Role::Conjecture =>
                 {
                     conjectures.push(φ.clone());
-                    conjecture_constants.extend(constants.iter().cloned());
+                    conjecture_constants.extend(symbols.constants());
                 }
-                TptpFormula::Fof(φ, constants) => {
-                    match clausify_fof(φ, constants, idx) {
+                TptpFormula::Fol(φ, symbols) => {
+                    match clausify_fof(φ, &symbols.constants(), idx) {
                         Ok(new_clauses) => clauses.extend(new_clauses),
                         Err(err) => errors.push(err),
                     }
@@ -396,3 +416,51 @@ impl TptpProblem {
 }
 
 //############################# CLAUSIFICATION
+//
+//
+//############################# TYPE CHECKING
+
+impl TptpProblem {
+    /// Returns the FOL typing environment declared by the problem's `tff`
+    /// type declarations. Symbols used by FOF/TFF formulas but not declared
+    /// get the TPTP default types over `$i`. CNF inputs are untyped and ignored
+    pub fn environment(&self) -> Result<Environment<Fol>, LofError> {
+        let mut declarations = vec![];
+        let mut used = Symbols::default();
+        for input in &self.inputs {
+            match &input.formula {
+                TptpFormula::Declaration(declaration) => {
+                    declarations.push(declaration.clone())
+                }
+                TptpFormula::Fol(_, symbols) => used.extend(symbols),
+                TptpFormula::Cnf(_) => {}
+            }
+        }
+        build_environment(&declarations, &used)
+    }
+
+    /// Type checks every FOF/TFF formula of the problem with the FOL kernel,
+    /// returning the typing environment they're well typed in
+    pub fn type_check(&self) -> Result<Environment<Fol>, LofError> {
+        let mut environment = self.environment()?;
+        let mut errors = vec![];
+        for input in &self.inputs {
+            if let TptpFormula::Fol(φ, _) = &input.formula {
+                if let Err(err) = Fol::type_check_type(φ, &mut environment) {
+                    errors.push(LofError::custom(format!(
+                        "TPTP formula '{}' is ill typed: {}",
+                        input.name, err
+                    )));
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(environment)
+        } else {
+            Err(LofError::aggregate(errors))
+        }
+    }
+}
+
+//############################# TYPE CHECKING

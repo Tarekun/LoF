@@ -155,6 +155,11 @@ pub fn name(input: &str) -> PResult<'_, String> {
     alt((atomic_word, map(preceded(ws0, digit1), str::to_string)))(input)
 }
 
+/// A TF0 atomic type: a user sort or a defined one like `$i`, `$o`, `$int`
+pub fn atomic_type(input: &str) -> PResult<'_, String> {
+    alt((atomic_word, map(dollar_word, str::to_string)))(input)
+}
+
 /// Any symbol that can be applied as a function or predicate, or appear as a constant
 fn functor(input: &str) -> PResult<'_, String> {
     alt((
@@ -184,6 +189,8 @@ pub enum Role {
     NegatedConjecture,
     Plain,
     Unknown,
+    /// TFF type declaration
+    Type,
     Other(String),
 }
 
@@ -200,6 +207,7 @@ pub fn role(input: &str) -> PResult<'_, Role> {
         "negated_conjecture" => Role::NegatedConjecture,
         "plain" => Role::Plain,
         "unknown" => Role::Unknown,
+        "type" => Role::Type,
         other => Role::Other(other.to_string()),
     })(input)
 }

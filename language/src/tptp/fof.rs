@@ -1,4 +1,6 @@
-use super::syntax::{atomic_formula, sym, upper_word, TptpAtom, TptpTerm};
+use super::syntax::{
+    atomic_formula, atomic_type, sym, upper_word, TptpAtom, TptpTerm,
+};
 use crate::{
     error::LofError,
     parser::api::PResult,
@@ -13,16 +15,47 @@ use crate::{
 use nom::{
     branch::alt,
     character::complete::char,
-    combinator::{map, not},
+    combinator::{map, not, opt},
     multi::{many0, separated_list1},
-    sequence::{delimited, preceded, terminated},
+    sequence::{delimited, pair, preceded, terminated},
 };
-use std::{cell::RefCell, collections::HashSet};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashSet},
+};
 
-/// Name of the sort given to every quantified variable, as FOF is untyped
+/// Name of the default sort, given to every untyped quantified variable
 pub const INDIVIDUAL_SORT: &str = "$i";
 /// Name of the predicate FOF equalities are lowered to
 pub const EQUALITY_PREDICATE: &str = "=";
+
+#[derive(Debug, Clone, PartialEq, Default)]
+/// The non logical symbols occurring in a formula, with their arity
+pub struct Symbols {
+    /// function and constant symbols
+    pub functions: BTreeMap<String, usize>,
+    /// predicate symbols, equality excluded
+    pub predicates: BTreeMap<String, usize>,
+}
+
+impl Symbols {
+    /// Returns the constant and function symbols, needed by `clausify` to
+    /// tell them apart from variables, as both are `FolTerm::Variable`s
+    pub fn constants(&self) -> HashSet<String> {
+        self.functions.keys().cloned().collect()
+    }
+
+    /// Adds the symbols of `other` to `self`. On arity clashes the arity
+    /// already in `self` is kept, the type checker will reject the misuse
+    pub fn extend(&mut self, other: &Symbols) {
+        for (name, arity) in &other.functions {
+            self.functions.entry(name.to_string()).or_insert(*arity);
+        }
+        for (name, arity) in &other.predicates {
+            self.predicates.entry(name.to_string()).or_insert(*arity);
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 enum BinaryConnective {
@@ -66,23 +99,26 @@ fn combine(
     }
 }
 
-/// Stateful parser for a single FOF formula. Keeps track of:
+/// Stateful parser for a single FOF or TFF formula. Keeps track of:
 /// * the bound variables in scope, as (source_name, rectified_name) pairs
 /// * every binder name used so far, to rectify shadowing binders
-/// * the constant/function symbols met, needed by `clausify` to tell them
-///   apart from variables, as both are `FolTerm::Variable`s
+/// * the non logical symbols met
+///
+/// `typed` enables TFF typed binders `![X: sort]`
 struct FofParser {
+    typed: bool,
     scope: RefCell<Vec<(String, String)>>,
     binders: RefCell<HashSet<String>>,
-    constants: RefCell<HashSet<String>>,
+    symbols: RefCell<Symbols>,
 }
 
 impl FofParser {
-    fn new() -> Self {
+    fn new(typed: bool) -> Self {
         FofParser {
+            typed,
             scope: RefCell::new(vec![]),
             binders: RefCell::new(HashSet::new()),
-            constants: RefCell::new(HashSet::new()),
+            symbols: RefCell::new(Symbols::default()),
         }
     }
 
@@ -112,7 +148,11 @@ impl FofParser {
                 .map(|(_, rectified)| Variable(rectified.to_string()))
                 .ok_or_else(|| LofError::unbound_variable(name)),
             TptpTerm::Fun(name, args) => {
-                self.constants.borrow_mut().insert(name.to_string());
+                self.symbols
+                    .borrow_mut()
+                    .functions
+                    .entry(name.to_string())
+                    .or_insert(args.len());
                 let args = args
                     .iter()
                     .map(|arg| self.lower_term(arg))
@@ -129,6 +169,11 @@ impl FofParser {
                     .iter()
                     .map(|arg| self.lower_term(arg))
                     .collect::<Result<Vec<_>, _>>()?;
+                self.symbols
+                    .borrow_mut()
+                    .predicates
+                    .entry(name.to_string())
+                    .or_insert(args.len());
                 Ok(Predicate(name.to_string(), args))
             }
             TptpAtom::Eq(left, right, is_positive) => {
@@ -203,7 +248,8 @@ impl FofParser {
         Ok((input, formula))
     }
 
-    /// `! [X, Y] : φ` and `? [X, Y] : φ`, where `φ` is a unitary formula
+    /// `! [X, Y] : φ` and `? [X, Y] : φ`, where `φ` is a unitary formula.
+    /// In TFF variables can be typed `[X: sort, Y]`, untyped ones are `$i`
     fn quantified<'a>(&self, input: &'a str) -> PResult<'a, FolFormula> {
         let (input, is_universal) = alt((
             // don't confuse `!` with `!=`
@@ -212,36 +258,71 @@ impl FofParser {
         ))(input)?;
         let (input, vars) = delimited(
             sym("["),
-            separated_list1(sym(","), upper_word),
+            separated_list1(
+                sym(","),
+                pair(upper_word, opt(preceded(sym(":"), atomic_type))),
+            ),
             preceded(sym("]"), sym(":")),
         )(input)?;
 
-        let bound: Vec<(String, String)> = vars
-            .iter()
-            .map(|var| (var.to_string(), self.fresh_binder(var)))
-            .collect();
+        let mut bound = vec![];
+        for (var, sort) in vars {
+            let sort = match sort {
+                None => INDIVIDUAL_SORT.to_string(),
+                Some(_) if !self.typed => {
+                    return Err(nom::Err::Failure(LofError::custom(format!(
+                        "Typed variable {} is only allowed in TFF formulas",
+                        var
+                    ))))
+                }
+                Some(sort) if sort == "$o" || sort == "$tType" => {
+                    return Err(nom::Err::Failure(LofError::unsupported(
+                        format!(
+                            "Variable {} of type {} is not first order (TXF/TF1 are not supported)",
+                            var, sort
+                        ),
+                    )))
+                }
+                Some(sort) => sort,
+            };
+            bound.push((var.to_string(), self.fresh_binder(var), sort));
+        }
+        let bound_names = bound.iter().map(|(var, rectified, _)| {
+            (var.to_string(), rectified.to_string())
+        });
         let scope_len = self.scope.borrow().len();
-        self.scope.borrow_mut().extend(bound.clone());
+        self.scope.borrow_mut().extend(bound_names);
         let body = self.unitary(input);
         self.scope.borrow_mut().truncate(scope_len);
         let (input, body) = body?;
 
-        let sort = Predicate(INDIVIDUAL_SORT.to_string(), vec![]);
-        let formula = bound.into_iter().rev().fold(body, |body, (_, var)| {
-            if is_universal {
-                ForAll(var, Box::new(sort.clone()), Box::new(body))
-            } else {
-                Exist(var, Box::new(sort.clone()), Box::new(body))
-            }
-        });
+        let formula =
+            bound.into_iter().rev().fold(body, |body, (_, var, sort)| {
+                let sort = Box::new(Predicate(sort, vec![]));
+                if is_universal {
+                    ForAll(var, sort, Box::new(body))
+                } else {
+                    Exist(var, sort, Box::new(body))
+                }
+            });
         Ok((input, formula))
     }
 }
 
-/// Parses the formula of a `fof(...)` annotated formula. Returns the formula
-/// together with the set of constant and function symbols occurring in it
-pub fn fof_formula(input: &str) -> PResult<'_, (FolFormula, HashSet<String>)> {
-    let parser = FofParser::new();
+fn formula(input: &str, typed: bool) -> PResult<'_, (FolFormula, Symbols)> {
+    let parser = FofParser::new(typed);
     let (input, formula) = parser.logic_formula(input)?;
-    Ok((input, (formula, parser.constants.into_inner())))
+    Ok((input, (formula, parser.symbols.into_inner())))
+}
+
+/// Parses the formula of a `fof(...)` annotated formula. Returns the formula
+/// together with the non logical symbols occurring in it
+pub fn fof_formula(input: &str) -> PResult<'_, (FolFormula, Symbols)> {
+    formula(input, false)
+}
+
+/// Parses the formula of a non `type` `tff(...)` annotated formula: a FOF
+/// formula whose quantified variables can be typed
+pub fn tff_formula(input: &str) -> PResult<'_, (FolFormula, Symbols)> {
+    formula(input, true)
 }

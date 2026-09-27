@@ -80,13 +80,13 @@ mod unit_tests {
             problem.inputs[1].formula,
             TptpFormula::Cnf(not(pred("q", vec![constant("a")])))
         );
-        assert!(matches!(problem.inputs[0].formula, TptpFormula::Fof(_, _)));
+        assert!(matches!(problem.inputs[0].formula, TptpFormula::Fol(_, _)));
     }
 
     #[test]
     fn test_invalid_problems() {
         assert!(
-            parse_tptp("tff(t, type, a: $i).").is_err(),
+            parse_tptp("thf(t, type, a: $i).").is_err(),
             "TPTP parser accepts unsupported dialects"
         );
         assert!(

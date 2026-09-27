@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod unit_tests {
-    use std::collections::HashSet;
+    use std::collections::BTreeMap;
 
     use crate::{
         error::LofError,
-        tptp::fof::fof_formula,
+        tptp::fof::{fof_formula, tff_formula, Symbols},
         type_theory::grammars::fol::{
             FolFormula::{
                 self, Arrow, Conjunction, Disjunction, Exist, ForAll, Not,
@@ -160,26 +160,51 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_terms_and_constants() {
-        let (φ, constants) = fof_formula("![X]: p(f(X, a), b)").unwrap().1;
+    fn test_terms_and_symbols() {
+        let (φ, symbols) = fof_formula("![X]: (p(f(X, a), b) & q)").unwrap().1;
         assert_eq!(
             φ,
             forall(
                 "X",
-                pred(
-                    "p",
-                    vec![
-                        FolTerm::make_multiarg_app("f", &[var("X"), var("a")]),
-                        var("b"),
-                    ]
-                )
+                Conjunction(vec![
+                    pred(
+                        "p",
+                        vec![
+                            FolTerm::make_multiarg_app(
+                                "f",
+                                &[var("X"), var("a")]
+                            ),
+                            var("b"),
+                        ]
+                    ),
+                    atom("q"),
+                ])
             ),
             "FOF parser doesnt curry function applications"
         );
         assert_eq!(
-            constants,
-            HashSet::from(["f".to_string(), "a".to_string(), "b".to_string()]),
-            "FOF parser doesnt collect constant and function symbols"
+            symbols,
+            Symbols {
+                functions: BTreeMap::from([
+                    ("f".to_string(), 2),
+                    ("a".to_string(), 0),
+                    ("b".to_string(), 0),
+                ]),
+                predicates: BTreeMap::from([
+                    ("p".to_string(), 2),
+                    ("q".to_string(), 0),
+                ]),
+            },
+            "FOF parser doesnt collect symbols with their arities"
+        );
+        assert!(
+            fof_formula("![X]: p(X) = X")
+                .unwrap()
+                .1
+                 .1
+                .predicates
+                .is_empty(),
+            "Equality shouldnt be collected as a predicate symbol"
         );
     }
 
@@ -205,6 +230,42 @@ mod unit_tests {
         assert_eq!(
             parse("$true | $false"),
             Ok(Disjunction(vec![atom("$true"), atom("$false")]))
+        );
+    }
+
+    #[test]
+    fn test_typed_binders() {
+        let nat = || Box::new(atom("nat"));
+        assert_eq!(
+            tff_formula("![X: nat, Y]: ?[Z: nat]: p(X, Y, Z)")
+                .map(|(rest, (φ, _))| (rest, φ)),
+            Ok((
+                "",
+                ForAll(
+                    "X".to_string(),
+                    nat(),
+                    Box::new(forall(
+                        "Y",
+                        Exist(
+                            "Z".to_string(),
+                            nat(),
+                            Box::new(pred(
+                                "p",
+                                vec![var("X"), var("Y"), var("Z")]
+                            ))
+                        )
+                    ))
+                )
+            )),
+            "TFF parser doesnt type binders, or doesnt default untyped ones to $i"
+        );
+        assert!(
+            fof_formula("![X: nat]: p(X)").is_err(),
+            "FOF parser accepts typed binders"
+        );
+        assert!(
+            tff_formula("![X: $o]: X").is_err(),
+            "TFF parser accepts variables over formulas (TXF)"
         );
     }
 }

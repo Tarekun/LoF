@@ -469,21 +469,101 @@ mod exist {
 
     #[test]
     fn test_exist_type_check() {
+        let top: FolFormula = Predicate("Top".to_string(), vec![]);
         let nat = Predicate("Nat".to_string(), vec![]);
-        let mut test_env: Environment<Fol> =
-            Environment::with_defaults(vec![], vec![], vec![("Nat", &vec![])]);
+        let mut test_env: Environment<Fol> = Environment::with_defaults(
+            vec![],
+            vec![],
+            vec![
+                ("Top", &vec![]),
+                ("Nat", &vec![]),
+                ("even", &vec![nat.clone()]),
+            ],
+        );
 
+        let even_x = Exist(
+            "x".to_string(),
+            Box::new(nat.clone()),
+            Box::new(Predicate(
+                "even".to_string(),
+                vec![Variable("x".to_string())],
+            )),
+        );
+        assert_eq!(
+            Fol::type_check_type(&even_x, &mut test_env),
+            Ok(even_x.clone()),
+            "Existential type checker doesnt work properly"
+        );
+        assert!(
+            Fol::type_check_type(
+                &Exist(
+                    "x".to_string(),
+                    Box::new(Predicate(
+                        "StupidUnboundType".to_string(),
+                        vec![]
+                    )),
+                    Box::new(top)
+                ),
+                &mut test_env,
+            )
+            .is_err(),
+            "Existential type checker accepts quantification over unbound type"
+        );
         assert!(
             Fol::type_check_type(
                 &Exist(
                     "x".to_string(),
                     Box::new(nat.clone()),
-                    Box::new(nat.clone())
+                    Box::new(Predicate(
+                        "StupidUnboundPredicate".to_string(),
+                        vec![]
+                    ))
                 ),
                 &mut test_env,
             )
             .is_err(),
-            "Existential type checking is not implemented yet and is expected to error"
+            "Existential type checker accepts ill typed body"
+        );
+        assert!(
+            test_env.get_variable_type("x").is_none(),
+            "Existential type checker leaks the bound variable in the context"
+        );
+    }
+}
+
+mod equality {
+    use super::*;
+
+    #[test]
+    fn test_equality_type_check() {
+        let nat = Predicate("Nat".to_string(), vec![]);
+        let unit = Predicate("Unit".to_string(), vec![]);
+        let mut test_env: Environment<Fol> = Environment::with_defaults(
+            vec![("zero", &nat), ("n", &nat), ("it", &unit)],
+            vec![],
+            vec![("Nat", &vec![]), ("Unit", &vec![])],
+        );
+        let equality = |l: &str, r: &str| {
+            Predicate(
+                "=".to_string(),
+                vec![Variable(l.to_string()), Variable(r.to_string())],
+            )
+        };
+
+        assert_eq!(
+            Fol::type_check_type(&equality("zero", "n"), &mut test_env),
+            Ok(equality("zero", "n")),
+            "Equality between terms of the same type doesnt type check"
+        );
+        assert!(
+            Fol::type_check_type(&equality("zero", "it"), &mut test_env)
+                .is_err(),
+            "Equality accepts terms of different types"
+        );
+        assert!(
+            Fol::type_check_type(&equality("zero", "unbound"), &mut test_env)
+                .is_err(),
+            "Equality accepts ill typed terms"
         );
     }
 }

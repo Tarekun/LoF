@@ -1,14 +1,16 @@
 use super::fol::Fol;
 use super::fol_utils::make_multiarg_fun_type;
 use crate::error::LofError;
-use crate::type_theory::grammars::fol::{
-    FolFormula::{self, Arrow, Conjunction, Disjunction, ForAll, Not, Predicate},
-    FolTerm::{self, Abstraction},
-};
 use crate::type_theory::commons::type_check::{
     type_check_fo_universal, type_check_function,
 };
 use crate::type_theory::environment::Environment;
+use crate::type_theory::grammars::fol::{
+    FolFormula::{
+        self, Arrow, Conjunction, Disjunction, Exist, ForAll, Not, Predicate,
+    },
+    FolTerm::{self, Abstraction},
+};
 use crate::type_theory::interface::{Kernel, TypeTheory};
 
 //########################### TERMS TYPE CHECKING
@@ -33,6 +35,22 @@ pub fn type_check_predicate(
     pred_name: &str,
     args: &Vec<FolTerm>,
 ) -> Result<FolFormula, LofError> {
+    // TODO FolFormula has no dedicated equality variant, so equality is encoded
+    // as the `=` predicate (eg by the TPTP parser), polymorphic over the sort of
+    // its arguments. Reevaluate whether a `FolFormula::Equality` is worth it
+    if pred_name == "=" && args.len() == 2 {
+        let left_type = Fol::type_check_term(&args[0], environment)?;
+        let right_type = Fol::type_check_term(&args[1], environment)?;
+        return match Fol::base_type_equality(&left_type, &right_type) {
+            Ok(()) => Ok(Predicate(pred_name.to_string(), args.to_owned())),
+            Err(_) => Err(LofError::type_mismatch(
+                "equality",
+                &left_type,
+                &right_type,
+            )),
+        };
+    }
+
     match environment.get_predicate(pred_name) {
         Some(arg_types) => {
             for i in 0..arg_types.len().max(args.len()) {
@@ -49,7 +67,10 @@ pub fn type_check_predicate(
                             Fol::base_type_equality(&actual_type, &arg_types[i])
                         {
                             return Err(LofError::type_mismatch(
-                                format!("predicate `{}` application", pred_name),
+                                format!(
+                                    "predicate `{}` application",
+                                    pred_name
+                                ),
                                 formal_type,
                                 &actual_type,
                             ));
@@ -110,6 +131,27 @@ pub fn type_check_forall(
         predicate,
     )?;
     Ok(ForAll(
+        var_name.to_string(),
+        Box::new(var_type.to_owned()),
+        Box::new(predicate.to_owned()),
+    ))
+}
+//
+//
+pub fn type_check_exist(
+    environment: &mut Environment<Fol>,
+    var_name: &str,
+    var_type: &FolFormula,
+    predicate: &FolFormula,
+) -> Result<FolFormula, LofError> {
+    // well formedness of ∃x:T. φ is checked just like ∀x:T. φ
+    let _body_type = type_check_fo_universal::<Fol>(
+        environment,
+        var_name,
+        var_type,
+        predicate,
+    )?;
+    Ok(Exist(
         var_name.to_string(),
         Box::new(var_type.to_owned()),
         Box::new(predicate.to_owned()),

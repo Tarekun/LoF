@@ -20,6 +20,7 @@ pub mod tptp {
     pub mod fof;
     pub mod problem;
     pub mod syntax;
+    pub mod tff;
 }
 pub mod type_theory {
     // pub mod commons;
@@ -74,6 +75,7 @@ mod tests {
         mod fof;
         mod problem;
         mod syntax;
+        mod tff;
     }
     mod type_theory {
         mod fol {
