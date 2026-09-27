@@ -234,6 +234,7 @@ pub fn eq_factoring(
                     let mut new_clause = selected.clone();
                     new_clause.remove($j);
                     new_clause.remove($i);
+                    new_clause.extend($unselected.clone());
 
                     new_clause.push(Equality($s.to_owned(), $t.to_owned()));
                     new_clause.push(Not(Box::new(Equality(
@@ -353,6 +354,7 @@ mod unit_tests {
         Atom, Clause, Equality, Not,
     };
     use crate::type_theory::sup::sup::SupTerm::{Application, Variable};
+    use crate::type_theory::sup::sup_utils::with_answer_literal;
 
     #[test]
     fn test_demodulation() {
@@ -771,6 +773,34 @@ mod unit_tests {
                     Not(Box::new(Equality(tk.clone(), t_prime.clone())))
                 ])],
             "Equality resolution not applied properly with unification available"
+        );
+    }
+
+    #[test]
+    fn test_eq_factoring_keeps_unselected() {
+        let selection_fn = get_selection_fn(SelectionFunction::All);
+        let s = Application("s".to_string(), vec![Variable("x".to_string())]);
+        let t = Application("t".to_string(), vec![]);
+        let t_prime = Variable("t_prime".to_string());
+        // the answer literal is never selected, so it must be carried over as unselected
+        let clause = with_answer_literal(&Clause(vec![
+            Equality(s.clone(), t.clone()),
+            Equality(s.clone(), t_prime.clone()),
+        ]));
+        let Clause(lits) = &clause else {
+            panic!("expected a clause")
+        };
+        let answer = lits.last().unwrap().clone();
+
+        let (derived, _) = eq_factoring(&clause, &selection_fn);
+        assert_eq!(
+            derived,
+            vec![Clause(vec![
+                answer.clone(),
+                Equality(s.clone(), t.clone()),
+                Not(Box::new(Equality(t.clone(), t_prime.clone()))),
+            ])],
+            "Equality factoring dropped the unselected literals"
         );
     }
 
