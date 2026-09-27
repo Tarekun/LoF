@@ -1,12 +1,10 @@
-use super::fol::FolFormula::{
-    Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
-};
-use super::fol::{
-    Fol, FolFormula,
-    FolTerm::{self, Abstraction},
-};
+use super::fol::Fol;
 use super::fol_utils::make_multiarg_fun_type;
 use crate::error::LofError;
+use crate::type_theory::grammars::fol::{
+    FolFormula::{self, Arrow, Conjunction, Disjunction, ForAll, Not, Predicate},
+    FolTerm::{self, Abstraction},
+};
 use crate::type_theory::commons::type_check::{
     type_check_fo_universal, type_check_function,
 };

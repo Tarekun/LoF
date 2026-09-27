@@ -12,42 +12,22 @@ use crate::type_theory::commons::type_check::{
     type_check_variable,
 };
 use crate::type_theory::environment::Environment;
-use crate::type_theory::fol::fol::FolFormula::{
-    Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
-};
 use crate::type_theory::fol::fol::FolStm::{
     Auto, Axiom, Fun, Global, Solve, Theorem,
 };
-use crate::type_theory::fol::fol::FolTerm::{
-    Abstraction, Application, Let, Tuple, Variable,
-};
-use crate::type_theory::fol::fol_utils::substitute_term;
 use crate::type_theory::fol::type_check::{
     fol_type_check_fun, type_check_conjunction, type_check_disjunction,
     type_check_not, type_check_predicate, type_check_tuple,
 };
+use crate::type_theory::grammars::fol::{
+    FolFormula::{
+        self, Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
+    },
+    FolTerm::{self, Abstraction, Application, Let, Tuple, Variable},
+};
+use crate::type_theory::grammars::traits::NamedSubstitution;
 use crate::type_theory::interface::{Interactive, Kernel, Reducer, TypeTheory};
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum FolTerm {
-    Variable(String),
-    Abstraction(String, Box<FolFormula>, Box<FolTerm>),
-    Application(Box<FolTerm>, Box<FolTerm>),
-    Tuple(Vec<FolTerm>),
-    /// (var_name, var_type, body, scope)
-    Let(String, Box<Option<FolFormula>>, Box<FolTerm>, Box<FolTerm>),
-}
-#[derive(Clone, PartialEq)]
-pub enum FolFormula {
-    //TODO add predicate application
-    Predicate(String, Vec<FolTerm>),
-    Arrow(Box<FolFormula>, Box<FolFormula>),
-    Not(Box<FolFormula>),
-    Conjunction(Vec<FolFormula>),
-    Disjunction(Vec<FolFormula>),
-    ForAll(String, Box<FolFormula>, Box<FolFormula>),
-    Exist(String, Box<FolFormula>, Box<FolFormula>),
-}
 #[derive(Debug, PartialEq, Clone)]
 pub enum FolStm {
     /// axiom_name, formula
@@ -193,11 +173,9 @@ impl Kernel for Fol {
             Disjunction(sub_formulas) => {
                 type_check_disjunction(environment, sub_formulas)
             }
-            _ => {
-                Err(LofError::unsupported(
-                    "TODO: Existential type checking not yet supported",
-                ))
-            }
+            _ => Err(LofError::unsupported(
+                "TODO: Existential type checking not yet supported",
+            )),
         }
     }
 
@@ -246,7 +224,7 @@ impl Reducer for Fol {
         var_name: &str,
         body: &Self::Term,
     ) -> Self::Term {
-        substitute_term(term, var_name, body)
+        term.substitute(var_name, body)
     }
 
     fn normalize_expression(
@@ -297,6 +275,8 @@ impl Interactive for Fol {
         target: &Self::Type,
         partial_proof: &Self::Term,
     ) -> Result<(Self::Term, Vec<Self::Type>), LofError> {
-        Err(LofError::unsupported("FOL tactic checking is not implemented"))
+        Err(LofError::unsupported(
+            "FOL tactic checking is not implemented",
+        ))
     }
 }

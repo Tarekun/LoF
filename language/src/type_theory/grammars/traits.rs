@@ -8,3 +8,7 @@ pub trait Unification<T> {
     /// Returns a copy of `self` with the `substitution` applied
     fn apply_substitution(&self, substitution: &Substitution<T>) -> Self;
 }
+
+pub trait NamedSubstitution<T> {
+    fn substitute(&self, target_name: &str, arg: &T) -> Self;
+}

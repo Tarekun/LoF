@@ -1,11 +1,10 @@
 use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
-use super::fol::{
-    Fol,
+use super::fol::{Fol, FolStm};
+use super::fol_utils::make_multiarg_fun_type;
+use crate::type_theory::grammars::fol::{
     FolFormula::{self, Not},
-    FolStm,
     FolTerm::{self, Abstraction, Application, Let, Variable},
 };
-use super::fol_utils::make_multiarg_fun_type;
 use crate::error::LofError;
 use crate::type_theory::commons::evaluation::{
     evaluate_auto, evaluate_fun, evaluate_solve, reduce_application, reduce_let,
@@ -123,7 +122,7 @@ pub fn evaluate_statement(
 mod unit_tests {
     use crate::type_theory::fol::evaluation::one_step_reduction;
     use crate::type_theory::fol::fol::Fol;
-    use crate::type_theory::fol::fol::FolTerm::{Let, Variable};
+    use crate::type_theory::grammars::fol::FolTerm::{Let, Variable};
     use crate::type_theory::interface::TypeTheory;
 
     #[test]

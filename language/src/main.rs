@@ -44,6 +44,7 @@ pub mod type_theory {
     }
     pub mod grammars {
         pub mod cnf;
+        pub mod fol;
         pub mod traits;
     }
     pub mod sup {

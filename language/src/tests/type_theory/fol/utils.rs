@@ -3,7 +3,9 @@ mod tests {
     use std::collections::HashSet;
 
     use crate::type_theory::{
-        fol::{
+        fol::fol_utils::clausify,
+        grammars::{
+            cnf::{CnfFormula, CnfTerm},
             fol::{
                 FolFormula::{
                     Arrow, Conjunction, Disjunction, Exist, ForAll, Not,
@@ -11,21 +13,17 @@ mod tests {
                 },
                 FolTerm::{Application, Variable},
             },
-            fol_utils::{
-                clausify, conjunction_normal_form, negation_normal_form,
-                prenex_normal_form, skolemize,
-            },
         },
-        grammars::cnf::{CnfFormula, CnfTerm},
     };
 
     #[test]
     fn test_negation_normal_form() {
         assert_eq!(
-            negation_normal_form(&Not(Box::new(Conjunction(vec![
+            Not(Box::new(Conjunction(vec![
                 Predicate("A".to_string(), vec![]),
                 Predicate("B".to_string(), vec![])
-            ])))),
+            ])))
+            .negation_normal_form(),
             Disjunction(vec![
                 Not(Box::new(Predicate("A".to_string(), vec![]))),
                 Not(Box::new(Predicate("B".to_string(), vec![]))),
@@ -34,10 +32,11 @@ mod tests {
         );
 
         assert_eq!(
-            negation_normal_form(&Arrow(
+            Arrow(
                 Box::new(Predicate("A".to_string(), vec![])),
                 Box::new(Predicate("B".to_string(), vec![])),
-            )),
+            )
+            .negation_normal_form(),
             Disjunction(vec![
                 Not(Box::new(Predicate("A".to_string(), vec![]))),
                 Predicate("B".to_string(), vec![]),
@@ -46,13 +45,13 @@ mod tests {
         );
 
         assert_eq!(
-            negation_normal_form(&Arrow(
+            Arrow(
                 Box::new(Conjunction(vec![
                     Predicate("A".to_string(), vec![]),
                     Predicate("B".to_string(), vec![]),
                 ])),
                 Box::new(Predicate("H".to_string(), vec![])),
-            )),
+            ).negation_normal_form(),
             Disjunction(vec![
                 Disjunction(vec![
                     Not(Box::new(Predicate("A".to_string(), vec![]))),
@@ -64,20 +63,19 @@ mod tests {
         );
 
         assert_eq!(
-            negation_normal_form(&Not(Box::new(Not(Box::new(Predicate(
-                "A".to_string(),
-                vec![]
-            )))))),
+            Not(Box::new(Not(Box::new(Predicate("A".to_string(), vec![])))))
+                .negation_normal_form(),
             Predicate("A".to_string(), vec![]),
             "NNF algorithm doesnt resolve double negation"
         );
 
         assert_eq!(
-            negation_normal_form(&Not(Box::new(ForAll(
+            Not(Box::new(ForAll(
                 "x".to_string(),
                 Box::new(Predicate("Nat".to_string(), vec![])),
                 Box::new(Predicate("A".to_string(), vec![]))
-            )))),
+            )))
+            .negation_normal_form(),
             Exist(
                 "x".to_string(),
                 Box::new(Predicate("Nat".to_string(), vec![])),
@@ -86,11 +84,11 @@ mod tests {
             "NNF algorithm doesnt push down negation over universal quantifier"
         );
         assert_eq!(
-            negation_normal_form(&Not(Box::new(Exist(
+            Not(Box::new(Exist(
                 "x".to_string(),
                 Box::new(Predicate("Nat".to_string(),vec![])),
                 Box::new(Predicate("A".to_string(), vec![]))
-            )))),
+            ))).negation_normal_form(),
             ForAll(
                 "x".to_string(),
                 Box::new(Predicate("Nat".to_string(),vec![])),
@@ -103,7 +101,7 @@ mod tests {
     #[test]
     fn test_prenex_normal_form() {
         assert_eq!(
-            prenex_normal_form(&Conjunction(vec![
+            Conjunction(vec![
                 ForAll(
                     "a".to_string(),
                     Box::new(Predicate("A".to_string(), vec![])),
@@ -114,7 +112,8 @@ mod tests {
                     Box::new(Predicate("B".to_string(), vec![])),
                     Box::new(Predicate("Q".to_string(), vec![]))
                 ),
-            ])),
+            ])
+            .prenex_normal_form(),
             ForAll(
                 "a".to_string(),
                 Box::new(Predicate("A".to_string(), vec![])),
@@ -131,7 +130,7 @@ mod tests {
         );
 
         assert_eq!(
-            prenex_normal_form(&Disjunction(vec![
+            Disjunction(vec![
                 Exist(
                     "a".to_string(),
                     Box::new(Predicate("A".to_string(), vec![])),
@@ -142,7 +141,8 @@ mod tests {
                     Box::new(Predicate("B".to_string(), vec![])),
                     Box::new(Predicate("Q".to_string(), vec![]))
                 ),
-            ])),
+            ])
+            .prenex_normal_form(),
             Exist(
                 "a".to_string(),
                 Box::new(Predicate("A".to_string(), vec![])),
@@ -159,7 +159,7 @@ mod tests {
         );
 
         assert_eq!(
-            prenex_normal_form(&Conjunction(vec![
+            Conjunction(vec![
                 ForAll(
                     "a".to_string(),
                     Box::new(Predicate("A".to_string(), vec![])),
@@ -170,7 +170,7 @@ mod tests {
                     ))
                 ),
                 Predicate("Q".to_string(),vec![])
-            ])),
+            ]).prenex_normal_form(),
             ForAll(
                 "a".to_string(),
                 Box::new(Predicate("A".to_string(), vec![])),
@@ -190,13 +190,14 @@ mod tests {
     #[test]
     fn test_conjunction_normal_form() {
         assert_eq!(
-            conjunction_normal_form(&Disjunction(vec![
+            Disjunction(vec![
                 Predicate("A".to_string(), vec![]),
                 Conjunction(vec![
                     Predicate("B".to_string(), vec![]),
                     Predicate("C".to_string(), vec![]),
                 ])
-            ])),
+            ])
+            .conjunction_normal_form(),
             vec![
                 Disjunction(vec![
                     Predicate("A".to_string(), vec![]),
@@ -210,13 +211,14 @@ mod tests {
             "CNF isnt distributing a predicate to the right"
         );
         assert_eq!(
-            conjunction_normal_form(&Disjunction(vec![
+            Disjunction(vec![
                 Conjunction(vec![
                     Predicate("B".to_string(), vec![]),
                     Predicate("C".to_string(), vec![]),
                 ]),
                 Predicate("A".to_string(), vec![]),
-            ])),
+            ])
+            .conjunction_normal_form(),
             vec![
                 Disjunction(vec![
                     Predicate("B".to_string(), vec![]),
@@ -231,7 +233,7 @@ mod tests {
         );
 
         assert_eq!(
-            conjunction_normal_form(&Disjunction(vec![
+            Disjunction(vec![
                 Conjunction(vec![
                     Predicate("A".to_string(), vec![]),
                     Predicate("B".to_string(), vec![]),
@@ -240,7 +242,8 @@ mod tests {
                     Predicate("C".to_string(), vec![]),
                     Predicate("D".to_string(), vec![]),
                 ]),
-            ])),
+            ])
+            .conjunction_normal_form(),
             vec![
                 Disjunction(vec![
                     Predicate("A".to_string(), vec![]),
@@ -263,14 +266,15 @@ mod tests {
         );
 
         assert_eq!(
-            conjunction_normal_form(&ForAll(
+            ForAll(
                 "n".to_string(),
                 Box::new(Predicate("Nat".to_string(), vec![])),
                 Box::new(Conjunction(vec![
                     Predicate("P".to_string(), vec![]),
                     Predicate("Q".to_string(), vec![])
                 ]))
-            )),
+            )
+            .conjunction_normal_form(),
             vec![
                 Predicate("P".to_string(), vec![]),
                 Predicate("Q".to_string(), vec![]),
@@ -279,7 +283,7 @@ mod tests {
         );
 
         assert_eq!(
-            conjunction_normal_form(&Disjunction(vec![
+            Disjunction(vec![
                 Predicate("A".to_string(), vec![]),
                 Conjunction(vec![
                     Predicate("B".to_string(), vec![]),
@@ -288,7 +292,8 @@ mod tests {
                         Predicate("D".to_string(), vec![]),
                     ])
                 ])
-            ])),
+            ])
+            .conjunction_normal_form(),
             vec![
                 Disjunction(vec![
                     Predicate("A".to_string(), vec![]),
@@ -307,20 +312,21 @@ mod tests {
     #[test]
     fn test_skolemization() {
         assert_eq!(
-            skolemize(&Exist(
+            Exist(
                 "n".to_string(),
                 Box::new(Predicate("Nat".to_string(), vec![])),
                 Box::new(Predicate(
                     "P".to_string(),
                     vec![Variable("n".to_string())]
                 ))
-            )),
+            )
+            .skolemize(),
             Predicate("P".to_string(), vec![Variable("sw_0".to_string())]),
             "Skolemization algorithm doesnt remove one single existential"
         );
 
         assert_eq!(
-            skolemize(&Exist(
+            Exist(
                 "n".to_string(),
                 Box::new(Predicate("Nat".to_string(), vec![])),
                 Box::new(Exist(
@@ -334,7 +340,8 @@ mod tests {
                         ]
                     ))
                 ))
-            )),
+            )
+            .skolemize(),
             Predicate(
                 "P".to_string(),
                 vec![
@@ -346,7 +353,7 @@ mod tests {
         );
 
         assert_eq!(
-            skolemize(&ForAll(
+            ForAll(
                 "x".to_string(),
                 Box::new(Predicate("Nat".to_string(), vec![])),
                 Box::new(Exist(
@@ -357,7 +364,7 @@ mod tests {
                         vec![Variable("n".to_string())]
                     ))
                 ))
-            )),
+            ).skolemize(),
             ForAll(
                 "x".to_string(),
                 Box::new(Predicate("Nat".to_string(), vec![])),
