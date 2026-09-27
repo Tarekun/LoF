@@ -11,9 +11,9 @@ use crate::{
     type_theory::{
         commons::utils::generic_multiarg_fun_type,
         fol::fol::FolTerm,
-        sup::sup::{
-            SupFormula::{self, Clause},
-            SupTerm,
+        grammars::cnf::{
+            CnfFormula::{self, Clause},
+            CnfTerm,
         },
     },
 };
@@ -582,25 +582,25 @@ pub fn conjunction_normal_form(φ: &FolFormula) -> Vec<FolFormula> {
     to_cnf(φ)
 }
 
-pub fn term_to_sup(
+pub fn term_to_cnf(
     term: &FolTerm,
     constants: &HashSet<String>,
-) -> Result<SupTerm, LofError> {
+) -> Result<CnfTerm, LofError> {
     match &term {
         Variable(name) => {
             if constants.contains(name) {
-                Ok(SupTerm::Application(name.to_string(), vec![]))
+                Ok(CnfTerm::Application(name.to_string(), vec![]))
             } else {
-                Ok(SupTerm::Variable(name.to_string()))
+                Ok(CnfTerm::Variable(name.to_string()))
             }
         }
         Application(_, _) => {
             let (fun_name, args) = get_application_components(&term)?;
             let mut sup_args = vec![];
             for arg in args {
-                sup_args.push(term_to_sup(&arg, constants)?);
+                sup_args.push(term_to_cnf(&arg, constants)?);
             }
-            Ok(SupTerm::Application(fun_name, sup_args))
+            Ok(CnfTerm::Application(fun_name, sup_args))
         }
         _ => Err(LofError::custom(format!(
             "FOL term {:?} doesn't have a corresponding SUP term",
@@ -613,17 +613,17 @@ pub fn term_to_sup(
 pub fn clausify(
     φ: &FolFormula,
     constants: &HashSet<String>,
-) -> Result<Vec<SupFormula>, LofError> {
+) -> Result<Vec<CnfFormula>, LofError> {
     fn clauses_to_sup(
         clauses: Vec<FolFormula>,
         constants: &HashSet<String>,
-    ) -> Result<Vec<SupFormula>, LofError> {
+    ) -> Result<Vec<CnfFormula>, LofError> {
         // collect errors across all clauses
         let mut errors = vec![];
         let mut sup_clauses = vec![];
 
         for clause in clauses {
-            match clause_to_sup(clause, constants) {
+            match clause_to_cnf(clause, constants) {
                 Ok(clause) => sup_clauses.push(clause),
                 Err(err) => errors.push(err),
             }
@@ -636,20 +636,20 @@ pub fn clausify(
         }
     }
 
-    fn clause_to_sup(
+    fn clause_to_cnf(
         C: FolFormula,
         constants: &HashSet<String>,
-    ) -> Result<SupFormula, LofError> {
+    ) -> Result<CnfFormula, LofError> {
         let C = match C {
             Predicate(name, args) => {
                 let mut sup_args = vec![];
                 for arg in args {
-                    sup_args.push(term_to_sup(&arg, constants)?);
+                    sup_args.push(term_to_cnf(&arg, constants)?);
                 }
-                SupFormula::Atom(name, sup_args)
+                CnfFormula::Atom(name, sup_args)
             }
             Disjunction(lits) => Clause(clauses_to_sup(lits, constants)?),
-            Not(D) => SupFormula::Not(Box::new(clause_to_sup(*D, constants)?)),
+            Not(D) => CnfFormula::Not(Box::new(clause_to_cnf(*D, constants)?)),
             _ => {
                 return Err(LofError::custom(format!("Not a Clause: {:?}", C)));
             }

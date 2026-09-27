@@ -1,7 +1,9 @@
-use super::sup::SupFormula::{self, Clause};
-use super::sup_utils::subsumes;
 use crate::error::LofError;
 use crate::type_theory::commons::unification::Substitution;
+use crate::type_theory::grammars::cnf::{
+    CnfFormula::{self, Clause},
+    CnfTerm,
+};
 use crate::type_theory::sup::freedom::{
     GivingClauseSignature, SelectionFunctionSignature,
 };
@@ -9,13 +11,10 @@ use crate::type_theory::sup::inferences::{
     demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
     subsumption_resolution_first, superposition,
 };
-use crate::type_theory::sup::sup::SupTerm;
-use crate::type_theory::sup::sup_utils::{
-    extract_answer, is_answer_literal, is_tautology, standardize_apart,
-};
+use crate::type_theory::sup::sup_utils::{extract_answer, is_answer_literal};
 
 /// Checks if a formula φ is the empty clause, ignoring answer literals
-fn is_bottom(φ: &SupFormula) -> bool {
+fn is_bottom(φ: &CnfFormula) -> bool {
     match φ {
         Clause(literals) => literals.iter().all(is_answer_literal),
         _ => false,
@@ -24,15 +23,15 @@ fn is_bottom(φ: &SupFormula) -> bool {
 
 #[allow(non_snake_case)]
 /// Decides if the clause is redundant
-fn is_redundant(C: &SupFormula, kept: &Vec<SupFormula>) -> bool {
-    is_tautology(C) || kept.iter().any(|D| subsumes(D, C))
+fn is_redundant(C: &CnfFormula, kept: &Vec<CnfFormula>) -> bool {
+    C.is_tautology() || kept.iter().any(|D| D.subsumes(C))
 }
 
 /// Forward simplification simplifies the given `clause` by the clauses in `kept`
 fn forward_simplification(
-    kept: &Vec<SupFormula>,
-    clause: SupFormula,
-) -> SupFormula {
+    kept: &Vec<CnfFormula>,
+    clause: CnfFormula,
+) -> CnfFormula {
     let mut current_given_clause = clause;
     for other in kept {
         current_given_clause = demodulate_first(&current_given_clause, other);
@@ -47,11 +46,11 @@ fn forward_simplification(
 /// Returns the set of only simplified rules from kept and drops simplified clauses
 /// from `kept`
 fn backward_simplification(
-    kept: &mut Vec<SupFormula>,
-    clause: &SupFormula,
-) -> Vec<SupFormula> {
+    kept: &mut Vec<CnfFormula>,
+    clause: &CnfFormula,
+) -> Vec<CnfFormula> {
     let mut simplified_kept = vec![];
-    let mut new_kept: Vec<SupFormula> = vec![];
+    let mut new_kept: Vec<CnfFormula> = vec![];
 
     for other in kept.iter() {
         let simplified_other = demodulate_first(&other, clause);
@@ -74,10 +73,10 @@ fn backward_simplification(
 /// Performs unary inferences on `given` alone, then binary inferences between
 /// `given` and every clause currently in `kept`.
 fn generating_inferences(
-    given: &SupFormula,
-    kept: &Vec<SupFormula>,
+    given: &CnfFormula,
+    kept: &Vec<CnfFormula>,
     selection_fn: &SelectionFunctionSignature,
-) -> Vec<SupFormula> {
+) -> Vec<CnfFormula> {
     let mut newly_derived = vec![];
 
     let (derived, _) = factoring(&given, selection_fn);
@@ -90,7 +89,7 @@ fn generating_inferences(
     // binary inferences between given and each clause in kept
     for kept_clause in kept.iter() {
         // premises of binary inferences must not share variables
-        let kept_clause = standardize_apart(kept_clause);
+        let kept_clause = kept_clause.standardize_apart();
 
         let (derived, _) = resolution(&given, &kept_clause, selection_fn);
         newly_derived.extend(derived);
@@ -102,10 +101,10 @@ fn generating_inferences(
 }
 
 pub fn saturate(
-    clauses: &Vec<SupFormula>,
+    clauses: &Vec<CnfFormula>,
     selection_fn: &SelectionFunctionSignature,
     giving_clause_fn: GivingClauseSignature,
-) -> Result<Substitution<SupTerm>, LofError> {
+) -> Result<Substitution<CnfTerm>, LofError> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
 
@@ -151,33 +150,37 @@ mod unit_tests {
     use crate::type_theory::sup::freedom::GivingClauseSignature;
     use crate::{
         config::SelectionFunction,
-        type_theory::sup::{
-            freedom::{get_selection_fn, pick_clause, pick_clause_weighted},
-            saturation::{is_bottom, saturate},
-            sup::{
-                SupFormula::{self, Atom, Clause, Equality, Not},
-                SupTerm::{self, Application, Variable},
+        type_theory::{
+            grammars::cnf::{
+                CnfFormula::{self, Atom, Clause, Equality, Not},
+                CnfTerm::{self, Application, Variable},
             },
-            sup_utils::with_answer_literal,
+            sup::{
+                freedom::{
+                    get_selection_fn, pick_clause, pick_clause_weighted,
+                },
+                saturation::{is_bottom, saturate},
+                sup_utils::with_answer_literal,
+            },
         },
     };
 
-    fn s(n: SupTerm) -> SupTerm {
+    fn s(n: CnfTerm) -> CnfTerm {
         Application("s".to_string(), vec![n])
     }
-    fn var(name: &str) -> SupTerm {
+    fn var(name: &str) -> CnfTerm {
         Variable(name.to_string())
     }
-    fn add(n: SupTerm, m: SupTerm) -> SupTerm {
+    fn add(n: CnfTerm, m: CnfTerm) -> CnfTerm {
         Application("+".to_string(), vec![n, m])
     }
-    fn constant(name: &str) -> SupTerm {
+    fn constant(name: &str) -> CnfTerm {
         Application(name.to_string(), vec![])
     }
-    fn pred(name: &str, args: Vec<SupTerm>) -> SupFormula {
+    fn pred(name: &str, args: Vec<CnfTerm>) -> CnfFormula {
         Atom(name.to_string(), args)
     }
-    fn not(φ: SupFormula) -> SupFormula {
+    fn not(φ: CnfFormula) -> CnfFormula {
         Not(Box::new(φ))
     }
 

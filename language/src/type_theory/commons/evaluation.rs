@@ -6,11 +6,12 @@ use crate::{
     type_theory::{
         commons::{unification::Substitution, utils::eta_expand},
         environment::Environment,
+        grammars::cnf::{CnfFormula, CnfTerm},
         interface::{Automatic, Kernel, Reducer, TypeTheory},
         sup::{
             freedom::{get_giving_clause_fn, get_selection_fn},
-            sup::{Sup, SupFormula, SupTerm},
-            sup_utils::{standardize_apart, with_answer_literal},
+            sup::Sup,
+            sup_utils::with_answer_literal,
         },
     },
 };
@@ -169,8 +170,8 @@ pub fn evaluate_theorem<T: TypeTheory, E>(
 /// and running SUP saturation algorithm with the clausified set of formulas
 pub fn evaluate_auto<
     T: TypeTheory + Kernel,
-    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, LofError>,
-    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, LofError>,
+    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<CnfFormula>, LofError>,
+    S: Fn(&T::Term, &HashSet<String>) -> Result<CnfTerm, LofError>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
@@ -206,8 +207,8 @@ pub fn evaluate_auto<
 /// Unlike evaluate_auto, this calls saturate directly to recover the Substitution.
 pub fn evaluate_solve<
     T: TypeTheory + Kernel,
-    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, LofError>,
-    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, LofError>,
+    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<CnfFormula>, LofError>,
+    S: Fn(&T::Term, &HashSet<String>) -> Result<CnfTerm, LofError>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
@@ -237,8 +238,8 @@ pub fn evaluate_solve<
 
 fn saturation_interface<
     T: TypeTheory + Kernel,
-    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<SupFormula>, LofError>,
-    S: Fn(&T::Term, &HashSet<String>) -> Result<SupTerm, LofError>,
+    C: Fn(&T::Type, &HashSet<String>) -> Result<Vec<CnfFormula>, LofError>,
+    S: Fn(&T::Term, &HashSet<String>) -> Result<CnfTerm, LofError>,
     G: Fn(&T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
@@ -247,7 +248,7 @@ fn saturation_interface<
     term_to_sup: S,
     complement: G,
     track_answers: bool,
-) -> Result<Substitution<SupTerm>, LofError> {
+) -> Result<Substitution<CnfTerm>, LofError> {
     let mut saturation_set = vec![];
     let constants = environment.get_constants();
     let config = global_config();
@@ -257,20 +258,20 @@ fn saturation_interface<
 
     for (_, var_type) in environment.get_context().iter() {
         for clause in clausify(var_type, &constants)? {
-            saturation_set.push(standardize_apart(&clause));
+            saturation_set.push(clause.standardize_apart());
         }
     }
     for (var_name, body) in environment.get_deltas().iter() {
         let var_type = T::type_check_term(body, environment)?;
         for clause in clausify(&var_type, &constants)? {
-            saturation_set.push(standardize_apart(&clause));
+            saturation_set.push(clause.standardize_apart());
         }
         // include axiom `var_name = body`
-        let eq_axiom = SupFormula::Equality(
-            SupTerm::Variable(var_name.to_string()),
+        let eq_axiom = CnfFormula::Equality(
+            CnfTerm::Variable(var_name.to_string()),
             term_to_sup(body, &constants)?,
         );
-        saturation_set.push(standardize_apart(&eq_axiom));
+        saturation_set.push(eq_axiom.standardize_apart());
     }
     for goal in goals {
         for clause in clausify(&complement(goal), &constants)? {
@@ -280,7 +281,7 @@ fn saturation_interface<
             } else {
                 clause
             };
-            saturation_set.push(standardize_apart(&clause));
+            saturation_set.push(clause.standardize_apart());
         }
     }
 

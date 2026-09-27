@@ -1,75 +1,16 @@
-use super::sup::{
-    Sup,
-    SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
-    SupTerm::{self, Application, Variable},
-};
 use crate::error::LofError;
 use crate::type_theory::{
-    commons::unification::Substitution, interface::TypeTheory,
+    commons::unification::Substitution,
+    grammars::cnf::{
+        CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
+        CnfTerm::{self, Application, Variable},
+    },
     sup::unification::terms_unify,
 };
-use std::fmt;
-use std::{
-    cmp::Ordering::{self, Equal, Greater, Less},
-    sync::atomic::{AtomicUsize, Ordering::Relaxed},
-};
-
-impl fmt::Debug for SupTerm {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Variable(name) => write!(f, "{}", name),
-            Application(name, args) => {
-                if args.len() == 0 {
-                    write!(f, "<{}>", name)
-                } else {
-                    write!(f, "{}(", name)?;
-                    for i in 0..args.len() - 1 {
-                        write!(f, "{:?}, ", args[i])?;
-                    }
-                    write!(f, "{:?})", args[args.len() - 1])
-                }
-            }
-        }
-    }
-}
-impl fmt::Debug for SupFormula {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Atom(name, args) => {
-                if args.len() == 0 {
-                    write!(f, "{}", name)
-                } else {
-                    write!(f, "{}(", name)?;
-                    for i in 0..args.len() - 1 {
-                        write!(f, "{:?}, ", args[i])?;
-                    }
-                    write!(f, "{:?})", args[args.len() - 1])
-                }
-            }
-            Clause(lits) => {
-                if lits.len() == 0 {
-                    write!(f, "⊥")
-                } else {
-                    for i in 0..lits.len() - 1 {
-                        write!(f, "{:?} ∨ ", lits[i])?;
-                    }
-                    write!(f, "{:?}", lits[lits.len() - 1])
-                }
-            }
-            Not(psi) => match &**psi {
-                Equality(s, t) => write!(f, "{:?}≠{:?}", s, t),
-                _ => write!(f, "¬{:?}", psi),
-            },
-            Equality(l, r) => write!(f, "{:?} = {:?}", l, r),
-            ForAll(var_name, var_type, psi) => {
-                write!(f, "∀{}:{:?}. {:?}", var_name, var_type, psi)
-            }
-        }
-    }
-}
+use std::cmp::Ordering::{self, Equal, Greater, Less};
 
 /// Returns the ordered vector of formal argument types of nested universal quantification
-pub fn get_arg_types(forall: &SupFormula) -> Vec<SupFormula> {
+pub fn get_arg_types(forall: &CnfFormula) -> Vec<CnfFormula> {
     match forall {
         ForAll(_, var_type, body) => {
             let mut result = vec![*var_type.clone()];
@@ -82,76 +23,17 @@ pub fn get_arg_types(forall: &SupFormula) -> Vec<SupFormula> {
 }
 
 /// Returns the innermost formula of nested universal quantification
-pub fn get_forall_innermost(forall: &SupFormula) -> SupFormula {
+pub fn get_forall_innermost(forall: &CnfFormula) -> CnfFormula {
     match forall {
         ForAll(_, _, body) => get_forall_innermost(&body),
         _ => forall.to_owned(),
     }
 }
 
-/// Check if two literals are (syntactically) complements
-fn are_complements(l1: &SupFormula, l2: &SupFormula) -> bool {
-    match (l1, l2) {
-        (Atom(_, _), Not(q)) => **q == *l1,
-        (Not(p), Atom(_, _)) => **p == *l2,
-        _ => false,
-    }
-}
-
-/// Returns `true` if the formula is *found* to be a tautology, but who knows...
-pub fn is_tautology(φ: &SupFormula) -> bool {
-    //body...
-    match φ {
-        //TODO look for axioms/sorts?
-        Clause(literals) => {
-            for (idx, lit) in literals.iter().enumerate() {
-                if is_tautology(lit) {
-                    return true;
-                }
-
-                // excluded middle
-                for lit2 in &literals[0..idx] {
-                    if are_complements(lit, lit2) {
-                        return true;
-                    }
-                }
-            }
-
-            false
-        }
-        // identity of equals
-        Equality(left, right) => Sup::base_term_equality(left, right).is_ok(),
-
-        // TODO review
-        _ => false,
-    }
-}
-
-/// Returns `true` iff `term` contains `target` inside
-pub fn contains(term: &SupTerm, target: &SupTerm) -> bool {
-    // TODO this should be syntactic equality specifically. now this is implemented by
-    // base_term_equality but itd be nice to be explicit here
-    if Sup::base_term_equality(term, target).is_ok() {
-        return true;
-    }
-
-    match term {
-        Application(_, args) => {
-            for arg in args {
-                if contains(arg, target) {
-                    return true;
-                }
-            }
-            false
-        }
-        _ => false,
-    }
-}
-
 /// Implements standard Knuth-Bendix ordering of terms. Ordering ties are not
 /// broken using the internal names, so ex. `Variable`s are all isomorphic
-pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
-    fn weight(term: &SupTerm) -> i32 {
+pub fn kbo_terms(term1: &CnfTerm, term2: &CnfTerm) -> Ordering {
+    fn weight(term: &CnfTerm) -> i32 {
         match term {
             Variable(_) => 1,
             Application(_, args) => 1 + (args.len() as i32),
@@ -185,7 +67,7 @@ pub fn kbo_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
         }
     }
 }
-pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
+pub fn kbo_types(φ1: &CnfFormula, φ2: &CnfFormula) -> Ordering {
     match (φ1, φ2) {
         (Atom(_, args1), Atom(_, args2)) => {
             match args1.len().cmp(&args2.len()) {
@@ -243,95 +125,12 @@ pub fn kbo_types(φ1: &SupFormula, φ2: &SupFormula) -> Ordering {
     }
 }
 
-#[allow(non_snake_case)]
-/// Checks wheter clause `C` subsumes `D`, ie if `C`≐`E` where `E` is a subset
-/// of literals of `D`
-pub fn subsumes(C: &SupFormula, D: &SupFormula) -> bool {
-    let Clause(c_lits) = C else { return false };
-    let Clause(d_lits) = D else { return false };
-
-    // TODO if i implement Eq and Hash for SupFormula in a way that supports
-    // alpha equivalence this time complexity can be reduced from O(nm) to O(n+m)
-    c_lits.iter().all(|c_lit| {
-        d_lits
-            .iter()
-            //TODO currently this is syntactic equality with no mgu support
-            .any(|d_lit| Sup::base_type_equality(c_lit, d_lit).is_ok())
-    })
-}
-
-#[allow(non_snake_case)]
-/// Given a clause formula, returns the vector of its literals.
-/// Treats literal variants as singleton clauses
-pub fn unpack_literals(C: &SupFormula) -> Vec<SupFormula> {
-    match C {
-        Clause(literals) => literals.to_owned(),
-        _ => vec![C.clone()],
-    }
-}
-
-/// Returns a new term identical to `term` where every occurance of `target` is
-/// substituted by `arg`
-pub fn substitute_term(
-    term: &SupTerm,
-    target: &SupTerm,
-    arg: &SupTerm,
-) -> SupTerm {
-    if Sup::base_term_equality(term, target).is_ok() {
-        return arg.to_owned();
-    }
-    match term {
-        Application(fun_name, fun_args) => Application(
-            fun_name.to_string(),
-            fun_args
-                .iter()
-                .map(|fun_arg| substitute_term(fun_arg, target, arg))
-                .collect(),
-        ),
-        // non-recursive cases didnt pass equality against `target` by now
-        _ => term.to_owned(),
-    }
-}
-/// Returns a new formula identical to `formula` where every occurance of `target` is
-/// substituted by `arg`
-pub fn substitute_formula(
-    formula: &SupFormula,
-    target: &SupTerm,
-    arg: &SupTerm,
-) -> SupFormula {
-    match formula {
-        Atom(pred_name, pred_args) => Atom(
-            pred_name.to_string(),
-            pred_args
-                .iter()
-                .map(|pred_arg| substitute_term(pred_arg, target, arg))
-                .collect(),
-        ),
-        Equality(l, r) => Equality(
-            substitute_term(l, target, arg),
-            substitute_term(r, target, arg),
-        ),
-        Not(sub) => Not(Box::new(substitute_formula(sub, target, arg))),
-        Clause(sub_formulas) => Clause(
-            sub_formulas
-                .iter()
-                .map(|lit| substitute_formula(lit, target, arg))
-                .collect(),
-        ),
-        ForAll(var_name, var_type, body) => ForAll(
-            var_name.to_string(),
-            Box::new(substitute_formula(var_type, target, arg)),
-            Box::new(substitute_formula(body, target, arg)),
-        ),
-    }
-}
-
 /// Returns a clone of the first subterm of `term` that can be unified with `target`.
 /// Terms&types are read left2right and binders are checked before bodies
 pub fn find_unifiable_term(
-    term: &SupTerm,
-    target: &SupTerm,
-) -> Option<(SupTerm, Substitution<SupTerm>)> {
+    term: &CnfTerm,
+    target: &CnfTerm,
+) -> Option<(CnfTerm, Substitution<CnfTerm>)> {
     if let Ok(mgu) = terms_unify(term, target) {
         return Some((term.clone(), mgu));
     }
@@ -351,9 +150,9 @@ pub fn find_unifiable_term(
 /// Returns a clone of the first subterm of `formula` that can be unified with `target`.
 /// Terms&types are read left2right and binders are checked before bodies
 pub fn find_unifiable_formula(
-    formula: &SupFormula,
-    target: &SupTerm,
-) -> Option<(SupTerm, Substitution<SupTerm>)> {
+    formula: &CnfFormula,
+    target: &CnfTerm,
+) -> Option<(CnfTerm, Substitution<CnfTerm>)> {
     match formula {
         Atom(_, pred_args) => {
             for arg in pred_args {
@@ -393,52 +192,12 @@ pub fn find_unifiable_formula(
     }
 }
 
-static VAR_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-/// Returns a new formula identical to `formula` where every variable name is
-/// suffixed with `_<id>` to make it disjoint from any other clause's variables.
-pub fn standardize_apart(formula: &SupFormula) -> SupFormula {
-    fn rename_vars_term(term: &SupTerm, id: usize) -> SupTerm {
-        match term {
-            Variable(name) => Variable(format!("{}_{}", name, id)),
-            Application(fun, args) => Application(
-                fun.clone(),
-                args.iter().map(|a| rename_vars_term(a, id)).collect(),
-            ),
-        }
-    }
-
-    fn rename_vars_formula(formula: &SupFormula, id: usize) -> SupFormula {
-        match formula {
-            Atom(pred, args) => Atom(
-                pred.clone(),
-                args.iter().map(|a| rename_vars_term(a, id)).collect(),
-            ),
-            Equality(l, r) => {
-                Equality(rename_vars_term(l, id), rename_vars_term(r, id))
-            }
-            Not(inner) => Not(Box::new(rename_vars_formula(inner, id))),
-            Clause(lits) => Clause(
-                lits.iter().map(|l| rename_vars_formula(l, id)).collect(),
-            ),
-            ForAll(var, ty, body) => ForAll(
-                format!("{}_{}", var, id),
-                Box::new(rename_vars_formula(ty, id)),
-                Box::new(rename_vars_formula(body, id)),
-            ),
-        }
-    }
-
-    let id = VAR_COUNTER.fetch_add(1, Relaxed);
-    rename_vars_formula(formula, id)
-}
-
 /// Reserved predicate name for answer literals
 const ANSWER_PREDICATE: &str = "$answer";
 
 /// Collects unbound variable names of `formula` in order of occurrence, without duplicates
-fn collect_vars(formula: &SupFormula) -> Vec<String> {
-    fn collect_term_vars(term: &SupTerm, vars: &mut Vec<String>) {
+fn collect_vars(formula: &CnfFormula) -> Vec<String> {
+    fn collect_term_vars(term: &CnfTerm, vars: &mut Vec<String>) {
         match term {
             Variable(name) if !vars.contains(name) => vars.push(name.clone()),
             Variable(_) => {}
@@ -448,7 +207,7 @@ fn collect_vars(formula: &SupFormula) -> Vec<String> {
         }
     }
 
-    fn solver(formula: &SupFormula, vars: &mut Vec<String>) {
+    fn solver(formula: &CnfFormula, vars: &mut Vec<String>) {
         match formula {
             Atom(_, args) => {
                 args.iter().for_each(|a| collect_term_vars(a, vars))
@@ -472,13 +231,13 @@ fn collect_vars(formula: &SupFormula) -> Vec<String> {
 }
 
 /// Returns `clause` extended with an answer literal tracking all of its free variables
-pub fn with_answer_literal(clause: &SupFormula) -> SupFormula {
+pub fn with_answer_literal(clause: &CnfFormula) -> CnfFormula {
     let vars = collect_vars(clause);
     if vars.is_empty() {
         return clause.to_owned();
     }
 
-    let mut literals = unpack_literals(clause);
+    let mut literals = clause.unpack_literals();
     literals.push(Atom(
         ANSWER_PREDICATE.to_string(),
         vars.into_iter()
@@ -492,7 +251,7 @@ pub fn with_answer_literal(clause: &SupFormula) -> SupFormula {
     Clause(literals)
 }
 
-pub fn is_answer_literal(literal: &SupFormula) -> bool {
+pub fn is_answer_literal(literal: &CnfFormula) -> bool {
     matches!(literal, Atom(pred, _) if pred == ANSWER_PREDICATE)
 }
 
@@ -500,9 +259,9 @@ pub fn is_answer_literal(literal: &SupFormula) -> bool {
 /// only of answer literals. Different answer literals `$answer(a) ∨ $answer(b)`
 /// only prove a disjunction of answers and fail
 pub fn extract_answer(
-    clause: &SupFormula,
-) -> Result<Substitution<SupTerm>, LofError> {
-    let answers = unpack_literals(clause);
+    clause: &CnfFormula,
+) -> Result<Substitution<CnfTerm>, LofError> {
+    let answers = clause.unpack_literals();
     let Some(Atom(_, args)) = answers.first() else {
         return Ok(Substitution::empty());
     };
@@ -527,16 +286,12 @@ pub fn extract_answer(
 #[cfg(test)]
 mod tests {
     use crate::type_theory::commons::unification::Substitution;
-    use crate::type_theory::sup::{
-        sup::{
-            SupFormula::{Atom, Clause, Equality, Not},
-            SupTerm::{self, Application, Variable},
-        },
-        sup_utils::{
-            extract_answer, is_tautology, kbo_terms, kbo_types,
-            standardize_apart, substitute_formula, subsumes,
-            with_answer_literal,
-        },
+    use crate::type_theory::grammars::cnf::{
+        CnfFormula::{Atom, Clause, Equality, Not},
+        CnfTerm::{self, Application, Variable},
+    };
+    use crate::type_theory::sup::sup_utils::{
+        extract_answer, kbo_terms, kbo_types, with_answer_literal,
     };
     use std::cmp::Ordering::{Equal, Greater, Less};
 
@@ -548,7 +303,7 @@ mod tests {
         let goal =
             Not(Box::new(Atom("P".to_string(), vec![r.clone(), r.clone()])));
 
-        let tracked = standardize_apart(&with_answer_literal(&goal));
+        let tracked = with_answer_literal(&goal).standardize_apart();
         let Clause(lits) = &tracked else {
             panic!("expected a clause")
         };
@@ -587,7 +342,7 @@ mod tests {
         let Clause(lits) = answer_a else {
             panic!("expected a clause")
         };
-        let instance = |t: &SupTerm| substitute_formula(&lits[1], &r, t);
+        let instance = |t: &CnfTerm| lits[1].substitute_formula(&r, t);
         assert!(
             extract_answer(&Clause(vec![instance(&a), instance(&b)])).is_err(),
             "Disjunctive answer is accepted as a definite answer"
@@ -612,23 +367,21 @@ mod tests {
         let taut = Equality(variable.clone(), variable.clone());
 
         assert!(
-            is_tautology(&taut),
+            taut.is_tautology(),
             "Tautology detection couldnt notice simple equality of identicals"
         );
         assert!(
-            !is_tautology(&Clause(vec![])),
+            !Clause(vec![]).is_tautology(),
             "Tautology detection accepts the empty clause"
         );
 
         assert!(
-            is_tautology(&Clause(vec![taut.clone()])),
+            Clause(vec![taut.clone()]).is_tautology(),
             "Tautology detection couldnt notice clause containing a tautology"
         );
 
         assert!(
-            is_tautology(&Clause(vec![
-                p.clone(), q.clone(), Not(Box::new(p))
-            ])),
+            Clause(vec![p.clone(), q.clone(), Not(Box::new(p))]).is_tautology(),
             "Tautology detection couldnt notice clause with contradicting literals"
         );
     }
@@ -641,17 +394,18 @@ mod tests {
         let q = Atom("Q".to_string(), vec![variable.clone()]);
 
         assert!(
-            subsumes(&Clause(vec![]), &Clause(vec![p.clone()])),
+            Clause(vec![]).subsumes(&Clause(vec![p.clone()])),
             "subsumption check doesnt work with emtpy clause"
         );
 
         assert!(
-            subsumes(&Clause(vec![p.clone()]), &Clause(vec![p.clone()])),
+            Clause(vec![p.clone()]).subsumes(&Clause(vec![p.clone()])),
             "subsumption check doesnt work with identical clauses"
         );
 
         assert!(
-            subsumes(&Clause(vec![p.clone()]), &Clause(vec![q.clone(), p.clone()])),
+            Clause(vec![p.clone()])
+                .subsumes(&Clause(vec![q.clone(), p.clone()])),
             "subsumption check doesnt work with emtpy clause that extend the first one"
         );
     }

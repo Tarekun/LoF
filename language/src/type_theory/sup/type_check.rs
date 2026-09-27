@@ -1,13 +1,14 @@
 use super::{
-    sup::{
-        Sup,
-        SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
-        SupTerm,
-    },
+    sup::Sup,
     sup_utils::{get_arg_types, get_forall_innermost},
 };
 use crate::type_theory::{
-    commons::type_check::type_check_variable, environment::Environment,
+    commons::type_check::type_check_variable,
+    environment::Environment,
+    grammars::cnf::{
+        CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
+        CnfTerm,
+    },
     interface::TypeTheory,
 };
 use crate::{
@@ -22,8 +23,8 @@ use crate::{
 pub fn type_check_application(
     environment: &mut Environment<Sup>,
     fun_name: &str,
-    args: &Vec<SupTerm>,
-) -> Result<SupFormula, LofError> {
+    args: &Vec<CnfTerm>,
+) -> Result<CnfFormula, LofError> {
     type_check_nary(environment, fun_name, args)?;
     let (_, fun_type) = environment.get_from_context(fun_name).unwrap();
     // Sup shouldnt have dependent types
@@ -35,8 +36,8 @@ pub fn type_check_application(
 pub fn type_check_atomic(
     environment: &mut Environment<Sup>,
     pred_name: &str,
-    args: &Vec<SupTerm>,
-) -> Result<SupFormula, LofError> {
+    args: &Vec<CnfTerm>,
+) -> Result<CnfFormula, LofError> {
     type_check_nary(environment, pred_name, args)?;
     Ok(Atom(pred_name.to_string(), args.clone()))
 }
@@ -44,9 +45,9 @@ pub fn type_check_atomic(
 //
 pub fn type_check_equality(
     _: &mut Environment<Sup>,
-    t1: &SupTerm,
-    t2: &SupTerm,
-) -> Result<SupFormula, LofError> {
+    t1: &CnfTerm,
+    t2: &CnfTerm,
+) -> Result<CnfFormula, LofError> {
     Sup::base_term_equality(t1, t2)?;
     Ok(Equality(t1.clone(), t2.clone()))
 }
@@ -54,8 +55,8 @@ pub fn type_check_equality(
 //
 pub fn type_check_not(
     environment: &mut Environment<Sup>,
-    ψ: &SupFormula,
-) -> Result<SupFormula, LofError> {
+    ψ: &CnfFormula,
+) -> Result<CnfFormula, LofError> {
     Sup::type_check_type(ψ, environment)?;
     Ok(Not(Box::new(ψ.clone())))
 }
@@ -64,9 +65,9 @@ pub fn type_check_not(
 pub fn type_check_forall(
     environment: &mut Environment<Sup>,
     var_name: &str,
-    var_type: &SupFormula,
-    ψ: &SupFormula,
-) -> Result<SupFormula, LofError> {
+    var_type: &CnfFormula,
+    ψ: &CnfFormula,
+) -> Result<CnfFormula, LofError> {
     let _ = type_check_fo_universal::<Sup>(environment, var_name, var_type, ψ)?;
 
     Ok(ForAll(
@@ -79,9 +80,9 @@ pub fn type_check_forall(
 //
 pub fn type_check_clause(
     environment: &mut Environment<Sup>,
-    literals: &Vec<SupFormula>,
-) -> Result<SupFormula, LofError> {
-    fn is_literal(formula: &SupFormula) -> bool {
+    literals: &Vec<CnfFormula>,
+) -> Result<CnfFormula, LofError> {
+    fn is_literal(formula: &CnfFormula) -> bool {
         match formula {
             Atom(_, _) => true,
             Not(p) => match **p {
@@ -109,7 +110,7 @@ pub fn type_check_clause(
 fn type_check_nary(
     environment: &mut Environment<Sup>,
     applied: &str,
-    args: &Vec<SupTerm>,
+    args: &Vec<CnfTerm>,
 ) -> Result<(), LofError> {
     let applied_type = type_check_variable::<Sup>(environment, applied)?;
 

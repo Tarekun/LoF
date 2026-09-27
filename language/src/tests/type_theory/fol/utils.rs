@@ -16,7 +16,7 @@ mod tests {
                 prenex_normal_form, skolemize,
             },
         },
-        sup::sup::{SupFormula, SupTerm},
+        grammars::cnf::{CnfFormula, CnfTerm},
     };
 
     #[test]
@@ -400,19 +400,19 @@ mod tests {
                 ),
                 &no_constants
             ),
-            Ok(vec![SupFormula::Clause(vec![
-                SupFormula::Atom(
+            Ok(vec![CnfFormula::Clause(vec![
+                CnfFormula::Atom(
                     "P".to_string(),
-                    vec![SupTerm::Application(
+                    vec![CnfTerm::Application(
                         "sw_0".to_string(),
-                        vec![SupTerm::Variable("x".to_string())],
+                        vec![CnfTerm::Variable("x".to_string())],
                     )]
                 ),
-                SupFormula::Not(Box::new(SupFormula::Atom(
+                CnfFormula::Not(Box::new(CnfFormula::Atom(
                     "A".to_string(),
                     vec![]
                 ))),
-                SupFormula::Not(Box::new(SupFormula::Atom(
+                CnfFormula::Not(Box::new(CnfFormula::Atom(
                     "B".to_string(),
                     vec![]
                 ))),
@@ -431,16 +431,16 @@ mod tests {
                 ),
                 &no_constants
             ),
-            Ok(vec![SupFormula::Clause(vec![
-                SupFormula::Not(Box::new(SupFormula::Atom(
+            Ok(vec![CnfFormula::Clause(vec![
+                CnfFormula::Not(Box::new(CnfFormula::Atom(
                     "A".to_string(),
                     vec![]
                 ))),
-                SupFormula::Not(Box::new(SupFormula::Atom(
+                CnfFormula::Not(Box::new(CnfFormula::Atom(
                     "B".to_string(),
                     vec![]
                 ))),
-                SupFormula::Atom("H".to_string(), vec![]),
+                CnfFormula::Atom("H".to_string(), vec![]),
             ])]),
             "A rule with a 2-literal conjunctive body (H :- A, B) must clausify to the single Horn clause ¬A∨¬B∨H, not two separate (and logically weaker) clauses"
         );

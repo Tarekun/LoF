@@ -12,44 +12,24 @@ use crate::{
     type_theory::{
         commons::{type_check::type_check_variable, unification::Substitution},
         environment::Environment,
+        grammars::cnf::{
+            CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
+            CnfTerm::{self, Application, Variable},
+        },
         interface::{Automatic, Kernel, TypeTheory},
         sup::{
             freedom::{GivingClauseSignature, SelectionFunctionSignature},
-            sup::{
-                SupFormula::{Atom, Clause, Equality, ForAll, Not},
-                SupTerm::{Application, Variable},
-            },
             sup_utils::{kbo_terms, kbo_types},
         },
     },
 };
 use std::cmp::Ordering;
 
-#[derive(Clone, PartialEq)]
-pub enum SupTerm {
-    /// var_name
-    Variable(String),
-    /// fun_name, [args]
-    Application(String, Vec<SupTerm>),
-}
-
-#[derive(Clone, PartialEq)]
-pub enum SupFormula {
-    /// pred_name, [args]
-    Atom(String, Vec<SupTerm>),
-    Equality(SupTerm, SupTerm),
-    Not(Box<SupFormula>),
-    /// [literals]
-    Clause(Vec<SupFormula>),
-    /// var_name, var_type, formula
-    ForAll(String, Box<SupFormula>, Box<SupFormula>),
-}
-
 pub struct Sup;
 impl TypeTheory for Sup {
-    type Term = SupTerm;
-    type Type = SupFormula;
-    type Exp = Union<SupTerm, SupFormula>;
+    type Term = CnfTerm;
+    type Type = CnfFormula;
+    type Exp = Union<CnfTerm, CnfFormula>;
     type Stm = ();
 
     fn default_environment() -> Environment<Sup> {
@@ -57,8 +37,8 @@ impl TypeTheory for Sup {
     }
 
     fn base_term_equality(
-        term1: &SupTerm,
-        term2: &SupTerm,
+        term1: &CnfTerm,
+        term2: &CnfTerm,
     ) -> Result<(), LofError> {
         if term1 == term2 {
             Ok(())
@@ -67,8 +47,8 @@ impl TypeTheory for Sup {
         }
     }
     fn base_type_equality(
-        type1: &SupFormula,
-        type2: &SupFormula,
+        type1: &CnfFormula,
+        type2: &CnfFormula,
     ) -> Result<(), LofError> {
         if type1 == type2 {
             Ok(())
@@ -133,7 +113,7 @@ impl Kernel for Sup {
     }
 
     fn type_check_expression(
-        exp: &Union<SupTerm, SupFormula>,
+        exp: &Union<CnfTerm, CnfFormula>,
         environment: &mut Environment<Sup>,
     ) -> Result<Self::Type, LofError> {
         match exp {
@@ -146,12 +126,14 @@ impl Kernel for Sup {
         _stm: &Self::Stm,
         _env: &mut Environment<Sup>,
     ) -> Result<Self::Type, LofError> {
-        Err(LofError::unsupported("Statement type checking is not supported in SUP"))
+        Err(LofError::unsupported(
+            "Statement type checking is not supported in SUP",
+        ))
     }
 }
 
 impl Automatic for Sup {
-    fn compare_terms(term1: &SupTerm, term2: &SupTerm) -> Ordering {
+    fn compare_terms(term1: &CnfTerm, term2: &CnfTerm) -> Ordering {
         kbo_terms(term1, term2)
     }
 
@@ -160,10 +142,10 @@ impl Automatic for Sup {
     }
 
     fn saturate(
-        saturation_set: &Vec<SupFormula>,
+        saturation_set: &Vec<CnfFormula>,
         selection_fn: &SelectionFunctionSignature,
         giving_clause_fn: &GivingClauseSignature,
-    ) -> Result<Substitution<SupTerm>, LofError> {
+    ) -> Result<Substitution<CnfTerm>, LofError> {
         saturate(saturation_set, selection_fn, *giving_clause_fn)
     }
 }

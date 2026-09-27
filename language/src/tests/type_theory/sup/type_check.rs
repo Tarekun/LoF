@@ -1,10 +1,10 @@
 use crate::type_theory::{
-    interface::{Kernel, TypeTheory},
-    sup::sup::{
-        Sup,
-        SupFormula::{Atom, Clause, Equality, ForAll, Not},
-        SupTerm::{Application, Variable},
+    grammars::cnf::{
+        CnfFormula::{Atom, Clause, Equality, ForAll, Not},
+        CnfTerm::{Application, Variable},
     },
+    interface::{Kernel, TypeTheory},
+    sup::sup::Sup,
 };
 
 mod variable {
@@ -51,10 +51,7 @@ mod application {
 
         assert_eq!(
             Sup::type_check_term(
-                &Application(
-                    "f".to_string(),
-                    vec![Variable("n".to_string())]
-                ),
+                &Application("f".to_string(), vec![Variable("n".to_string())]),
                 &mut test_env,
             ),
             Ok(nat.clone()),
@@ -152,7 +149,10 @@ mod equality {
         let mut test_env = Sup::default_environment();
 
         assert_eq!(
-            Sup::type_check_type(&Equality(n.clone(), n.clone()), &mut test_env),
+            Sup::type_check_type(
+                &Equality(n.clone(), n.clone()),
+                &mut test_env
+            ),
             Ok(Equality(n.clone(), n.clone())),
             "Equality type checker refuses a term equated with itself"
         );
@@ -247,10 +247,7 @@ mod forall {
             Sup::type_check_type(
                 &ForAll(
                     "x".to_string(),
-                    Box::new(Atom(
-                        "StupidUnboundSort".to_string(),
-                        vec![]
-                    )),
+                    Box::new(Atom("StupidUnboundSort".to_string(), vec![])),
                     Box::new(nat.clone()),
                 ),
                 &mut test_env,

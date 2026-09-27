@@ -10,7 +10,7 @@ use crate::error::LofError;
 use crate::type_theory::commons::evaluation::{
     evaluate_auto, evaluate_fun, evaluate_solve, reduce_application, reduce_let,
 };
-use crate::type_theory::fol::fol_utils::{clausify, term_to_sup};
+use crate::type_theory::fol::fol_utils::{clausify, term_to_cnf};
 use crate::{
     misc::Union,
     type_theory::{
@@ -101,14 +101,14 @@ pub fn evaluate_statement(
             environment,
             goals,
             clausify,
-            term_to_sup,
+            term_to_cnf,
             |phi| Not(Box::new(phi.to_owned())),
         ),
         FolStm::Auto(target) => evaluate_auto::<Fol, _, _, _>(
             environment,
             target,
             clausify,
-            term_to_sup,
+            term_to_cnf,
             |phi| Not(Box::new(phi.to_owned())),
         ),
     }

@@ -1,16 +1,12 @@
 use crate::error::LofError;
 use crate::type_theory::commons::unification::{unify_with_base, Substitution};
-use crate::type_theory::sup::sup_utils::substitute_term;
-use crate::type_theory::sup::{
-    sup::{
-        SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
-        SupTerm::{self, Application, Variable},
-    },
-    sup_utils::contains,
+use crate::type_theory::grammars::cnf::{
+    CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
+    CnfTerm::{self, Application, Variable},
 };
 
 //########################### UNIFICATION PARAMETERS
-fn structurally_equal(term1: &SupTerm, term2: &SupTerm) -> bool {
+fn structurally_equal(term1: &CnfTerm, term2: &CnfTerm) -> bool {
     match (term1, term2) {
         (Variable(_), Variable(_)) => true,
         (Application(fun1, args1), Application(fun2, args2)) => {
@@ -20,29 +16,29 @@ fn structurally_equal(term1: &SupTerm, term2: &SupTerm) -> bool {
     }
 }
 
-fn explode(term: &SupTerm) -> Vec<SupTerm> {
+fn explode(term: &CnfTerm) -> Vec<CnfTerm> {
     match term {
         Variable(_) => vec![],
         Application(_, args) => args.to_owned(),
     }
 }
 
-fn occurs(term: &SupTerm, var_name: &str) -> bool {
-    contains(term, &Variable(var_name.to_string()))
+fn occurs(term: &CnfTerm, var_name: &str) -> bool {
+    term.contains(&Variable(var_name.to_string()))
 }
 //########################### UNIFICATION PARAMETERS
 
 pub fn terms_unify(
-    term1: &SupTerm,
-    term2: &SupTerm,
-) -> Result<Substitution<SupTerm>, LofError> {
+    term1: &CnfTerm,
+    term2: &CnfTerm,
+) -> Result<Substitution<CnfTerm>, LofError> {
     terms_unify_with_base(term1, term2, &mut Substitution::empty())
 }
 fn terms_unify_with_base(
-    term1: &SupTerm,
-    term2: &SupTerm,
-    mgu: &mut Substitution<SupTerm>,
-) -> Result<Substitution<SupTerm>, LofError> {
+    term1: &CnfTerm,
+    term2: &CnfTerm,
+    mgu: &mut Substitution<CnfTerm>,
+) -> Result<Substitution<CnfTerm>, LofError> {
     let mgu = unify_with_base(
         term1,
         term2,
@@ -57,21 +53,21 @@ fn terms_unify_with_base(
     )?;
 
     Ok(mgu.reduce(|term, var_name, arg| {
-        substitute_term(term, &Variable(var_name.to_string()), arg)
+        term.substitute_term(&Variable(var_name.to_string()), arg)
     }))
 }
 
 // TODO: see if i can integrate this in the general unification algorithm
 pub fn formulas_unify(
-    phi: &SupFormula,
-    psi: &SupFormula,
-) -> Result<Substitution<SupTerm>, LofError> {
-    //TODO im pretty sure this can be implemented with commons unification over the SupFormula grammar
+    phi: &CnfFormula,
+    psi: &CnfFormula,
+) -> Result<Substitution<CnfTerm>, LofError> {
+    //TODO im pretty sure this can be implemented with commons unification over the CnfFormula grammar
     fn solver(
-        phi: &SupFormula,
-        psi: &SupFormula,
-        mgu: &mut Substitution<SupTerm>,
-    ) -> Result<Substitution<SupTerm>, LofError> {
+        phi: &CnfFormula,
+        psi: &CnfFormula,
+        mgu: &mut Substitution<CnfTerm>,
+    ) -> Result<Substitution<CnfTerm>, LofError> {
         let error = Err(LofError::unification_failure(phi, psi));
         match (phi, psi) {
             (Atom(p1, args1), Atom(p2, args2)) => {
@@ -119,14 +115,14 @@ pub fn formulas_unify(
 
     let mgu = solver(phi, psi, &mut Substitution::empty())?;
     Ok(mgu.reduce(|term, var_name, arg| {
-        substitute_term(term, &Variable(var_name.to_string()), arg)
+        term.substitute_term(&Variable(var_name.to_string()), arg)
     }))
 }
 
 pub fn term_apply_substitution(
-    term: &SupTerm,
-    substitution: &Substitution<SupTerm>,
-) -> SupTerm {
+    term: &CnfTerm,
+    substitution: &Substitution<CnfTerm>,
+) -> CnfTerm {
     match term {
         Variable(var_name) => {
             substitution.get(var_name).unwrap_or(term).clone()
@@ -140,9 +136,9 @@ pub fn term_apply_substitution(
     }
 }
 pub fn formula_apply_substitution(
-    formula: &SupFormula,
-    substitution: &Substitution<SupTerm>,
-) -> SupFormula {
+    formula: &CnfFormula,
+    substitution: &Substitution<CnfTerm>,
+) -> CnfFormula {
     match formula {
         Atom(pred_name, args) => Atom(
             pred_name.to_string(),
@@ -172,13 +168,11 @@ pub fn formula_apply_substitution(
 mod unit_tests {
     use crate::type_theory::{
         commons::unification::Substitution,
-        sup::{
-            sup::{
-                SupFormula::{Atom, Clause, Equality, Not},
-                SupTerm::{Application, Variable},
-            },
-            unification::{formulas_unify, terms_unify},
+        grammars::cnf::{
+            CnfFormula::{Atom, Clause, Equality, Not},
+            CnfTerm::{Application, Variable},
         },
+        sup::unification::{formulas_unify, terms_unify},
     };
 
     #[test]

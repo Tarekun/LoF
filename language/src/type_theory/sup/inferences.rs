@@ -1,14 +1,12 @@
 use crate::type_theory::commons::unification::Substitution;
+use crate::type_theory::grammars::cnf::{
+    CnfFormula::{self, Atom, Clause, Equality, Not},
+    CnfTerm::{self, Variable},
+};
 use crate::type_theory::interface::Automatic;
 use crate::type_theory::sup::freedom::SelectionFunctionSignature;
-use crate::type_theory::sup::sup::{
-    Sup,
-    SupFormula::{self, Atom, Clause, Equality, Not},
-    SupTerm::{self, Variable},
-};
-use crate::type_theory::sup::sup_utils::{
-    find_unifiable_formula, substitute_formula, subsumes, unpack_literals,
-};
+use crate::type_theory::sup::sup::Sup;
+use crate::type_theory::sup::sup_utils::find_unifiable_formula;
 use crate::type_theory::sup::unification::{
     formula_apply_substitution, formulas_unify, term_apply_substitution,
     terms_unify,
@@ -20,7 +18,7 @@ use std::cmp::{max_by, min_by, Ordering::Less};
 /// Applies a demodulation simplification rule to C,D, special case of superposition
 /// inference where one of the clauses is a single equality and we rewrite by the smaller term.
 /// only the first argument `C` will be simplified
-pub fn demodulate_first(C: &SupFormula, D: &SupFormula) -> SupFormula {
+pub fn demodulate_first(C: &CnfFormula, D: &CnfFormula) -> CnfFormula {
     if let Equality(l, r) = D {
         // TODO check l/r arent isomorphic
         let min = min_by(l, r, |l, r| Sup::compare_terms(l, r));
@@ -29,7 +27,7 @@ pub fn demodulate_first(C: &SupFormula, D: &SupFormula) -> SupFormula {
         // TODO also support mgu
         // TODO also return mgu
         // TODO verify this is correct. the paper references the requirement of (l=r) > C
-        substitute_formula(C, max, min)
+        C.substitute_formula(max, min)
     } else {
         C.to_owned()
     }
@@ -38,12 +36,12 @@ pub fn demodulate_first(C: &SupFormula, D: &SupFormula) -> SupFormula {
 #[allow(non_snake_case)]
 /// Applies subsumption resolution inference simplifying the first argument `C`
 pub fn subsumption_resolution_first(
-    C: &SupFormula,
-    D: &SupFormula,
-) -> SupFormula {
+    C: &CnfFormula,
+    D: &CnfFormula,
+) -> CnfFormula {
     // TODO also support/return mgu
-    let c_lits = unpack_literals(C);
-    let d_lits = unpack_literals(D);
+    let c_lits = C.unpack_literals();
+    let d_lits = D.unpack_literals();
     let [c_first, c_rest @ ..] = c_lits.as_slice() else {
         return C.to_owned();
     };
@@ -58,7 +56,7 @@ pub fn subsumption_resolution_first(
             let mut c_new = c_rest.to_vec();
             c_new.push((**inner).clone());
 
-            if subsumes(&Clause(d_new), &Clause(c_new)) {
+            if Clause(d_new).subsumes(&Clause(c_new)) {
                 Clause(c_rest.to_vec())
             } else {
                 C.to_owned()
@@ -70,7 +68,7 @@ pub fn subsumption_resolution_first(
             let mut c_new = c_rest.to_vec();
             c_new.push((*c_first).clone());
 
-            if subsumes(&Clause(d_new), &Clause(c_new)) {
+            if Clause(d_new).subsumes(&Clause(c_new)) {
                 Clause(c_rest.to_vec())
             } else {
                 C.to_owned()
@@ -84,12 +82,12 @@ pub fn subsumption_resolution_first(
 //########################### SUP INFERENCES
 #[allow(non_snake_case)]
 pub fn resolution(
-    C: &SupFormula,
-    D: &SupFormula,
+    C: &CnfFormula,
+    D: &CnfFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> (Vec<SupFormula>, Substitution<SupTerm>) {
-    let mut c_literals = unpack_literals(C);
-    let mut d_literals = unpack_literals(D);
+) -> (Vec<CnfFormula>, Substitution<CnfTerm>) {
+    let mut c_literals = C.unpack_literals();
+    let mut d_literals = D.unpack_literals();
     let c_selected = selection_fn(&mut c_literals);
     let d_selected = selection_fn(&mut d_literals);
 
@@ -142,10 +140,10 @@ pub fn resolution(
 
 #[allow(non_snake_case)]
 pub fn factoring(
-    C: &SupFormula,
+    C: &CnfFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> (Vec<SupFormula>, Substitution<SupTerm>) {
-    let mut literals = unpack_literals(C);
+) -> (Vec<CnfFormula>, Substitution<CnfTerm>) {
+    let mut literals = C.unpack_literals();
     let selected = selection_fn(&mut literals);
 
     let mut newly_derived = vec![];
@@ -172,10 +170,10 @@ pub fn factoring(
 
 #[allow(non_snake_case)]
 pub fn eq_resolution(
-    C: &SupFormula,
+    C: &CnfFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> (Vec<SupFormula>, Substitution<SupTerm>) {
-    let mut lits = unpack_literals(C);
+) -> (Vec<CnfFormula>, Substitution<CnfTerm>) {
+    let mut lits = C.unpack_literals();
     let selected = selection_fn(&mut lits);
 
     let mut newly_derived = vec![];
@@ -207,10 +205,10 @@ pub fn eq_resolution(
 
 #[allow(non_snake_case)]
 pub fn eq_factoring(
-    C: &SupFormula,
+    C: &CnfFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> (Vec<SupFormula>, Substitution<SupTerm>) {
-    let mut literals: Vec<SupFormula> = unpack_literals(C);
+) -> (Vec<CnfFormula>, Substitution<CnfTerm>) {
+    let mut literals: Vec<CnfFormula> = C.unpack_literals();
     let selected = selection_fn(&mut literals);
 
     let mut newly_derived = vec![];
@@ -281,12 +279,12 @@ pub fn eq_factoring(
 
 #[allow(non_snake_case)]
 pub fn superposition(
-    C: &SupFormula,
-    D: &SupFormula,
+    C: &CnfFormula,
+    D: &CnfFormula,
     selection_fn: &SelectionFunctionSignature,
-) -> (Vec<SupFormula>, Substitution<SupTerm>) {
-    let mut c_literals = unpack_literals(C);
-    let mut d_literals = unpack_literals(D);
+) -> (Vec<CnfFormula>, Substitution<CnfTerm>) {
+    let mut c_literals = C.unpack_literals();
+    let mut d_literals = D.unpack_literals();
     let c_selected = selection_fn(&mut c_literals);
     let d_selected = selection_fn(&mut d_literals);
     let mut derived = vec![];
@@ -306,7 +304,7 @@ pub fn superposition(
                 if !matches!(matched, Variable(_)) {
                     let other = formula_apply_substitution(&$other, &mgu);
                     let target = term_apply_substitution(&target, &mgu);
-                    let other = substitute_formula(&other, &target, &arg);
+                    let other = other.substitute_formula(&target, &arg);
                     let mut new_clause = vec![];
                     new_clause.push(other);
                     new_clause.extend(c_literals.clone());
@@ -345,15 +343,15 @@ pub fn superposition(
 #[cfg(test)]
 mod unit_tests {
     use crate::config::SelectionFunction;
+    use crate::type_theory::grammars::cnf::{
+        CnfFormula::{Atom, Clause, Equality, Not},
+        CnfTerm::{Application, Variable},
+    };
     use crate::type_theory::sup::freedom::get_selection_fn;
     use crate::type_theory::sup::inferences::{
         demodulate_first, eq_factoring, eq_resolution, factoring, resolution,
         subsumption_resolution_first, superposition,
     };
-    use crate::type_theory::sup::sup::SupFormula::{
-        Atom, Clause, Equality, Not,
-    };
-    use crate::type_theory::sup::sup::SupTerm::{Application, Variable};
     use crate::type_theory::sup::sup_utils::with_answer_literal;
 
     #[test]
