@@ -88,4 +88,46 @@ mod tests {
             "A rule with a 2-literal conjunctive body (H :- A, B) must clausify to the single Horn clause ¬A∨¬B∨H, not two separate (and logically weaker) clauses"
         );
     }
+
+    #[test]
+    fn test_equality_clausification() {
+        let constants = HashSet::from(["a".to_string()]);
+        // ∀x. x = a ∨ ¬(a = x)
+        assert_eq!(
+            clausify(
+                &ForAll(
+                    "x".to_string(),
+                    Box::new(Predicate("$i".to_string(), vec![])),
+                    Box::new(Disjunction(vec![
+                        Predicate(
+                            "=".to_string(),
+                            vec![
+                                Variable("x".to_string()),
+                                Variable("a".to_string())
+                            ]
+                        ),
+                        Not(Box::new(Predicate(
+                            "=".to_string(),
+                            vec![
+                                Variable("a".to_string()),
+                                Variable("x".to_string())
+                            ]
+                        ))),
+                    ])),
+                ),
+                &constants
+            ),
+            Ok(vec![CnfFormula::Clause(vec![
+                CnfFormula::Equality(
+                    CnfTerm::Variable("x".to_string()),
+                    CnfTerm::Application("a".to_string(), vec![])
+                ),
+                CnfFormula::Not(Box::new(CnfFormula::Equality(
+                    CnfTerm::Application("a".to_string(), vec![]),
+                    CnfTerm::Variable("x".to_string())
+                ))),
+            ])]),
+            "Clausification doesnt map the `=` predicate to CNF equality"
+        );
+    }
 }

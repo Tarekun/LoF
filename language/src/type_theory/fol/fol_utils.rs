@@ -87,6 +87,15 @@ pub fn clausify(
         constants: &HashSet<String>,
     ) -> Result<CnfFormula, LofError> {
         let C = match C {
+            // TODO FolFormula has no dedicated equality variant, so equality is
+            // encoded as the `=` predicate (eg by the TPTP parser). Reevaluate
+            // whether a `FolFormula::Equality` is worth it
+            Predicate(name, args) if name == "=" && args.len() == 2 => {
+                CnfFormula::Equality(
+                    term_to_cnf(&args[0], constants)?,
+                    term_to_cnf(&args[1], constants)?,
+                )
+            }
             Predicate(name, args) => {
                 let mut sup_args = vec![];
                 for arg in args {
