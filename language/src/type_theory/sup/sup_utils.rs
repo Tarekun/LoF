@@ -1,11 +1,13 @@
 use crate::error::LofError;
 use crate::type_theory::{
     commons::unification::Substitution,
-    grammars::cnf::{
-        CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
-        CnfTerm::{self, Application, Variable},
+    grammars::{
+        cnf::{
+            CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
+            CnfTerm::{self, Application, Variable},
+        },
+        traits::Unification,
     },
-    sup::unification::terms_unify,
 };
 use std::cmp::Ordering::{self, Equal, Greater, Less};
 
@@ -131,7 +133,7 @@ pub fn find_unifiable_term(
     term: &CnfTerm,
     target: &CnfTerm,
 ) -> Option<(CnfTerm, Substitution<CnfTerm>)> {
-    if let Ok(mgu) = terms_unify(term, target) {
+    if let Ok(mgu) = term.unifies(target) {
         return Some((term.clone(), mgu));
     }
     match term {

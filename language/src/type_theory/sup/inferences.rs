@@ -3,14 +3,11 @@ use crate::type_theory::grammars::cnf::{
     CnfFormula::{self, Atom, Clause, Equality, Not},
     CnfTerm::{self, Variable},
 };
+use crate::type_theory::grammars::traits::Unification;
 use crate::type_theory::interface::Automatic;
 use crate::type_theory::sup::freedom::SelectionFunctionSignature;
 use crate::type_theory::sup::sup::Sup;
 use crate::type_theory::sup::sup_utils::find_unifiable_formula;
-use crate::type_theory::sup::unification::{
-    formula_apply_substitution, formulas_unify, term_apply_substitution,
-    terms_unify,
-};
 use std::cmp::{max_by, min_by, Ordering::Less};
 
 //########################### SIMPLIFICATION INFERENCES
@@ -99,9 +96,7 @@ pub fn resolution(
             match $c_selected[$c_idx] {
                 Atom(_, _) => {
                     if let Not(inner) = &$d_selected[$d_idx] {
-                        if let Ok(mgu) =
-                            formulas_unify(&$c_selected[$c_idx], inner)
-                        {
+                        if let Ok(mgu) = $c_selected[$c_idx].unifies(inner) {
                             let mut new_clause = $c_selected.clone();
                             new_clause.remove($c_idx);
                             new_clause.extend($c_others.clone());
@@ -111,10 +106,9 @@ pub fn resolution(
                             new_clause.extend(d_selected);
                             new_clause.extend($d_others.clone());
 
-                            newly_derived.push(formula_apply_substitution(
-                                &Clause(new_clause),
-                                &mgu,
-                            ));
+                            newly_derived.push(
+                                Clause(new_clause).apply_substitution(&mgu),
+                            );
                             full_mgu.merge(mgu);
                         }
                     }
@@ -151,15 +145,12 @@ pub fn factoring(
 
     for i in 0..selected.len() {
         for j in i + 1..selected.len() {
-            if let Ok(mgu) = formulas_unify(&selected[i], &selected[j]) {
+            if let Ok(mgu) = selected[i].unifies(&selected[j]) {
                 let mut new_clause = selected.clone();
                 new_clause.remove(j);
                 new_clause.extend(literals.clone());
 
-                newly_derived.push(formula_apply_substitution(
-                    &Clause(new_clause),
-                    &mgu,
-                ));
+                newly_derived.push(Clause(new_clause).apply_substitution(&mgu));
                 full_mgu.merge(mgu);
             }
         }
@@ -183,15 +174,13 @@ pub fn eq_resolution(
         match &selected[i] {
             Not(boxed) => {
                 if let Equality(l, r) = &**boxed {
-                    if let Ok(mgu) = terms_unify(l, r) {
+                    if let Ok(mgu) = l.unifies(r) {
                         let mut new_clause = selected.clone();
                         new_clause.remove(i);
                         new_clause.extend(lits.clone());
 
-                        newly_derived.push(formula_apply_substitution(
-                            &Clause(new_clause),
-                            &mgu,
-                        ));
+                        newly_derived
+                            .push(Clause(new_clause).apply_substitution(&mgu));
                         full_mgu.merge(mgu);
                     }
                 }
@@ -224,10 +213,7 @@ pub fn eq_factoring(
             let max = max_by($s, $t, |a, b| Sup::compare_terms(a, b));
             let min = min_by($s, $t, |a, b| Sup::compare_terms(a, b));
 
-            match (
-                terms_unify(max, $s_prime),
-                Sup::compare_terms($t_prime, min),
-            ) {
+            match (max.unifies($s_prime), Sup::compare_terms($t_prime, min)) {
                 (Ok(mgu), Less) => {
                     let mut new_clause = selected.clone();
                     new_clause.remove($j);
@@ -240,10 +226,8 @@ pub fn eq_factoring(
                         $t_prime.to_owned(),
                     ))));
 
-                    newly_derived.push(formula_apply_substitution(
-                        &Clause(new_clause),
-                        &mgu,
-                    ));
+                    newly_derived
+                        .push(Clause(new_clause).apply_substitution(&mgu));
                     full_mgu.merge(mgu);
                 }
                 _ => {}
@@ -302,8 +286,8 @@ pub fn superposition(
             if let Some((matched, mgu)) = unification_pair {
                 // matched term must not be a variable
                 if !matches!(matched, Variable(_)) {
-                    let other = formula_apply_substitution(&$other, &mgu);
-                    let target = term_apply_substitution(&target, &mgu);
+                    let other = $other.apply_substitution(&mgu);
+                    let target = target.apply_substitution(&mgu);
                     let other = other.substitute_formula(&target, &arg);
                     let mut new_clause = vec![];
                     new_clause.push(other);
@@ -316,7 +300,9 @@ pub fn superposition(
                     d_selected_clones.remove($j);
                     new_clause.extend(d_selected_clones);
 
-                    derived.push(formula_apply_substitution(&Clause(new_clause), &mgu));
+                    derived.push(
+                        Clause(new_clause).apply_substitution(&mgu),
+                    );
                     total_mgu.merge(mgu);
                 }
             }
