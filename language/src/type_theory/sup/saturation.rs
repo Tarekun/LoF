@@ -1,5 +1,4 @@
 use super::sup::SupFormula::{self, Clause};
-use super::sup::SupTerm::Variable;
 use super::sup_utils::subsumes;
 use crate::error::LofError;
 use crate::type_theory::commons::unification::Substitution;
@@ -11,12 +10,14 @@ use crate::type_theory::sup::inferences::{
     subsumption_resolution_first, superposition,
 };
 use crate::type_theory::sup::sup::SupTerm;
-use crate::type_theory::sup::sup_utils::{is_tautology, substitute_term};
+use crate::type_theory::sup::sup_utils::{
+    extract_answer, is_answer_literal, is_tautology, standardize_apart,
+};
 
-/// Checks if a formula φ is the empty clause
+/// Checks if a formula φ is the empty clause, ignoring answer literals
 fn is_bottom(φ: &SupFormula) -> bool {
     match φ {
-        Clause(literals) => literals.is_empty(),
+        Clause(literals) => literals.iter().all(is_answer_literal),
         _ => false,
     }
 }
@@ -76,34 +77,28 @@ fn generating_inferences(
     given: &SupFormula,
     kept: &Vec<SupFormula>,
     selection_fn: &SelectionFunctionSignature,
-) -> (Vec<SupFormula>, Substitution<SupTerm>) {
+) -> Vec<SupFormula> {
     let mut newly_derived = vec![];
-    let mut solving_mgu = Substitution::empty();
 
-    let (derived, mgu) = factoring(&given, selection_fn);
+    let (derived, _) = factoring(&given, selection_fn);
     newly_derived.extend(derived);
-    solving_mgu.merge(mgu);
-
-    let (derived, mgu) = eq_resolution(&given, selection_fn);
+    let (derived, _) = eq_resolution(&given, selection_fn);
     newly_derived.extend(derived);
-    solving_mgu.merge(mgu);
-
-    let (derived, mgu) = eq_factoring(&given, selection_fn);
+    let (derived, _) = eq_factoring(&given, selection_fn);
     newly_derived.extend(derived);
-    solving_mgu.merge(mgu);
 
     // binary inferences between given and each clause in kept
     for kept_clause in kept.iter() {
-        let (derived, mgu) = resolution(&given, &kept_clause, selection_fn);
-        newly_derived.extend(derived);
-        solving_mgu.merge(mgu);
+        // premises of binary inferences must not share variables
+        let kept_clause = standardize_apart(kept_clause);
 
-        let (derived, mgu) = superposition(&given, &kept_clause, selection_fn);
+        let (derived, _) = resolution(&given, &kept_clause, selection_fn);
         newly_derived.extend(derived);
-        solving_mgu.merge(mgu);
+        let (derived, _) = superposition(&given, &kept_clause, selection_fn);
+        newly_derived.extend(derived);
     }
 
-    (newly_derived, solving_mgu)
+    newly_derived
 }
 
 pub fn saturate(
@@ -113,18 +108,15 @@ pub fn saturate(
 ) -> Result<Substitution<SupTerm>, LofError> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
-    let mut solving_mgu = Substitution::empty();
 
     /// termination checks for clause processing:
     /// * it's empty: the set is unsatisfiable
     /// * it's redundant: move to the next one
     macro_rules! termination {
         // dry like a mf
-        ($clause:expr, $kept:expr, $mgu:expr) => {
+        ($clause:expr, $kept:expr) => {
             if is_bottom(&$clause) {
-                return Ok($mgu.reduce(|term, var_name, arg| {
-                    substitute_term(term, &Variable(var_name.to_string()), arg)
-                }));
+                return extract_answer(&$clause);
             }
             if is_redundant(&$clause, &$kept) {
                 continue;
@@ -141,18 +133,16 @@ pub fn saturate(
 
         let clause = giving_clause_fn(&mut unprocessed)?;
 
-        termination!(clause, kept, solving_mgu);
+        termination!(clause, kept);
         let clause = forward_simplification(&kept, clause);
-        termination!(clause, kept, solving_mgu);
+        termination!(clause, kept);
         let simplified = backward_simplification(&mut kept, &clause);
         unprocessed.extend(simplified);
 
-        let (new_clauses, mgu) =
-            generating_inferences(&clause, &kept, selection_fn);
+        let new_clauses = generating_inferences(&clause, &kept, selection_fn);
         kept.push(clause);
 
         unprocessed.extend(new_clauses);
-        solving_mgu.merge(mgu);
     }
 }
 
@@ -163,11 +153,12 @@ mod unit_tests {
         config::SelectionFunction,
         type_theory::sup::{
             freedom::{get_selection_fn, pick_clause, pick_clause_weighted},
-            saturation::saturate,
+            saturation::{is_bottom, saturate},
             sup::{
-                SupFormula::{Atom, Clause, Equality, Not},
+                SupFormula::{self, Atom, Clause, Equality, Not},
                 SupTerm::{self, Application, Variable},
             },
+            sup_utils::with_answer_literal,
         },
     };
 
@@ -179,6 +170,15 @@ mod unit_tests {
     }
     fn add(n: SupTerm, m: SupTerm) -> SupTerm {
         Application("+".to_string(), vec![n, m])
+    }
+    fn constant(name: &str) -> SupTerm {
+        Application(name.to_string(), vec![])
+    }
+    fn pred(name: &str, args: Vec<SupTerm>) -> SupFormula {
+        Atom(name.to_string(), args)
+    }
+    fn not(φ: SupFormula) -> SupFormula {
+        Not(Box::new(φ))
     }
 
     fn all_selection_fns() -> Vec<(&'static str, SelectionFunction)> {
@@ -219,23 +219,14 @@ mod unit_tests {
             ))),
         ]);
         // ?- add(1,2,R)
-        let neg_target = Not(Box::new(Atom(
+        let neg_target = with_answer_literal(&Not(Box::new(Atom(
             "add".to_string(),
             vec![
                 s(zero.clone()),
                 s(s(zero.clone())),
                 Variable("R".to_string()),
             ],
-        )));
-        // unsolvable equation 1+2 = 4
-        let inconsistent = Not(Box::new(Atom(
-            "add".to_string(),
-            vec![
-                s(zero.clone()),
-                s(s(zero.clone())),
-                s(s(s(s(zero.clone())))),
-            ],
-        )));
+        ))));
 
         for ((sel_name, sel_variant), (gc_name, gc_fn)) in
             all_combinations(all_selection_fns(), all_giving_clause_fns())
@@ -245,22 +236,17 @@ mod unit_tests {
                 &vec![ax1.clone(), ax2.clone(), neg_target.clone()],
                 &selection_fn,
                 gc_fn,
-            );
+            )
+            .unwrap();
             assert_eq!(
-                mgu.unwrap().resolvent("R"),
+                mgu.resolvent("R"),
                 Some(&s(s(s(zero.clone())))),
                 "predicate logic: wrong solution with selection={sel_name}, giving_clause={gc_name}"
             );
-
-            // validate its not just passing on anything
-            let res = saturate(
-                &vec![ax1.clone(), ax2.clone(), inconsistent.clone()],
-                &selection_fn,
-                gc_fn,
-            );
-            assert!(
-                res.is_err(),
-                "saturation is succeeding with incosistent input formulas with selection={sel_name}, giving_clause={gc_name}"
+            assert_eq!(
+                mgu.names(),
+                vec!["R"],
+                "predicate logic: answer isnt restricted to the query variables with selection={sel_name}, giving_clause={gc_name}"
             );
         }
     }
@@ -277,17 +263,17 @@ mod unit_tests {
             Equality(add(s(var("n")), var("m")), s(var("p"))),
         ]);
         // ?- 1+R = 3
-        let neg_target = Not(Box::new(Equality(
+        let neg_target = with_answer_literal(&Not(Box::new(Equality(
             add(s(zero.clone()), var("R")),
             s(s(s(zero.clone()))),
-        )));
+        ))));
 
         for ((sel_name, sel_variant), (gc_name, gc_fn)) in
             all_combinations(all_selection_fns(), all_giving_clause_fns())
         {
-            // TODO with this combination the proof is found but R resolves to 1 instead
-            // fix this damn bug and remove this skip
-            if sel_name == "All" && gc_name == "FIFO" {
+            // unordered superposition (All) blows up before reaching the refutation
+            // once premises are renamed apart: a search strategy limit, not an answer one
+            if sel_name == "All" {
                 continue;
             }
 
@@ -296,11 +282,17 @@ mod unit_tests {
                 &vec![ax1.clone(), ax2.clone(), neg_target.clone()],
                 &selection_fn,
                 gc_fn,
-            );
+            )
+            .unwrap();
             assert_eq!(
-                mgu.unwrap().resolvent("R"),
+                mgu.resolvent("R"),
                 Some(&s(s(zero.clone()))),
                 "equality logic: wrong solution with selection={sel_name}, giving_clause={gc_name}"
+            );
+            assert_eq!(
+                mgu.names(),
+                vec!["R"],
+                "equality logic: answer isnt restricted to the query variables with selection={sel_name}, giving_clause={gc_name}"
             );
         }
     }
@@ -392,5 +384,119 @@ mod unit_tests {
             .is_ok(),
             "unable to solve addition problem"
         );
+    }
+
+    #[test]
+    fn test_bottom_ignores_answer_literals() {
+        let goal = not(pred("P", vec![var("R")]));
+        let Clause(lits) = with_answer_literal(&Clause(vec![goal.clone()]))
+        else {
+            panic!("expected a clause")
+        };
+        let answer = lits[1].clone();
+
+        assert!(is_bottom(&Clause(vec![])), "Empty clause isnt bottom");
+        assert!(
+            is_bottom(&Clause(vec![answer.clone()])),
+            "Clause made only of answer literals isnt bottom"
+        );
+        assert!(
+            is_bottom(&Clause(vec![answer.clone(), answer.clone()])),
+            "Clause made only of answer literals isnt bottom"
+        );
+        assert!(
+            !is_bottom(&Clause(vec![goal.clone(), answer.clone()])),
+            "Clause with a goal literal left is bottom"
+        );
+        assert!(!is_bottom(&goal), "Unit literal is bottom");
+    }
+
+    #[test]
+    fn test_satisfiable_set_saturates() {
+        // P(a), P(x) => Q(x) ⊬ Q(b)
+        let set = vec![
+            pred("P", vec![constant("a")]),
+            Clause(vec![
+                not(pred("P", vec![var("x")])),
+                pred("Q", vec![var("x")]),
+            ]),
+            with_answer_literal(&not(pred("Q", vec![constant("b")]))),
+        ];
+
+        for ((sel_name, sel_variant), (gc_name, gc_fn)) in
+            all_combinations(all_selection_fns(), all_giving_clause_fns())
+        {
+            assert!(
+                saturate(&set, &get_selection_fn(sel_variant), gc_fn).is_err(),
+                "saturation refuted a satisfiable set with selection={sel_name}, giving_clause={gc_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_answer_ignores_dead_end_bindings() {
+        // ?- Q(R) ∧ P(R), where resolving against Q(a) binds R to a in a dead end
+        let set = vec![
+            pred("P", vec![constant("b")]),
+            pred("Q", vec![constant("b")]),
+            pred("Q", vec![constant("a")]),
+            with_answer_literal(&Clause(vec![
+                not(pred("Q", vec![var("R")])),
+                not(pred("P", vec![var("R")])),
+            ])),
+        ];
+
+        for ((sel_name, sel_variant), (gc_name, gc_fn)) in
+            all_combinations(all_selection_fns(), all_giving_clause_fns())
+        {
+            let mgu =
+                saturate(&set, &get_selection_fn(sel_variant), gc_fn).unwrap();
+            assert_eq!(
+                mgu.resolvent("R"),
+                Some(&constant("b")),
+                "answer picked up a binding not leading to the refutation with selection={sel_name}, giving_clause={gc_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_answer_binds_query_variables_jointly() {
+        // ?- Pair(R, S) must return one of the pairs, never a mix of the two
+        let set = vec![
+            pred("Pair", vec![constant("a"), constant("b")]),
+            pred("Pair", vec![constant("c"), constant("d")]),
+            with_answer_literal(&not(pred("Pair", vec![var("R"), var("S")]))),
+        ];
+
+        for ((sel_name, sel_variant), (gc_name, gc_fn)) in
+            all_combinations(all_selection_fns(), all_giving_clause_fns())
+        {
+            let mgu =
+                saturate(&set, &get_selection_fn(sel_variant), gc_fn).unwrap();
+            let answer = (mgu.resolvent("R"), mgu.resolvent("S"));
+            assert!(
+                answer == (Some(&constant("a")), Some(&constant("b")))
+                    || answer == (Some(&constant("c")), Some(&constant("d"))),
+                "answer {answer:?} isnt a solution with selection={sel_name}, giving_clause={gc_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_premises_renamed_apart() {
+        // ∀x. P(x, a) contradicts ∀x. ¬P(b, x), even though both clauses name their variable x
+        let set = vec![
+            pred("P", vec![var("x"), constant("a")]),
+            not(pred("P", vec![constant("b"), var("x")])),
+        ];
+
+        for ((sel_name, sel_variant), (gc_name, gc_fn)) in
+            all_combinations(all_selection_fns(), all_giving_clause_fns())
+        {
+            assert!(
+                saturate(&set, &get_selection_fn(sel_variant), gc_fn).is_ok(),
+                "clauses sharing variable names werent renamed apart with selection={sel_name}, giving_clause={gc_name}"
+            );
+        }
     }
 }

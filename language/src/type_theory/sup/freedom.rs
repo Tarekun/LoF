@@ -7,7 +7,7 @@ use crate::{
 };
 use crate::{
     config::SelectionFunction::{self, All, Maximal},
-    type_theory::sup::sup::Sup,
+    type_theory::sup::{sup::Sup, sup_utils::is_answer_literal},
 };
 use std::cmp::Ordering::{Equal, Greater};
 
@@ -20,13 +20,24 @@ pub type SelectionFunctionSignature =
 pub fn get_selection_fn(
     selection_fn: SelectionFunction,
 ) -> SelectionFunctionSignature {
-    Box::new(move |clause: &mut Vec<SupFormula>| match selection_fn {
-        Maximal => drop_maximal_literals(clause),
-        All => {
-            let selected = clause.clone();
-            *clause = vec![];
-            selected
-        }
+    let configured_fn =
+        Box::new(move |clause: &mut Vec<SupFormula>| match selection_fn {
+            Maximal => drop_maximal_literals(clause),
+            All => {
+                let selected = clause.clone();
+                *clause = vec![];
+                selected
+            }
+        });
+
+    // answer literals should never be selected
+    Box::new(move |clause: &mut Vec<SupFormula>| {
+        let (answers, mut rest): (Vec<_>, Vec<_>) =
+            clause.drain(..).partition(is_answer_literal);
+        let selected = configured_fn(&mut rest);
+        rest.extend(answers);
+        *clause = rest;
+        selected
     })
 }
 
@@ -119,10 +130,39 @@ pub fn pick_clause_weighted(
 
 #[cfg(test)]
 mod tests {
+    use crate::config::SelectionFunction;
     use crate::type_theory::sup::{
-        freedom::drop_maximal_literals,
-        sup::SupFormula::{Atom, Not},
+        freedom::{drop_maximal_literals, get_selection_fn},
+        sup::{
+            SupFormula::{Atom, Clause, Not},
+            SupTerm::Variable,
+        },
+        sup_utils::{is_answer_literal, unpack_literals, with_answer_literal},
     };
+
+    #[test]
+    fn test_answer_literals_never_selected() {
+        let goal = Not(Box::new(Atom(
+            "P".to_string(),
+            vec![Variable("R".to_string())],
+        )));
+        let tracked = with_answer_literal(&Clause(vec![goal.clone()]));
+
+        for variant in [SelectionFunction::Maximal, SelectionFunction::All] {
+            let selection_fn = get_selection_fn(variant);
+            let mut literals = unpack_literals(&tracked);
+            let selected = selection_fn(&mut literals);
+            assert_eq!(
+                selected,
+                vec![goal.clone()],
+                "Selection didnt select exactly the goal literal"
+            );
+            assert!(
+                literals.len() == 1 && is_answer_literal(&literals[0]),
+                "Answer literal wasnt left among the unselected literals"
+            );
+        }
+    }
 
     #[test]
     fn test_maximal_literal_selection() {
