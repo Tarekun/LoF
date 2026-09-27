@@ -10,7 +10,7 @@ use crate::{
         sup::{
             freedom::{get_giving_clause_fn, get_selection_fn},
             sup::{Sup, SupFormula, SupTerm},
-            sup_utils::standardize_apart,
+            sup_utils::{standardize_apart, with_answer_literal},
         },
     },
 };
@@ -185,6 +185,7 @@ pub fn evaluate_auto<
         clausify,
         term_to_sup,
         complement,
+        false,
     ) {
         Ok(_) => {
             println!(
@@ -221,9 +222,9 @@ pub fn evaluate_solve<
         clausify,
         term_to_sup,
         complement,
+        true,
     ) {
         Ok(substitution) => {
-            // TODO only print tracked unbound variables
             println!("solve succeeded:\n{:?}", substitution);
             Ok(())
         }
@@ -245,6 +246,7 @@ fn saturation_interface<
     clausify: C,
     term_to_sup: S,
     complement: G,
+    track_answers: bool,
 ) -> Result<Substitution<SupTerm>, LofError> {
     let mut saturation_set = vec![];
     let constants = environment.get_constants();
@@ -271,8 +273,13 @@ fn saturation_interface<
         saturation_set.push(standardize_apart(&eq_axiom));
     }
     for goal in goals {
-        // TODO collect unbound variables (the ones to be solved for the user)
         for clause in clausify(&complement(goal), &constants)? {
+            // track the goal's unbound variables, the ones to be solved for the user
+            let clause = if track_answers {
+                with_answer_literal(&clause)
+            } else {
+                clause
+            };
             saturation_set.push(standardize_apart(&clause));
         }
     }

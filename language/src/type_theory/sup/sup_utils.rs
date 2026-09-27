@@ -3,6 +3,7 @@ use super::sup::{
     SupFormula::{self, Atom, Clause, Equality, ForAll, Not},
     SupTerm::{self, Application, Variable},
 };
+use crate::error::LofError;
 use crate::type_theory::{
     commons::unification::Substitution, interface::TypeTheory,
     sup::unification::terms_unify,
@@ -432,16 +433,176 @@ pub fn standardize_apart(formula: &SupFormula) -> SupFormula {
     rename_vars_formula(formula, id)
 }
 
+/// Reserved predicate name for answer literals
+const ANSWER_PREDICATE: &str = "$answer";
+
+/// Collects unbound variable names of `formula` in order of occurrence, without duplicates
+fn collect_vars(formula: &SupFormula) -> Vec<String> {
+    fn collect_term_vars(term: &SupTerm, vars: &mut Vec<String>) {
+        match term {
+            Variable(name) if !vars.contains(name) => vars.push(name.clone()),
+            Variable(_) => {}
+            Application(_, args) => {
+                args.iter().for_each(|a| collect_term_vars(a, vars))
+            }
+        }
+    }
+
+    fn solver(formula: &SupFormula, vars: &mut Vec<String>) {
+        match formula {
+            Atom(_, args) => {
+                args.iter().for_each(|a| collect_term_vars(a, vars))
+            }
+            Equality(l, r) => {
+                collect_term_vars(l, vars);
+                collect_term_vars(r, vars);
+            }
+            Not(inner) => solver(inner, vars),
+            Clause(lits) => lits.iter().for_each(|l| solver(l, vars)),
+            ForAll(_, ty, body) => {
+                solver(ty, vars);
+                solver(body, vars);
+            }
+        }
+    }
+
+    let mut vars = vec![];
+    solver(formula, &mut vars);
+    vars
+}
+
+/// Returns `clause` extended with an answer literal tracking all of its free variables
+pub fn with_answer_literal(clause: &SupFormula) -> SupFormula {
+    let vars = collect_vars(clause);
+    if vars.is_empty() {
+        return clause.to_owned();
+    }
+
+    let mut literals = unpack_literals(clause);
+    literals.push(Atom(
+        ANSWER_PREDICATE.to_string(),
+        vars.into_iter()
+            // TODO constructing $answer($v(v)) is hack to get around the fact that
+            // standardize_apart would rename variables to v_idx but doesnt do that
+            // on function names. `saturate` should be reworked to have the original
+            // variable list so we can avoid creating this odd answer literal
+            .map(|v| Application(format!("${}", v), vec![Variable(v)]))
+            .collect(),
+    ));
+    Clause(literals)
+}
+
+pub fn is_answer_literal(literal: &SupFormula) -> bool {
+    matches!(literal, Atom(pred, _) if pred == ANSWER_PREDICATE)
+}
+
+/// Returns the answer substitution tracked by `clause`, assumed to be a refutation made
+/// only of answer literals. Different answer literals `$answer(a) ∨ $answer(b)`
+/// only prove a disjunction of answers and fail
+pub fn extract_answer(
+    clause: &SupFormula,
+) -> Result<Substitution<SupTerm>, LofError> {
+    let answers = unpack_literals(clause);
+    let Some(Atom(_, args)) = answers.first() else {
+        return Ok(Substitution::empty());
+    };
+    if answers.iter().any(|answer| *answer != answers[0]) {
+        // TODO rethink this and check it makes sense
+        return Err(LofError::custom(format!(
+            "Found a refutation, but only for the disjunctive answer {:?}",
+            clause
+        )));
+    }
+
+    Ok(Substitution::from(args.iter().filter_map(
+        |arg| match arg {
+            Application(name, inner) if inner.len() == 1 => {
+                Some((name.strip_prefix('$')?.to_string(), inner[0].clone()))
+            }
+            _ => None,
+        },
+    )))
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::type_theory::commons::unification::Substitution;
     use crate::type_theory::sup::{
         sup::{
             SupFormula::{Atom, Clause, Equality, Not},
-            SupTerm::{Application, Variable},
+            SupTerm::{self, Application, Variable},
         },
-        sup_utils::{is_tautology, kbo_terms, kbo_types, subsumes},
+        sup_utils::{
+            extract_answer, is_tautology, kbo_terms, kbo_types,
+            standardize_apart, substitute_formula, subsumes,
+            with_answer_literal,
+        },
     };
     use std::cmp::Ordering::{Equal, Greater, Less};
+
+    #[test]
+    fn test_answer_literal() {
+        let r = Variable("R".to_string());
+        let a = Application("a".to_string(), vec![]);
+        let b = Application("b".to_string(), vec![]);
+        let goal =
+            Not(Box::new(Atom("P".to_string(), vec![r.clone(), r.clone()])));
+
+        let tracked = standardize_apart(&with_answer_literal(&goal));
+        let Clause(lits) = &tracked else {
+            panic!("expected a clause")
+        };
+        let answer = lits.last().unwrap().clone();
+        let Atom(_, args) = &answer else {
+            panic!("expected an atom")
+        };
+        let Application(_, inner) = &args[0] else {
+            panic!("expected wrapper")
+        };
+        assert_eq!(
+            args.len(),
+            1,
+            "Answer literal doesnt track each variable once"
+        );
+        assert_ne!(
+            inner[0], r,
+            "Answer literal variable wasnt renamed with its clause"
+        );
+        assert_eq!(
+            extract_answer(&Clause(vec![answer.clone(), answer.clone()]))
+                .unwrap()
+                .resolvent("R"),
+            Some(&inner[0]),
+            "Answer isnt keyed by the original variable name after renaming"
+        );
+
+        assert_eq!(
+            extract_answer(&Clause(vec![])),
+            Ok(Substitution::empty()),
+            "Empty clause doesnt give an empty answer"
+        );
+
+        let answer_a =
+            with_answer_literal(&Atom("P".to_string(), vec![r.clone()]));
+        let Clause(lits) = answer_a else {
+            panic!("expected a clause")
+        };
+        let instance = |t: &SupTerm| substitute_formula(&lits[1], &r, t);
+        assert!(
+            extract_answer(&Clause(vec![instance(&a), instance(&b)])).is_err(),
+            "Disjunctive answer is accepted as a definite answer"
+        );
+        assert_eq!(
+            extract_answer(&instance(&a)).unwrap().resolvent("R"),
+            Some(&a),
+            "Unit answer literal isnt extracted"
+        );
+        assert_eq!(
+            with_answer_literal(&Atom("P".to_string(), vec![a.clone()])),
+            Atom("P".to_string(), vec![a.clone()]),
+            "Ground clause got an answer literal"
+        );
+    }
 
     #[test]
     fn test_tautology_detection() {
