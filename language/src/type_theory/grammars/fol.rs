@@ -616,3 +616,7 @@ impl FolFormula {
 }
 
 //############################# NORMAL FORMS
+
+#[cfg(test)]
+#[path = "../../tests/type_theory/grammars/fol.rs"]
+mod tests;

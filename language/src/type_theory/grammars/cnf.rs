@@ -470,3 +470,7 @@ impl Unification<CnfTerm> for CnfFormula {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/type_theory/grammars/cnf.rs"]
+mod tests;
