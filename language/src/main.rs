@@ -21,6 +21,7 @@ pub mod tptp {
     pub mod problem;
     pub mod syntax;
     pub mod tff;
+    pub mod thf;
 }
 pub mod type_theory {
     // pub mod commons;
@@ -42,6 +43,10 @@ pub mod type_theory {
         mod type_check;
         mod unification;
     }
+    pub mod f {
+        pub mod f;
+        mod type_check;
+    }
     pub mod fol {
         mod elaboration;
         mod evaluation;
@@ -51,6 +56,7 @@ pub mod type_theory {
     }
     pub mod grammars {
         pub mod cnf;
+        pub mod f;
         pub mod fol;
         pub mod traits;
     }
@@ -76,6 +82,7 @@ mod tests {
         mod problem;
         mod syntax;
         mod tff;
+        mod thf;
     }
     mod type_theory {
         mod fol {
