@@ -7,7 +7,7 @@ use crate::{
                 CnfFormula::{Atom, Clause, Equality, ForAll, Not},
                 CnfTerm::{Application, Variable},
             },
-            traits::Unification,
+            traits::{ToCnfFormula, ToCnfTerm, Unification},
         },
     },
 };
@@ -468,6 +468,17 @@ impl Unification<CnfTerm> for CnfFormula {
                 Box::new(body.apply_substitution(substitution)),
             ),
         }
+    }
+}
+
+impl ToCnfTerm for CnfTerm {
+    fn to_cnf(&self) -> CnfTerm {
+        self.to_owned()
+    }
+}
+impl ToCnfFormula for CnfFormula {
+    fn to_cnf(&self) -> Vec<CnfFormula> {
+        vec![self.to_owned()]
     }
 }
 

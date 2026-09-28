@@ -1,15 +1,13 @@
-use super::{
-    saturation::saturate,
-    type_check::{
-        type_check_application, type_check_atomic, type_check_clause,
-        type_check_equality, type_check_forall, type_check_not,
-    },
+use super::type_check::{
+    type_check_application, type_check_atomic, type_check_clause,
+    type_check_equality, type_check_forall, type_check_not,
 };
 use crate::{
     error::LofError,
     misc::Union::{self, L, R},
     runtime::program::Schedule,
     type_theory::{
+        algorithms::saturation::saturate,
         commons::{type_check::type_check_variable, unification::Substitution},
         environment::Environment,
         grammars::cnf::{
