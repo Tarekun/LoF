@@ -1,6 +1,6 @@
 use crate::error::LofError;
 use crate::misc::Union::{self, L, R};
-use crate::parser::api::{Expression, LofAst, Statement, Tactic};
+use crate::parser::api::{Expression, LofAst, LofStatement, Statement, Tactic};
 use crate::runtime::program::{
     ProgramNode::{OfExp, OfStm},
     Schedule,
@@ -13,17 +13,23 @@ use crate::type_theory::sup::freedom::{
 use std::cmp::Ordering;
 use std::fmt::Debug;
 
-/// Base trait for type systems. Requires a grammar for terms,
-/// one for type and one for statements, plus a function that
-/// returns the default environment for this system.
+/// Statements elaborated in the grammars of the type system `T`
+pub type Stm<T> = Statement<
+    <T as TypeTheory>::Term,
+    <T as TypeTheory>::Type,
+    <T as TypeTheory>::Exp,
+>;
+
+/// Base trait for type systems. Requires a grammar for terms
+/// and one for types, plus a function that returns the default
+/// environment for this system. Statements are shared by all systems
+/// and instantiated over these grammars (see `Stm`).
 /// Higher order systems can set Self::Term = Self::Type
 pub trait TypeTheory {
     /// Enum listing all the term constructors.
     type Term: Debug + Clone + PartialEq;
     /// Enum listing all the type constructors.
     type Type: Debug + Clone + PartialEq;
-    /// Enum listing all the statements elaborated with proper types
-    type Stm: Debug + Clone;
     /// Type for the system's expressions, usually Term or Union<Term, Type>
     type Exp: Debug + Clone;
 
@@ -49,13 +55,15 @@ pub trait TypeTheory {
     ) -> Result<(), LofError>;
 
     fn elaborate_expression(exp: &Expression) -> Result<Self::Exp, LofError>;
-    fn elaborate_statement(stm: &Statement) -> Result<Schedule<Self>, LofError>
+    fn elaborate_statement(
+        stm: &LofStatement,
+    ) -> Result<Schedule<Self>, LofError>
     where
         Self: Sized;
 
     fn elaborate_node(
         node: &LofAst,
-    ) -> Result<Union<Self::Exp, Self::Stm>, LofError>
+    ) -> Result<Union<Self::Exp, Stm<Self>>, LofError>
     where
         Self: Sized,
     {
@@ -127,7 +135,7 @@ pub trait Kernel: TypeTheory {
 
     /// Type checks the statement components
     fn type_check_stm(
-        term: &Self::Stm,
+        term: &Stm<Self>,
         environment: &mut Environment<Self>,
     ) -> Result<Self::Type, LofError>
     where
@@ -256,7 +264,7 @@ pub trait Reducer: TypeTheory {
     /// Evaluates the statement, updating the context accordingly
     fn evaluate_statement(
         environment: &mut Environment<Self>,
-        stm: &Self::Stm,
+        stm: &Stm<Self>,
     ) -> Result<(), LofError>
     where
         Self: Sized;

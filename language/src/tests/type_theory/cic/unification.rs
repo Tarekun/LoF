@@ -1,11 +1,8 @@
-use crate::type_theory::cic::cic::{Cic, NameKind, FIRST_INDEX};
-use crate::type_theory::cic::cic::{
-    CicStm::{Fun, InductiveDef},
-    CicTerm::{
-        self, Abstraction, Application, Let, Match, Meta, Product, Sort,
-        Variable,
-    },
+use crate::parser::api::Statement::{Fun, Inductive};
+use crate::type_theory::cic::cic::CicTerm::{
+    self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
 };
+use crate::type_theory::cic::cic::{Cic, NameKind, FIRST_INDEX};
 use crate::type_theory::cic::unification::{
     cic_apply_unifier, cic_collect_unifications, cic_so_unification,
     cic_solve_unifications, explode, is_substitutable, occurs,
@@ -101,7 +98,7 @@ mod constraint_collection {
         let bool_type = Variable("Bool".to_string(), NameKind::Const());
         let mut env = Cic::default_environment();
         Cic::type_check_stm(
-            &InductiveDef(
+            &Inductive(
                 "Bool".to_string(),
                 vec![],
                 Box::new(Sort("TYPE".to_string())),
@@ -170,7 +167,7 @@ mod constraint_collection {
         let nn = Variable("nn".to_string(), NameKind::Const());
         let mut env = Cic::default_environment();
         Cic::type_check_stm(
-            &InductiveDef(
+            &Inductive(
                 "Nat".to_string(),
                 vec![],
                 Box::new(Sort("TYPE".to_string())),
@@ -831,7 +828,7 @@ fn test_plus_zero_one_unification() {
     let mut env = Cic::default_environment();
 
     Cic::type_check_stm(
-        &InductiveDef(
+        &Inductive(
             "Nat".to_string(),
             vec![],
             Box::new(Sort("TYPE".to_string())),

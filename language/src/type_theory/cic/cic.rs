@@ -3,8 +3,7 @@ use super::tactics::type_check_tactic;
 use super::type_check::type_check_sort;
 use super::unification::cic_so_unification;
 use crate::error::LofError;
-use crate::misc::Union::{self};
-use crate::parser::api::{Expression, Statement, Tactic};
+use crate::parser::api::{Expression, LofStatement, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::CicTerm::{Application, Product};
 use crate::type_theory::cic::cic_utils::{
@@ -30,7 +29,7 @@ use crate::type_theory::commons::type_check::{
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
-    Interactive, Kernel, Reducer, Refiner, TypeInference, TypeTheory,
+    Interactive, Kernel, Reducer, Refiner, Stm, TypeInference, TypeTheory,
 };
 use tracing::debug;
 
@@ -73,37 +72,10 @@ pub enum CicTerm {
     /// index
     Meta(i32),
 }
-#[derive(Debug, PartialEq, Clone)]
-pub enum CicStm {
-    /// axiom_name, formula
-    Axiom(String, Box<CicTerm>),
-    /// theorem_name, formula, proof
-    Theorem(String, Box<CicTerm>, Union<CicTerm, Vec<Tactic<CicTerm>>>),
-    /// (var_name, var_type, definition_body)
-    Global(String, Option<CicTerm>, Box<CicTerm>),
-    /// (fun_name, args, out_type, body, is_rec)
-    Fun(
-        String,
-        Vec<(String, CicTerm)>,
-        Box<CicTerm>,
-        Box<CicTerm>,
-        bool,
-    ),
-    /// type_name, [(param_name : param_type)], ariety, [( constr_name, constr_type )]
-    InductiveDef(
-        String,
-        Vec<(String, CicTerm)>,
-        Box<CicTerm>,
-        Vec<(String, CicTerm)>,
-    ),
-    // Auto(CicTerm),
-}
-
 pub struct Cic;
 impl TypeTheory for Cic {
     type Term = CicTerm;
     type Type = CicTerm;
-    type Stm = CicStm;
     type Exp = CicTerm;
 
     #[allow(non_snake_case)]
@@ -137,7 +109,9 @@ impl TypeTheory for Cic {
     fn elaborate_expression(exp: &Expression) -> Result<CicTerm, LofError> {
         Ok(elaborate_expression(exp))
     }
-    fn elaborate_statement(stm: &Statement) -> Result<Schedule<Cic>, LofError> {
+    fn elaborate_statement(
+        stm: &LofStatement,
+    ) -> Result<Schedule<Cic>, LofError> {
         elaborate_statement(stm)
     }
 }
@@ -229,18 +203,18 @@ impl Kernel for Cic {
     }
 
     fn type_check_stm(
-        stm: &CicStm,
+        stm: &Stm<Cic>,
         environment: &mut Environment<Cic>,
     ) -> Result<CicTerm, LofError> {
         debug!("Type-type checking of {:?}", stm);
         match stm {
-            CicStm::Global(var_name, opt_type, body) => {
+            Statement::Global(var_name, opt_type, body) => {
                 type_check_global::<Cic>(environment, var_name, opt_type, body)
             }
-            CicStm::Axiom(axiom_name, formula) => {
+            Statement::Axiom(axiom_name, formula) => {
                 type_check_axiom::<Cic>(environment, axiom_name, formula)
             }
-            CicStm::InductiveDef(type_name, params, ariety, constructors) => {
+            Statement::Inductive(type_name, params, ariety, constructors) => {
                 type_check_inductive(
                     environment,
                     type_name,
@@ -249,7 +223,7 @@ impl Kernel for Cic {
                     constructors,
                 )
             }
-            CicStm::Fun(fun_name, args, out_type, body, is_rec) => {
+            Statement::Fun(fun_name, args, out_type, body, is_rec) => {
                 i_type_check_function::<Cic, _, _>(
                     environment,
                     fun_name,
@@ -267,16 +241,18 @@ impl Kernel for Cic {
                     },
                 )
             }
-            CicStm::Theorem(theorem_name, formula, proof) => {
+            Statement::Theorem(theorem_name, formula, proof) => {
                 u_type_check_theorem::<Cic>(
                     environment,
                     theorem_name,
                     formula,
                     proof,
                 )
-            } // CicStm::Auto(formula) => {
-              //     type_check_auto::<Cic>(environment, formula)
-              // }
+            }
+            // Statement::Auto(formula) => {
+            //     type_check_auto::<Cic>(environment, formula)
+            // }
+            _ => Err(LofError::unsupported_construct("CIC", stm)),
         }
     }
 }
@@ -412,7 +388,7 @@ impl Reducer for Cic {
 
     fn evaluate_statement(
         environment: &mut Environment<Cic>,
-        stm: &Self::Stm,
+        stm: &Stm<Cic>,
     ) -> Result<(), LofError> {
         debug!("Evaluating statement: {:?}", stm);
         evaluate_statement(environment, stm)

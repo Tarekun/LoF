@@ -1,9 +1,9 @@
 use crate::{
-    parser::api::Expression,
+    parser::api::{Expression, Statement},
     type_theory::{
         cic::{
             cic::{
-                Cic, CicStm,
+                Cic,
                 CicTerm::{
                     self, Abstraction, Application, Let, Match, Product, Sort,
                     Variable,
@@ -255,7 +255,7 @@ fn test_inductive_elaboration() {
     );
     assert_eq!(
         result,
-        Ok(CicStm::InductiveDef(
+        Ok(Statement::Inductive(
             "nat".to_string(),
             vec![],
             Box::new(Sort("TYPE".to_string())),

@@ -1,10 +1,11 @@
 use crate::{config::Config, parser::api::LofParser, runtime::program::ProgramNode, type_theory::{cic::{
     cic::{
-        Cic, CicStm::{self, Fun, InductiveDef}, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI
+        Cic, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI
     }, evaluation::evaluate_inductive, type_check::{inductive_eliminator, type_check_inductive}
 }, environment::Environment}};
+use crate::parser::api::Statement::{Fun, Inductive};
 use crate::type_theory::interface::Kernel;
-use crate::type_theory::interface::TypeTheory;
+use crate::type_theory::interface::{Stm, TypeTheory};
 
 fn var(name: &str) -> CicTerm {
     Variable(name.to_string(), NameKind::Bound(PLACEHOLDER_DBI))
@@ -91,7 +92,7 @@ fn parse_term(code: &str) -> CicTerm {
     let (_, exp) = parser.parse_expression(code).unwrap();
     Cic::elaborate_expression(&exp).unwrap()
 }
-fn parse_stm(code: &str) -> CicStm {
+fn parse_stm(code: &str) -> Stm<Cic> {
     let parser = LofParser::new(Config::default());
     let (_, stm) = parser.parse_statement(code).unwrap();
     let stm = Cic::elaborate_statement(&stm)
@@ -1258,7 +1259,7 @@ mod inductive {
         );
         assert!(
             Cic::type_check_stm(
-                &InductiveDef(
+                &Inductive(
                     "Empty".to_string(),
                     vec![],
                     Box::new(TYPE.clone()),
@@ -1949,7 +1950,7 @@ mod inductive {
 
         assert!(
             Cic::type_check_stm(
-                &InductiveDef(
+                &Inductive(
                     "CurrysParadox".to_string(), 
                     vec![], 
                     Box::new(Sort("PROP".to_string())),

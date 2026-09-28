@@ -1,9 +1,7 @@
+use crate::parser::api::Statement::{Axiom, Fun, Global};
 use crate::type_theory::{
     environment::Environment,
-    fol::fol::{
-        Fol,
-        FolStm::{Axiom, Fun, Global},
-    },
+    fol::fol::Fol,
     grammars::fol::{
         FolFormula::{
             self, Arrow, Conjunction, Disjunction, Exist, ForAll, Not,
@@ -617,7 +615,7 @@ mod global {
         );
 
         let res = Fol::type_check_stm(
-            &Global("n".to_string(), Some(nat.clone()), Box::new(zero.clone())),
+            &Global("n".to_string(), Some(nat.clone()), zero.clone()),
             &mut test_env,
         );
         assert!(res.is_ok(), "Let type checker failed with {:?}", res.err());
@@ -628,11 +626,7 @@ mod global {
         );
         assert!(
             Fol::type_check_stm(
-                &Global(
-                    "m".to_string(),
-                    Some(nat.clone()),
-                    Box::new(zero.clone())
-                ),
+                &Global("m".to_string(), Some(nat.clone()), zero.clone()),
                 &mut test_env
             )
             .is_ok(),
@@ -640,7 +634,7 @@ mod global {
         );
         assert!(
             Fol::type_check_stm(
-                &Global("asd".to_string(), None, Box::new(zero.clone())),
+                &Global("asd".to_string(), None, zero.clone()),
                 &mut test_env,
             )
             .is_ok(),
@@ -652,7 +646,7 @@ mod global {
                 &Global(
                     "o".to_string(),
                     Some(Predicate("StupidUnboundType".to_string(), vec![])),
-                    Box::new(zero)
+                    zero
                 ),
                 &mut test_env,
             )
@@ -664,7 +658,7 @@ mod global {
                 &Global(
                     "o".to_string(),
                     Some(nat.clone()),
-                    Box::new(Variable("stupid_unbound_var".to_string()))
+                    Variable("stupid_unbound_var".to_string())
                 ),
                 &mut test_env,
             )

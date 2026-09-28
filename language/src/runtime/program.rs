@@ -2,7 +2,7 @@ use crate::error::LofError;
 use crate::runtime::program::ProgramNode::{OfExp, OfStm};
 use crate::type_theory::{
     environment::Environment,
-    interface::{Reducer, TypeTheory},
+    interface::{Reducer, Stm, TypeTheory},
 };
 use std::collections::VecDeque;
 
@@ -13,7 +13,7 @@ pub enum ProgramNode<Exp, Stm> {
 }
 
 pub struct Schedule<T: TypeTheory> {
-    schedule: VecDeque<ProgramNode<T::Exp, T::Stm>>,
+    schedule: VecDeque<ProgramNode<T::Exp, Stm<T>>>,
 }
 
 impl<T: TypeTheory> Schedule<T> {
@@ -22,13 +22,13 @@ impl<T: TypeTheory> Schedule<T> {
             schedule: VecDeque::new(),
         }
     }
-    pub fn singleton_stm(statement: T::Stm) -> Self {
+    pub fn singleton_stm(statement: Stm<T>) -> Self {
         let mut deq = VecDeque::new();
         deq.push_back(OfStm(statement));
         Self { schedule: deq }
     }
 
-    pub fn add_statement(&mut self, statement: &T::Stm) {
+    pub fn add_statement(&mut self, statement: &Stm<T>) {
         self.schedule
             .push_back(ProgramNode::OfStm(statement.clone()));
     }
@@ -37,14 +37,14 @@ impl<T: TypeTheory> Schedule<T> {
         self.schedule.push_back(ProgramNode::OfExp(term.clone()));
     }
 
-    pub fn peek_latest(&self) -> Option<&ProgramNode<T::Exp, T::Stm>> {
+    pub fn peek_latest(&self) -> Option<&ProgramNode<T::Exp, Stm<T>>> {
         self.schedule.back()
     }
-    pub fn peek_first(&self) -> Option<&ProgramNode<T::Exp, T::Stm>> {
+    pub fn peek_first(&self) -> Option<&ProgramNode<T::Exp, Stm<T>>> {
         self.schedule.front()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &ProgramNode<T::Exp, T::Stm>> {
+    pub fn iter(&self) -> impl Iterator<Item = &ProgramNode<T::Exp, Stm<T>>> {
         self.schedule.iter()
     }
 
@@ -88,7 +88,7 @@ where
         Ok(T::normalize_expression(&mut self.environment, exp))
     }
 
-    pub fn execute_statement(&mut self, stm: &T::Stm) -> Result<(), LofError> {
+    pub fn execute_statement(&mut self, stm: &Stm<T>) -> Result<(), LofError> {
         T::evaluate_statement(&mut self.environment, stm)
     }
 
