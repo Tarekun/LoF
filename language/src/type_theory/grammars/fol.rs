@@ -174,7 +174,7 @@ impl FolTerm {
 impl NamedSubstitution<FolTerm> for FolTerm {
     /// Returns a new term identical to `self` where each instance of
     /// `target_name` is substituted with `arg`
-    fn substitute(&self, target_name: &str, arg: &FolTerm) -> FolTerm {
+    fn substitute_name(&self, target_name: &str, arg: &FolTerm) -> FolTerm {
         match self {
             Variable(var_name) => {
                 if var_name == target_name {
@@ -188,19 +188,19 @@ impl NamedSubstitution<FolTerm> for FolTerm {
                 if var_name != target_name {
                     Abstraction(
                         var_name.to_string(),
-                        Box::new(var_type.substitute(target_name, arg)),
-                        Box::new(body.substitute(target_name, arg)),
+                        Box::new(var_type.substitute_name(target_name, arg)),
+                        Box::new(body.substitute_name(target_name, arg)),
                     )
                 } else {
                     self.to_owned()
                 }
             }
             Application(left, right) => Application(
-                Box::new(left.substitute(target_name, arg)),
-                Box::new(right.substitute(target_name, arg)),
+                Box::new(left.substitute_name(target_name, arg)),
+                Box::new(right.substitute_name(target_name, arg)),
             ),
             Tuple(terms) => Tuple(simple_map(terms.to_owned(), |term| {
-                term.substitute(target_name, arg)
+                term.substitute_name(target_name, arg)
             })),
             Let(var_name, var_type, body, scope) => {
                 let var_type = if var_type.is_some() {
@@ -208,15 +208,15 @@ impl NamedSubstitution<FolTerm> for FolTerm {
                         (**var_type)
                             .as_ref()
                             .unwrap()
-                            .substitute(target_name, arg),
+                            .substitute_name(target_name, arg),
                     )
                 } else {
                     None
                 };
-                let body = body.substitute(target_name, arg);
+                let body = body.substitute_name(target_name, arg);
                 // the name is overridden in `body`'s scope
                 let scope = if var_name != target_name {
-                    scope.substitute(target_name, arg)
+                    scope.substitute_name(target_name, arg)
                 } else {
                     (**scope).to_owned()
                 };
@@ -255,27 +255,29 @@ impl FolFormula {
 impl NamedSubstitution<FolTerm> for FolFormula {
     /// Returns a new formula identical to `self` where each instance of
     /// `target_name` is substituted with `arg`
-    fn substitute(&self, target_name: &str, arg: &FolTerm) -> FolFormula {
+    fn substitute_name(&self, target_name: &str, arg: &FolTerm) -> FolFormula {
         match self {
             Predicate(name, args) => Predicate(
                 name.to_string(),
                 simple_map(args.to_owned(), |term| {
-                    term.substitute(target_name, arg)
+                    term.substitute_name(target_name, arg)
                 }),
             ),
             Arrow(left, right) => Arrow(
-                Box::new(left.substitute(target_name, arg)),
-                Box::new(right.substitute(target_name, arg)),
+                Box::new(left.substitute_name(target_name, arg)),
+                Box::new(right.substitute_name(target_name, arg)),
             ),
-            Not(formula) => Not(Box::new(formula.substitute(target_name, arg))),
+            Not(formula) => {
+                Not(Box::new(formula.substitute_name(target_name, arg)))
+            }
             Conjunction(formulas) => {
                 Conjunction(simple_map(formulas.to_owned(), |formula| {
-                    formula.substitute(target_name, arg)
+                    formula.substitute_name(target_name, arg)
                 }))
             }
             Disjunction(formulas) => {
                 Disjunction(simple_map(formulas.to_owned(), |formula| {
-                    formula.substitute(target_name, arg)
+                    formula.substitute_name(target_name, arg)
                 }))
             }
             ForAll(var_name, var_type, body) => {
@@ -283,8 +285,8 @@ impl NamedSubstitution<FolTerm> for FolFormula {
                 if var_name != target_name {
                     ForAll(
                         var_name.to_string(),
-                        Box::new(var_type.substitute(target_name, arg)),
-                        Box::new(body.substitute(target_name, arg)),
+                        Box::new(var_type.substitute_name(target_name, arg)),
+                        Box::new(body.substitute_name(target_name, arg)),
                     )
                 } else {
                     self.to_owned()
@@ -295,8 +297,8 @@ impl NamedSubstitution<FolTerm> for FolFormula {
                 if var_name != target_name {
                     Exist(
                         var_name.to_string(),
-                        Box::new(var_type.substitute(target_name, arg)),
-                        Box::new(body.substitute(target_name, arg)),
+                        Box::new(var_type.substitute_name(target_name, arg)),
+                        Box::new(body.substitute_name(target_name, arg)),
                     )
                 } else {
                     self.to_owned()
@@ -513,7 +515,7 @@ impl FolFormula {
                         &format!("sw_{}", witness_idx),
                         &args,
                     );
-                    let ψ = ψ.substitute(var_name, &skolem_witness);
+                    let ψ = ψ.substitute_name(var_name, &skolem_witness);
                     solver(&ψ, args, witness_idx + 1)
                 }
                 ForAll(var_name, var_type, ψ) => {

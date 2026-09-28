@@ -224,7 +224,7 @@ impl Reducer for Fol {
         var_name: &str,
         body: &Self::Term,
     ) -> Self::Term {
-        term.substitute(var_name, body)
+        term.substitute_name(var_name, body)
     }
 
     fn normalize_expression(
