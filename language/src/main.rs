@@ -20,6 +20,7 @@ pub mod type_theory {
     pub mod environment;
     pub mod interface;
     pub mod algorithms {
+        pub mod saturation;
         pub mod sld;
     }
     pub mod commons {
@@ -52,8 +53,7 @@ pub mod type_theory {
     }
     pub mod sup {
         pub mod freedom;
-        mod inferences;
-        pub mod saturation;
+        pub mod inferences;
         #[cfg(test)]
         mod sld_bench;
         pub mod sup;

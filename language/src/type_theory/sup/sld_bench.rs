@@ -49,6 +49,7 @@
 
 use crate::config::SelectionFunction;
 use crate::error::LofError;
+use crate::type_theory::algorithms::saturation::saturate;
 use crate::type_theory::algorithms::sld::sld_prove_first;
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::fol::fol_utils::clausify;
@@ -60,7 +61,6 @@ use crate::type_theory::grammars::fol::{FolFormula, FolTerm};
 use crate::type_theory::sup::freedom::{
     get_selection_fn, pick_clause_weighted,
 };
-use crate::type_theory::sup::saturation::saturate;
 use std::collections::HashSet;
 use std::fs;
 use std::sync::mpsc;
