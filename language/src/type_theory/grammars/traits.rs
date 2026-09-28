@@ -3,6 +3,7 @@ use crate::{
     type_theory::{
         commons::unification::Substitution,
         environment::Environment,
+        grammars::cnf::{CnfFormula, CnfTerm},
         interface::{Kernel, TypeTheory},
     },
 };
@@ -57,4 +58,11 @@ pub trait Reduction<T: TypeTheory> {
             reduced = next
         }
     }
+}
+
+pub trait ToCnfTerm {
+    fn to_cnf(&self) -> CnfTerm;
+}
+pub trait ToCnfFormula {
+    fn to_cnf(&self) -> Vec<CnfFormula>;
 }

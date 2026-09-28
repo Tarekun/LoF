@@ -19,6 +19,9 @@ pub mod type_theory {
     // pub mod commons;
     pub mod environment;
     pub mod interface;
+    pub mod algorithms {
+        pub mod sld;
+    }
     pub mod commons {
         pub mod elaboration;
         pub mod evaluation;
@@ -51,6 +54,8 @@ pub mod type_theory {
         pub mod freedom;
         mod inferences;
         pub mod saturation;
+        #[cfg(test)]
+        mod sld_bench;
         pub mod sup;
         pub mod sup_utils;
         mod type_check;
