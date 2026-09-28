@@ -86,7 +86,7 @@ mod unit_tests {
     #[test]
     fn test_invalid_problems() {
         assert!(
-            parse_tptp("thf(t, type, a: $i).").is_err(),
+            parse_tptp("tcf(c, axiom, ![X: $i]: p(X)).").is_err(),
             "TPTP parser accepts unsupported dialects"
         );
         assert!(

@@ -6,6 +6,10 @@ use super::{
         lower_word, name, role, single_quoted, skip_annotations, sym, ws0,
     },
     tff::{build_environment, type_declaration, TypeDeclaration},
+    thf::{
+        elaborate, hol_environment, is_formula_type, thf_formula,
+        thf_type_declaration,
+    },
 };
 use crate::{
     error::LofError,
@@ -13,12 +17,14 @@ use crate::{
     parser::api::PResult,
     type_theory::{
         environment::Environment,
+        f::f::{FStm, SystemF},
         fol::{fol::Fol, fol_utils::clausify},
         grammars::{
             cnf::{
                 CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
                 CnfTerm::{self, Application, Variable},
             },
+            f::{FTerm, FType},
             fol::FolFormula::{self, Conjunction},
         },
         interface::Kernel,
@@ -42,6 +48,10 @@ pub enum TptpFormula {
     Cnf(CnfFormula),
     /// `tff` type declaration
     Declaration(TypeDeclaration),
+    /// `thf` formula, a System F term expected of type `$o`
+    Thf(FTerm),
+    /// `thf` type declaration: symbol_name, symbol_type
+    ThfDeclaration(String, FType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,7 +89,7 @@ fn annotated_formula(input: &str) -> PResult<'_, TopLevel> {
             ))(input)?;
             (input, TopLevel::Include(path, selection))
         }
-        "fof" | "tff" | "cnf" => {
+        "fof" | "tff" | "thf" | "cnf" => {
             let (input, name) = name(input)?;
             let (input, _) = sym(",")(input)?;
             let (input, role) = role(input)?;
@@ -92,6 +102,14 @@ fn annotated_formula(input: &str) -> PResult<'_, TopLevel> {
                 ("tff", _) => {
                     let (input, (formula, symbols)) = tff_formula(input)?;
                     (input, TptpFormula::Fol(formula, symbols))
+                }
+                ("thf", Role::Type) => {
+                    let (input, (name, typee)) = thf_type_declaration(input)?;
+                    (input, TptpFormula::ThfDeclaration(name, typee))
+                }
+                ("thf", _) => {
+                    let (input, formula) = thf_formula(input)?;
+                    (input, TptpFormula::Thf(formula))
                 }
                 ("fof", _) => {
                     let (input, (formula, symbols)) = fof_formula(input)?;
@@ -114,7 +132,7 @@ fn annotated_formula(input: &str) -> PResult<'_, TopLevel> {
         }
         other => {
             return Err(nom::Err::Failure(LofError::unsupported(format!(
-                "TPTP dialect '{}' is not supported, only 'fof', 'tff' (TF0) and 'cnf' are",
+                "TPTP dialect '{}' is not supported, only 'cnf', 'fof', 'tff' (TF0) and 'thf' (TH0/TH1) are",
                 other
             ))))
         }
@@ -372,6 +390,12 @@ impl TptpProblem {
             match &input.formula {
                 TptpFormula::Cnf(clause) => clauses.push(clause.clone()),
                 TptpFormula::Declaration(_) => {}
+                TptpFormula::Thf(_) | TptpFormula::ThfDeclaration(_, _) => {
+                    errors.push(LofError::unsupported(format!(
+                        "THF input '{}' is higher order and cannot be clausified",
+                        input.name
+                    )))
+                }
                 TptpFormula::Fol(φ, symbols)
                     if input.role == Role::Conjecture =>
                 {
@@ -433,7 +457,7 @@ impl TptpProblem {
                     declarations.push(declaration.clone())
                 }
                 TptpFormula::Fol(_, symbols) => used.extend(symbols),
-                TptpFormula::Cnf(_) => {}
+                _ => {}
             }
         }
         build_environment(&declarations, &used)
@@ -464,3 +488,67 @@ impl TptpProblem {
 }
 
 //############################# TYPE CHECKING
+//
+//
+//############################# THF TYPE CHECKING
+
+impl TptpProblem {
+    /// Type checks the THF inputs of the problem with the System F kernel.
+    /// Declarations extend the HOL environment of `thf::hol_environment`, and
+    /// every formula is elaborated and checked to be of type `$o`. Returns the
+    /// environment together with the elaborated formulas, by input name
+    pub fn type_check_thf(
+        &self,
+    ) -> Result<(Environment<SystemF>, Vec<(String, FTerm)>), LofError> {
+        let mut environment = hol_environment();
+        let mut errors = vec![];
+
+        for input in &self.inputs {
+            if let TptpFormula::ThfDeclaration(name, typee) = &input.formula {
+                let declaration = FStm::Axiom(name.to_string(), typee.clone());
+                if let Err(err) =
+                    SystemF::type_check_stm(&declaration, &mut environment)
+                {
+                    errors.push(LofError::custom(format!(
+                        "THF declaration '{}' is ill typed: {}",
+                        input.name, err
+                    )));
+                }
+            }
+        }
+
+        let mut formulas = vec![];
+        for input in &self.inputs {
+            let TptpFormula::Thf(term) = &input.formula else {
+                continue;
+            };
+            let checked = elaborate(term, &mut environment).and_then(|term| {
+                let term_type =
+                    SystemF::type_check_term(&term, &mut environment)?;
+                if is_formula_type(&term_type) {
+                    Ok(term)
+                } else {
+                    Err(LofError::custom(format!(
+                        "expected a formula of type $o, found type {:?}",
+                        term_type
+                    )))
+                }
+            });
+            match checked {
+                Ok(term) => formulas.push((input.name.to_string(), term)),
+                Err(err) => errors.push(LofError::custom(format!(
+                    "THF formula '{}' is ill typed: {}",
+                    input.name, err
+                ))),
+            }
+        }
+
+        if errors.is_empty() {
+            Ok((environment, formulas))
+        } else {
+            Err(LofError::aggregate(errors))
+        }
+    }
+}
+
+//############################# THF TYPE CHECKING

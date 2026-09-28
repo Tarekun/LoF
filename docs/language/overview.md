@@ -30,9 +30,11 @@ language/
       environment.rs # Shared environment (context, deltas, predicates, constructors)
       commons/       # Algorithms generic across all type systems
       cic/           # Calculus of Inductive Constructions
+      f/             # System F (kernel only, no elaboration yet)
       fol/           # First-Order Logic
       sup/           # Superposition Calculus
       stlc/          # Simply Typed Lambda Calculus (legacy)
+    tptp/            # TPTP problem parser (CNF, FOF, TFF, THF), see tptp.md
     runtime/         # Program execution and entry points
     error.rs         # LofError, the shared error type for the whole pipeline
     config.rs        # Configuration loading
@@ -51,3 +53,5 @@ Every piece of LoF code goes through these stages in order:
 4. **Execution** — statements are evaluated, updating the environment (adding definitions, verifying theorems)
 
 See [architecture.md](architecture.md) for the full data flow.
+
+Problems can also be read from the TPTP format used by automated theorem provers. See [tptp.md](tptp.md) for the supported dialects.

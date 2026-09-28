@@ -58,7 +58,7 @@ impl Symbols {
 }
 
 #[derive(Clone, Copy)]
-enum BinaryConnective {
+pub(super) enum BinaryConnective {
     Iff,
     NotIff,
     Implies,
@@ -67,7 +67,7 @@ enum BinaryConnective {
     Nand,
 }
 
-fn binary_connective(input: &str) -> PResult<'_, BinaryConnective> {
+pub(super) fn binary_connective(input: &str) -> PResult<'_, BinaryConnective> {
     alt((
         map(sym("<=>"), |_| BinaryConnective::Iff),
         map(sym("<~>"), |_| BinaryConnective::NotIff),
