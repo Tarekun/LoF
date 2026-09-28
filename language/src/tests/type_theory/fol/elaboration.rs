@@ -8,10 +8,9 @@ mod unit_tests {
     use crate::{
         misc::Union::{self, L, R},
         parser::api::Expression::{self},
-        type_theory::fol::fol::{
-            Fol,
+        type_theory::fol::fol::{Fol, FolStm::Global},
+        type_theory::grammars::fol::{
             FolFormula::{Arrow, ForAll, Predicate},
-            FolStm::Global,
             FolTerm::{Abstraction, Application, Let, Variable},
         },
     };

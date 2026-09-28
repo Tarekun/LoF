@@ -2,11 +2,13 @@ use crate::type_theory::{
     environment::Environment,
     fol::fol::{
         Fol,
+        FolStm::{Axiom, Fun, Global},
+    },
+    grammars::fol::{
         FolFormula::{
             self, Arrow, Conjunction, Disjunction, Exist, ForAll, Not,
             Predicate,
         },
-        FolStm::{Axiom, Fun, Global},
         FolTerm::{Abstraction, Application, Let, Tuple, Variable},
     },
     interface::{Kernel, TypeTheory},

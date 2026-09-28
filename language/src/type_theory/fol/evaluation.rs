@@ -1,16 +1,15 @@
 use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
-use super::fol::{
-    Fol,
+use super::fol::{Fol, FolStm};
+use super::fol_utils::make_multiarg_fun_type;
+use crate::type_theory::grammars::fol::{
     FolFormula::{self, Not},
-    FolStm,
     FolTerm::{self, Abstraction, Application, Let, Variable},
 };
-use super::fol_utils::make_multiarg_fun_type;
 use crate::error::LofError;
 use crate::type_theory::commons::evaluation::{
     evaluate_auto, evaluate_fun, evaluate_solve, reduce_application, reduce_let,
 };
-use crate::type_theory::fol::fol_utils::{clausify, term_to_sup};
+use crate::type_theory::fol::fol_utils::{clausify, term_to_cnf};
 use crate::{
     misc::Union,
     type_theory::{
@@ -101,14 +100,14 @@ pub fn evaluate_statement(
             environment,
             goals,
             clausify,
-            term_to_sup,
+            term_to_cnf,
             |phi| Not(Box::new(phi.to_owned())),
         ),
         FolStm::Auto(target) => evaluate_auto::<Fol, _, _, _>(
             environment,
             target,
             clausify,
-            term_to_sup,
+            term_to_cnf,
             |phi| Not(Box::new(phi.to_owned())),
         ),
     }
@@ -123,7 +122,7 @@ pub fn evaluate_statement(
 mod unit_tests {
     use crate::type_theory::fol::evaluation::one_step_reduction;
     use crate::type_theory::fol::fol::Fol;
-    use crate::type_theory::fol::fol::FolTerm::{Let, Variable};
+    use crate::type_theory::grammars::fol::FolTerm::{Let, Variable};
     use crate::type_theory::interface::TypeTheory;
 
     #[test]

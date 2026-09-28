@@ -42,6 +42,11 @@ pub mod type_theory {
         pub mod fol_utils;
         mod type_check;
     }
+    pub mod grammars {
+        pub mod cnf;
+        pub mod fol;
+        pub mod traits;
+    }
     pub mod sup {
         pub mod freedom;
         mod inferences;
@@ -49,7 +54,6 @@ pub mod type_theory {
         pub mod sup;
         pub mod sup_utils;
         mod type_check;
-        mod unification;
     }
 }
 mod tests {

@@ -1,7 +1,9 @@
-use super::fol::FolFormula::{Arrow, Disjunction, ForAll, Predicate};
+use super::fol::Fol;
 use super::fol::FolStm::{Auto, Axiom, Fun, Global, Solve, Theorem};
-use super::fol::FolTerm::{Abstraction, Application, Let, Tuple, Variable};
-use super::fol::{Fol, FolFormula, FolTerm};
+use crate::type_theory::grammars::fol::{
+    FolFormula::{self, Arrow, Disjunction, ForAll, Predicate},
+    FolTerm::{self, Abstraction, Application, Let, Tuple, Variable},
+};
 use crate::error::LofError;
 use crate::misc::simple_map;
 use crate::parser::api::{Statement, Tactic};

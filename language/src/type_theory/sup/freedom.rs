@@ -1,12 +1,12 @@
-use super::sup::{
-    SupFormula::{self, Equality, ForAll, Not},
-    SupTerm::{self, Variable},
-};
 use crate::{
     config::GivingClause, error::LofError, type_theory::interface::Automatic,
 };
 use crate::{
     config::SelectionFunction::{self, All, Maximal},
+    type_theory::grammars::cnf::{
+        CnfFormula::{self, Equality, ForAll, Not},
+        CnfTerm::{self, Variable},
+    },
     type_theory::sup::{sup::Sup, sup_utils::is_answer_literal},
 };
 use std::cmp::Ordering::{Equal, Greater};
@@ -15,13 +15,13 @@ use std::cmp::Ordering::{Equal, Greater};
 
 /// Selection function to select a non-empty set of *literals* from a clause.
 pub type SelectionFunctionSignature =
-    Box<dyn Fn(&mut Vec<SupFormula>) -> Vec<SupFormula> + Send + Sync>;
+    Box<dyn Fn(&mut Vec<CnfFormula>) -> Vec<CnfFormula> + Send + Sync>;
 
 pub fn get_selection_fn(
     selection_fn: SelectionFunction,
 ) -> SelectionFunctionSignature {
     let configured_fn =
-        Box::new(move |clause: &mut Vec<SupFormula>| match selection_fn {
+        Box::new(move |clause: &mut Vec<CnfFormula>| match selection_fn {
             Maximal => drop_maximal_literals(clause),
             All => {
                 let selected = clause.clone();
@@ -31,7 +31,7 @@ pub fn get_selection_fn(
         });
 
     // answer literals should never be selected
-    Box::new(move |clause: &mut Vec<SupFormula>| {
+    Box::new(move |clause: &mut Vec<CnfFormula>| {
         let (answers, mut rest): (Vec<_>, Vec<_>) =
             clause.drain(..).partition(is_answer_literal);
         let selected = configured_fn(&mut rest);
@@ -43,7 +43,7 @@ pub fn get_selection_fn(
 
 /// Given a list of literals of some clause, finds and removes all maximal literals
 /// by the use of SUP simplification ordering
-pub fn drop_maximal_literals(clause: &mut Vec<SupFormula>) -> Vec<SupFormula> {
+pub fn drop_maximal_literals(clause: &mut Vec<CnfFormula>) -> Vec<CnfFormula> {
     if clause.len() == 0 {
         return vec![];
     }
@@ -74,7 +74,7 @@ pub fn drop_maximal_literals(clause: &mut Vec<SupFormula>) -> Vec<SupFormula> {
 /// Function signature for strategies that pick the next given clause to process
 /// from the unprocessed set.
 pub type GivingClauseSignature =
-    fn(&mut Vec<SupFormula>) -> Result<SupFormula, LofError>;
+    fn(&mut Vec<CnfFormula>) -> Result<CnfFormula, LofError>;
 
 pub fn get_giving_clause_fn(strategy: GivingClause) -> GivingClauseSignature {
     match strategy {
@@ -83,23 +83,23 @@ pub fn get_giving_clause_fn(strategy: GivingClause) -> GivingClauseSignature {
     }
 }
 
-fn clause_weight(φ: &SupFormula) -> usize {
-    fn term_weight(t: &SupTerm) -> usize {
+fn clause_weight(φ: &CnfFormula) -> usize {
+    fn term_weight(t: &CnfTerm) -> usize {
         match t {
             Variable(_) => 1,
-            SupTerm::Application(_, args) => {
+            CnfTerm::Application(_, args) => {
                 1 + args.iter().map(term_weight).sum::<usize>()
             }
         }
     }
-    fn formula_weight(φ: &SupFormula) -> usize {
+    fn formula_weight(φ: &CnfFormula) -> usize {
         match φ {
-            SupFormula::Atom(_, args) => {
+            CnfFormula::Atom(_, args) => {
                 1 + args.iter().map(term_weight).sum::<usize>()
             }
             Equality(l, r) => 1 + term_weight(l) + term_weight(r),
             Not(inner) => 1 + formula_weight(inner),
-            SupFormula::Clause(lits) => lits.iter().map(formula_weight).sum(),
+            CnfFormula::Clause(lits) => lits.iter().map(formula_weight).sum(),
             ForAll(_, ty, body) => {
                 1 + formula_weight(ty) + formula_weight(body)
             }
@@ -110,15 +110,15 @@ fn clause_weight(φ: &SupFormula) -> usize {
 
 /// Picks the next clause FIFO (first in, first out).
 pub fn pick_clause(
-    clauses: &mut Vec<SupFormula>,
-) -> Result<SupFormula, LofError> {
+    clauses: &mut Vec<CnfFormula>,
+) -> Result<CnfFormula, LofError> {
     Ok(clauses.remove(0))
 }
 
 /// Picks the lightest (shortest / shallowest) clause from the unprocessed set.
 pub fn pick_clause_weighted(
-    clauses: &mut Vec<SupFormula>,
-) -> Result<SupFormula, LofError> {
+    clauses: &mut Vec<CnfFormula>,
+) -> Result<CnfFormula, LofError> {
     let min_idx = clauses
         .iter()
         .enumerate()
@@ -131,13 +131,13 @@ pub fn pick_clause_weighted(
 #[cfg(test)]
 mod tests {
     use crate::config::SelectionFunction;
+    use crate::type_theory::grammars::cnf::{
+        CnfFormula::{Atom, Clause, Not},
+        CnfTerm::Variable,
+    };
     use crate::type_theory::sup::{
         freedom::{drop_maximal_literals, get_selection_fn},
-        sup::{
-            SupFormula::{Atom, Clause, Not},
-            SupTerm::Variable,
-        },
-        sup_utils::{is_answer_literal, unpack_literals, with_answer_literal},
+        sup_utils::{is_answer_literal, with_answer_literal},
     };
 
     #[test]
@@ -150,7 +150,7 @@ mod tests {
 
         for variant in [SelectionFunction::Maximal, SelectionFunction::All] {
             let selection_fn = get_selection_fn(variant);
-            let mut literals = unpack_literals(&tracked);
+            let mut literals = tracked.unpack_literals();
             let selected = selection_fn(&mut literals);
             assert_eq!(
                 selected,
