@@ -14,7 +14,7 @@ use crate::{
             CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
             CnfTerm::{self, Application, Variable},
         },
-        interface::{Automatic, Kernel, TypeTheory},
+        interface::{Automatic, Kernel, Stm, TypeTheory},
         sup::{
             freedom::{GivingClauseSignature, SelectionFunctionSignature},
             sup_utils::{kbo_terms, kbo_types},
@@ -28,7 +28,6 @@ impl TypeTheory for Sup {
     type Term = CnfTerm;
     type Type = CnfFormula;
     type Exp = Union<CnfTerm, CnfFormula>;
-    type Stm = ();
 
     fn default_environment() -> Environment<Sup> {
         Environment::with_defaults(vec![], vec![], vec![])
@@ -63,7 +62,7 @@ impl TypeTheory for Sup {
         ))
     }
     fn elaborate_statement(
-        _: &crate::parser::api::Statement,
+        _: &crate::parser::api::LofStatement,
     ) -> Result<Schedule<Sup>, LofError> {
         Err(LofError::unsupported(
             "TODO: superposition calculus doesnt support elaboration currently",
@@ -121,7 +120,7 @@ impl Kernel for Sup {
     }
 
     fn type_check_stm(
-        _stm: &Self::Stm,
+        _stm: &Stm<Sup>,
         _env: &mut Environment<Sup>,
     ) -> Result<Self::Type, LofError> {
         Err(LofError::unsupported(

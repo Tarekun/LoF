@@ -2,13 +2,13 @@
 //TODO include tests for failure on non type expressions i dont
 //want to do it now cuz i dont have a real way to distinguish them yet
 mod unit_tests {
-    use crate::parser::api::Statement;
+    use crate::parser::api::Statement::{self, Global};
     use crate::runtime::program::ProgramNode;
     use crate::type_theory::interface::TypeTheory;
     use crate::{
         misc::Union::{self, L, R},
         parser::api::Expression::{self},
-        type_theory::fol::fol::{Fol, FolStm::Global},
+        type_theory::fol::fol::Fol,
         type_theory::grammars::fol::{
             FolFormula::{Arrow, ForAll, Predicate},
             FolTerm::{Abstraction, Application, Let, Variable},
@@ -140,7 +140,7 @@ mod unit_tests {
         let expected_let = Global(
             "n".to_string(),
             Some(Predicate("Nat".to_string(), vec![])),
-            Box::new(Variable("zero".to_string())),
+            Variable("zero".to_string()),
         );
 
         assert!(

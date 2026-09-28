@@ -39,52 +39,42 @@ pub enum Expression {
     ),
 }
 #[derive(Debug, PartialEq, Clone)]
-pub enum Statement {
+pub enum Statement<Term, Type> {
     Comment(),
     FileRoot(String, Vec<LofAst>),
     DirRoot(String, Vec<LofAst>),
     EmptyRoot(Vec<LofAst>),
-    Axiom(String, Box<Expression>),
+    Axiom(String, Type),
     /// (theorem_name, formula, proof)
-    Theorem(
-        String,
-        Expression,
-        Union<Expression, Vec<Tactic<Expression>>>,
-    ),
+    Theorem(String, Type, Union<Term, Vec<Tactic<Term, Type>>>),
     /// (var_name, var_type, definition_body)
-    Global(String, Option<Expression>, Expression),
+    Global(String, Option<Type>, Term),
     /// (fun_name, args, out_type, body, is_rec)
-    Fun(
-        String,
-        Vec<(String, Expression)>,
-        Box<Expression>,
-        Box<Expression>,
-        bool,
-    ),
+    Fun(String, Vec<(String, Type)>, Box<Type>, Box<Term>, bool),
     /// type_name, [(param_name : param_type)], ariety, [( constr_name, constr_type )]
-    Inductive(
-        String,
-        Vec<(String, Expression)>,
-        Box<Expression>,
-        Vec<(String, Expression)>,
-    ),
-    Auto(Expression),
+    Inductive(String, Vec<(String, Type)>, Box<Type>, Vec<(String, Type)>),
+    Auto(Type),
     /// formulas
-    Solve(Vec<Expression>),
+    Solve(Vec<Type>),
     /// head, [subgoals]
-    HClause(Expression, Vec<Expression>),
+    HClause(Type, Vec<Type>),
 }
+/// Statements as produced by the LoF parser, before elaboration into a type system
+pub type LofStatement = Statement<Expression, Expression>;
 #[derive(Debug, PartialEq, Clone)]
-pub enum Tactic<E> {
+pub enum Tactic<Term, Type> {
     Begin(),
     Qed(),
-    Intro(String, E),
-    Exact(E),
-    Apply(E),
+    /// (assumption_name, assumption_type)
+    Intro(String, Type),
+    /// (proof_term)
+    Exact(Term),
+    /// (lemma)
+    Apply(Term),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum LofAst {
-    Stm(Statement),
+    Stm(LofStatement),
     Exp(Expression),
 }
 
@@ -124,7 +114,8 @@ impl LofParser {
         filepath: &str,
     ) -> Result<(String, LofAst), LofError> {
         let source = read_source_file(filepath)?;
-        let (remaining_input, terms) = many0(|input| self.parse_node(input))(&source)?;
+        let (remaining_input, terms) =
+            many0(|input| self.parse_node(input))(&source)?;
 
         Ok((
             remaining_input.to_string(),

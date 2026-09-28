@@ -1,23 +1,23 @@
-use super::fol::FolStm::{Axiom, Fun, Global, Theorem};
-use super::fol::{Fol, FolStm};
+use super::fol::Fol;
 use super::fol_utils::make_multiarg_fun_type;
 use crate::type_theory::grammars::fol::{
-    FolFormula::{self, Not},
+    FolFormula::Not,
     FolTerm::{self, Abstraction, Application, Let, Variable},
 };
 use crate::error::LofError;
+use crate::parser::api::Statement::{
+    Auto, Axiom, Fun, Global, Solve, Theorem,
+};
 use crate::type_theory::commons::evaluation::{
     evaluate_auto, evaluate_fun, evaluate_solve, reduce_application, reduce_let,
 };
 use crate::type_theory::fol::fol_utils::{clausify, term_to_cnf};
-use crate::{
-    misc::Union,
-    type_theory::{
-        commons::evaluation::{
-            evaluate_axiom, evaluate_global, evaluate_theorem, reduce_variable,
-        },
-        environment::Environment,
+use crate::type_theory::{
+    commons::evaluation::{
+        evaluate_axiom, evaluate_global, evaluate_theorem, reduce_variable,
     },
+    environment::Environment,
+    interface::Stm,
 };
 
 //########################### TERM βδ-REDUCTION
@@ -65,7 +65,7 @@ fn fol_reduce_application(
 //########################### STATEMENTS EXECUTION
 pub fn evaluate_statement(
     environment: &mut Environment<Fol>,
-    stm: &FolStm,
+    stm: &Stm<Fol>,
 ) -> Result<(), LofError> {
     match stm {
         Axiom(axiom_name, formula) => {
@@ -89,27 +89,28 @@ pub fn evaluate_statement(
             )
         }
         Theorem(theorem_name, formula, proof) => {
-            evaluate_theorem::<Fol, Union<FolTerm, FolFormula>>(
+            evaluate_theorem::<Fol>(
                 environment,
                 theorem_name,
                 formula,
                 proof,
             )
         }
-        FolStm::Solve(goals) => evaluate_solve::<Fol, _, _, _>(
+        Solve(goals) => evaluate_solve::<Fol, _, _, _>(
             environment,
             goals,
             clausify,
             term_to_cnf,
             |phi| Not(Box::new(phi.to_owned())),
         ),
-        FolStm::Auto(target) => evaluate_auto::<Fol, _, _, _>(
+        Auto(target) => evaluate_auto::<Fol, _, _, _>(
             environment,
             target,
             clausify,
             term_to_cnf,
             |phi| Not(Box::new(phi.to_owned())),
         ),
+        _ => Err(LofError::unsupported_construct("FOL", stm)),
     }
 }
 //########################### STATEMENTS EXECUTION

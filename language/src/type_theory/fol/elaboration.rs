@@ -1,19 +1,20 @@
 use super::fol::Fol;
-use super::fol::FolStm::{Auto, Axiom, Fun, Global, Solve, Theorem};
+use crate::parser::api::Statement::{
+    Auto, Axiom, Fun, Global, Solve, Theorem,
+};
 use crate::type_theory::grammars::fol::{
     FolFormula::{self, Arrow, Disjunction, ForAll, Predicate},
     FolTerm::{self, Abstraction, Application, Let, Tuple, Variable},
 };
 use crate::error::LofError;
-use crate::misc::simple_map;
-use crate::parser::api::{Statement, Tactic};
+use crate::parser::api::{LofStatement, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::commons::elaboration::{
     elaborate_ast_vector, elaborate_dir_root, elaborate_file_root,
     elaborate_tactic,
 };
 use crate::type_theory::commons::utils::{wrap_term, wrap_type};
-use crate::type_theory::fol::fol::FolStm;
+use crate::type_theory::interface::Stm;
 use crate::{
     misc::Union,
     misc::Union::{L, R},
@@ -254,7 +255,9 @@ pub fn elaborate_pipe(types: &Vec<Expression>) -> Result<FolFormula, LofError> {
 //########################### EXPRESSIONS ELABORATION
 //
 //########################### STATEMENTS ELABORATION
-pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Fol>, LofError> {
+pub fn elaborate_statement(
+    ast: &LofStatement,
+) -> Result<Schedule<Fol>, LofError> {
     match ast {
         Statement::Comment() => Ok(Schedule::new()),
         Statement::FileRoot(file_path, asts) => {
@@ -296,7 +299,7 @@ pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Fol>, LofError> {
 pub fn elaborate_axiom(
     axiom_name: &String,
     formula: &Expression,
-) -> Result<FolStm, LofError> {
+) -> Result<Stm<Fol>, LofError> {
     let formula = elaborate_expression(formula)?;
     match formula {
         Union::R(formula) => Ok(Axiom(axiom_name.to_string(), formula)),
@@ -310,37 +313,33 @@ pub fn elaborate_axiom(
 pub fn elaborate_theorem(
     theorem_name: &String,
     formula: &Expression,
-    proof: &Union<Expression, Vec<Tactic<Expression>>>,
-) -> Result<FolStm, LofError> {
+    proof: &Union<Expression, Vec<Tactic<Expression, Expression>>>,
+) -> Result<Stm<Fol>, LofError> {
     let fol_formula_union = elaborate_expression(formula)?;
     let fol_formula = expect_type(fol_formula_union)?;
-    let proof: Union<FolTerm, Vec<Tactic<Union<FolTerm, FolFormula>>>> =
-        match proof {
-            L(proof_term) => {
-                let fol_proof_term = elaborate_expression(proof_term)?;
-                let fol_proof_term = expect_term(fol_proof_term)?;
-                L(fol_proof_term)
-            }
-            R(interactive_proof) => {
-                let fol_interactive_proof: Vec<
-                    Tactic<Union<FolTerm, FolFormula>>,
-                > = simple_map(interactive_proof.to_vec(), |tactic| {
-                    elaborate_tactic::<Union<FolTerm, FolFormula>, _>(
-                        tactic,
-                        |exp| elaborate_expression(&exp).unwrap(),
+    let proof: Union<FolTerm, Vec<Tactic<FolTerm, FolFormula>>> = match proof
+    {
+        L(proof_term) => {
+            let fol_proof_term = elaborate_expression(proof_term)?;
+            let fol_proof_term = expect_term(fol_proof_term)?;
+            L(fol_proof_term)
+        }
+        R(interactive_proof) => {
+            let fol_interactive_proof = interactive_proof
+                .iter()
+                .map(|tactic| {
+                    elaborate_tactic(
+                        tactic.to_owned(),
+                        |exp| expect_term(elaborate_expression(&exp)?),
+                        |exp| expect_type(elaborate_expression(&exp)?),
                     )
-                    //TODO this is a temporary solution, doesnt handle errors gracefully
-                    .unwrap()
-                });
-                R(fol_interactive_proof)
-            }
-        };
+                })
+                .collect::<Result<Vec<_>, LofError>>()?;
+            R(fol_interactive_proof)
+        }
+    };
 
-    Ok(Theorem(
-        theorem_name.to_string(),
-        Box::new(fol_formula),
-        proof,
-    ))
+    Ok(Theorem(theorem_name.to_string(), fol_formula, proof))
 }
 //
 //
@@ -348,7 +347,7 @@ pub fn elaborate_global(
     var_name: &String,
     opt_type: &Option<Expression>,
     body: &Expression,
-) -> Result<FolStm, LofError> {
+) -> Result<Stm<Fol>, LofError> {
     let body = elaborate_expression(body)?;
     match body {
         Union::L(body_term) => {
@@ -357,14 +356,10 @@ pub fn elaborate_global(
                 None => None,
             };
             match var_type {
-                Some(Union::R(var_type)) => Ok(Global(
-                    var_name.to_string(),
-                    Some(var_type),
-                    Box::new(body_term),
-                )),
-                None => {
-                    Ok(Global(var_name.to_string(), None, Box::new(body_term)))
+                Some(Union::R(var_type)) => {
+                    Ok(Global(var_name.to_string(), Some(var_type), body_term))
                 }
+                None => Ok(Global(var_name.to_string(), None, body_term)),
 
                 Some(Union::L(wrong_term)) => type_expected_error(
                     &format!("let definition of {}", var_name),
@@ -386,7 +381,7 @@ pub fn elaborate_fun(
     out_type: &Expression,
     body: &Expression,
     is_rec: &bool,
-) -> Result<FolStm, LofError> {
+) -> Result<Stm<Fol>, LofError> {
     let out_type = elaborate_expression(out_type)?;
     match out_type {
         Union::R(out_type) => {
@@ -418,14 +413,14 @@ pub fn elaborate_empty(nodes: &Vec<LofAst>) -> Result<Schedule<Fol>, LofError> {
 }
 //
 //
-fn elaborate_auto(formula: &Expression) -> Result<FolStm, LofError> {
+fn elaborate_auto(formula: &Expression) -> Result<Stm<Fol>, LofError> {
     let formula = elaborate_expression(formula)?;
 
     Ok(Auto(expect_type(formula)?))
 }
 //
 //
-fn elaborate_solve(goals: &Vec<Expression>) -> Result<FolStm, LofError> {
+fn elaborate_solve(goals: &Vec<Expression>) -> Result<Stm<Fol>, LofError> {
     let mut fol_goals = vec![];
     for goal in goals {
         fol_goals.push(expect_type(elaborate_expression(goal)?)?);

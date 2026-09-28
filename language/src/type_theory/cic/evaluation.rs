@@ -1,10 +1,10 @@
-use super::cic::CicStm::{Axiom, Fun, Global, Theorem};
 use super::cic::CicTerm::{
     Abstraction, Application, Let, Match, Product, Variable,
 };
-use super::cic::{Cic, CicStm, CicTerm, NameKind};
+use super::cic::{Cic, CicTerm, NameKind};
 use super::cic_utils::make_multiarg_fun_type;
 use crate::error::LofError;
+use crate::parser::api::Statement::{Axiom, Fun, Global, Inductive, Theorem};
 use crate::type_theory::cic::cic_utils::{
     application_args, apply_arguments, get_applied_function, index_variables,
     is_instance_of, substitute,
@@ -15,7 +15,7 @@ use crate::type_theory::commons::evaluation::{
     reduce_application, reduce_let, reduce_variable,
 };
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::Reducer;
+use crate::type_theory::interface::{Reducer, Stm};
 
 //########################### TERM βδ-REDUCTION
 pub fn one_step_reduction(
@@ -227,7 +227,7 @@ fn reduce_match(
 //########################### STATEMENTS EXECUTION
 pub fn evaluate_statement(
     environment: &mut Environment<Cic>,
-    stm: &CicStm,
+    stm: &Stm<Cic>,
 ) -> Result<(), LofError> {
     match stm {
         Axiom(axiom_name, formula) => {
@@ -251,14 +251,14 @@ pub fn evaluate_statement(
             )
         }
         Theorem(theorem_name, formula, proof) => {
-            evaluate_theorem::<Cic, CicTerm>(
+            evaluate_theorem::<Cic>(
                 environment,
                 theorem_name,
                 formula,
                 proof,
             )
         }
-        CicStm::InductiveDef(type_name, params, ariety, constructors) => {
+        Inductive(type_name, params, ariety, constructors) => {
             evaluate_inductive(
                 environment,
                 type_name,
@@ -267,6 +267,7 @@ pub fn evaluate_statement(
                 constructors,
             )
         }
+        _ => Err(LofError::unsupported_construct("CIC", stm)),
     }
 }
 //

@@ -156,11 +156,11 @@ pub fn evaluate_axiom<T: TypeTheory>(
 
 /// Evaluates the theorem statement, assuming it was already type checked for correctness,
 /// and adds the name and formula to the `environment`
-pub fn evaluate_theorem<T: TypeTheory, E>(
+pub fn evaluate_theorem<T: TypeTheory>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
-    _proof: &Union<T::Term, Vec<Tactic<E>>>,
+    _proof: &Union<T::Term, Vec<Tactic<T::Term, T::Type>>>,
 ) -> Result<(), LofError> {
     environment.add_to_context(&theorem_name, &formula);
     Ok(())

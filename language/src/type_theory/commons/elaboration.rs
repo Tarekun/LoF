@@ -72,46 +72,50 @@ pub fn elaborate_dir_root<T: TypeTheory>(
 //
 //
 //########################### TACTICS ELABORATION
-pub fn elaborate_tactic<E, F: Fn(Expression) -> E>(
-    tactic: Tactic<Expression>,
-    elaborate_expression: F,
-) -> Result<Tactic<E>, LofError> {
+pub fn elaborate_tactic<
+    Term,
+    Type,
+    FT: Fn(Expression) -> Result<Term, LofError>,
+    FY: Fn(Expression) -> Result<Type, LofError>,
+>(
+    tactic: Tactic<Expression, Expression>,
+    elaborate_term: FT,
+    elaborate_type: FY,
+) -> Result<Tactic<Term, Type>, LofError> {
     match tactic {
         Begin() => Ok(Begin()),
         Qed() => Ok(Qed()),
-        Intro(assumption_name, formula) => elaborate_intro::<E, F>(
-            assumption_name,
-            formula,
-            elaborate_expression,
-        ),
-        Exact(proof_term) => elaborate_exact(proof_term, elaborate_expression),
-        Apply(lemma) => elaborate_apply(lemma, elaborate_expression),
+        Intro(assumption_name, formula) => {
+            elaborate_intro(assumption_name, formula, elaborate_type)
+        }
+        Exact(proof_term) => elaborate_exact(proof_term, elaborate_term),
+        Apply(lemma) => elaborate_apply(lemma, elaborate_term),
     }
 }
 //
 //
-fn elaborate_intro<E, F: Fn(Expression) -> E>(
+fn elaborate_intro<Term, Type, F: Fn(Expression) -> Result<Type, LofError>>(
     assumption_name: String,
     formula: Expression,
-    elaborate_expression: F,
-) -> Result<Tactic<E>, LofError> {
-    Ok(Intro(assumption_name, elaborate_expression(formula)))
+    elaborate_type: F,
+) -> Result<Tactic<Term, Type>, LofError> {
+    Ok(Intro(assumption_name, elaborate_type(formula)?))
 }
 //
 //
-fn elaborate_exact<E, F: Fn(Expression) -> E>(
+fn elaborate_exact<Term, Type, F: Fn(Expression) -> Result<Term, LofError>>(
     proof_term: Expression,
-    elaborate_expression: F,
-) -> Result<Tactic<E>, LofError> {
-    Ok(Exact(elaborate_expression(proof_term)))
+    elaborate_term: F,
+) -> Result<Tactic<Term, Type>, LofError> {
+    Ok(Exact(elaborate_term(proof_term)?))
 }
 //
 //
-fn elaborate_apply<E, F: Fn(Expression) -> E>(
+fn elaborate_apply<Term, Type, F: Fn(Expression) -> Result<Term, LofError>>(
     lemma: Expression,
-    elaborate_expression: F,
-) -> Result<Tactic<E>, LofError> {
-    Ok(Apply(elaborate_expression(lemma)))
+    elaborate_term: F,
+) -> Result<Tactic<Term, Type>, LofError> {
+    Ok(Apply(elaborate_term(lemma)?))
 }
 //########################### TACTICS ELABORATION
 
@@ -125,7 +129,10 @@ mod unit_tests {
         },
         type_theory::{
             cic::{
-                cic::{CicTerm::Variable, NameKind},
+                cic::{
+                    CicTerm::{self, Variable},
+                    NameKind,
+                },
                 elaboration::elaborate_expression,
             },
             commons::elaboration::{elaborate_exact, elaborate_intro},
@@ -136,10 +143,10 @@ mod unit_tests {
     #[test]
     fn test_intro_elaboration() {
         assert_eq!(
-            elaborate_intro(
+            elaborate_intro::<CicTerm, _, _>(
                 "n".to_string(),
                 Expression::VarUse("Nat".to_string()),
-                |exp| elaborate_expression(&exp)
+                |exp| Ok(elaborate_expression(&exp))
             ),
             Ok(Intro(
                 "n".to_string(),
@@ -152,9 +159,10 @@ mod unit_tests {
     #[test]
     fn test_exact_elaboration() {
         assert_eq!(
-            elaborate_exact(Expression::VarUse("p".to_string()), |exp| {
-                elaborate_expression(&exp)
-            }),
+            elaborate_exact::<_, CicTerm, _>(
+                Expression::VarUse("p".to_string()),
+                |exp| Ok(elaborate_expression(&exp))
+            ),
             Ok(Exact(Variable("p".to_string(), NameKind::Const()))),
             "Exact elaboration doesnt produce expected tactic"
         );

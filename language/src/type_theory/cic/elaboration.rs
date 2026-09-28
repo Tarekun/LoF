@@ -1,6 +1,4 @@
-use super::cic::CicStm::{Axiom, Theorem};
 use super::cic::{
-    CicStm::{self},
     CicTerm,
     CicTerm::{
         Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
@@ -10,7 +8,7 @@ use crate::error::LofError;
 use crate::misc::simple_map;
 use crate::misc::Union;
 use crate::misc::Union::{L, R};
-use crate::parser::api::{Expression, LofAst, Statement, Tactic};
+use crate::parser::api::{Expression, LofAst, LofStatement, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::{Cic, NameKind};
 use crate::type_theory::cic::cic_utils::application_args;
@@ -19,6 +17,7 @@ use crate::type_theory::commons::elaboration::{
     elaborate_ast_vector, elaborate_tactic,
 };
 use crate::type_theory::commons::utils::ElabStore;
+use crate::type_theory::interface::Stm;
 
 pub fn index_variables_in_store(term: &CicTerm, store: &ElabStore) -> CicTerm {
     /// Returns the list of bounded names introduced by this patter
@@ -307,7 +306,9 @@ fn elaborate_match(
 //########################### EXPRESSIONS ELABORATION
 //
 //########################### STATEMENTS ELABORATION
-pub fn elaborate_statement(ast: &Statement) -> Result<Schedule<Cic>, LofError> {
+pub fn elaborate_statement(
+    ast: &LofStatement,
+) -> Result<Schedule<Cic>, LofError> {
     match ast {
         Statement::Comment() => Ok(Schedule::new()),
         Statement::FileRoot(file_path, asts) => {
@@ -387,7 +388,7 @@ fn elaborate_global(
     var_name: &String,
     var_type: &Option<Expression>,
     body: &Expression,
-) -> Result<CicStm, LofError> {
+) -> Result<Stm<Cic>, LofError> {
     //TODO im pretty sure this should increase the dbi in its scope
     //but i have no reference to the scope here
     let opt_type = match var_type {
@@ -396,10 +397,10 @@ fn elaborate_global(
     };
     let elaborated_body = elaborate_expression(&body);
 
-    Ok(CicStm::Global(
+    Ok(Statement::Global(
         var_name.to_string(),
         opt_type,
-        Box::new(elaborated_body),
+        elaborated_body,
     ))
 }
 //
@@ -410,13 +411,13 @@ fn elaborate_fun(
     out_type: &Expression,
     body: &Expression,
     is_rec: &bool,
-) -> Result<CicStm, LofError> {
+) -> Result<Stm<Cic>, LofError> {
     // compute dbis for the arguments introduced and use them in the body
     let (elaborated_args, store) = map_typed_variables(args);
     let elaborated_out_type = elaborate_expression_rec(&out_type, &store);
     let elaborated_body = elaborate_expression_rec(&body, &store);
 
-    Ok(CicStm::Fun(
+    Ok(Statement::Fun(
         fun_name.to_string(),
         elaborated_args,
         Box::new(elaborated_out_type),
@@ -431,7 +432,7 @@ fn elaborate_inductive(
     parameters: &Vec<(String, Expression)>,
     ariety: &Expression,
     constructors: &Vec<(String, Expression)>,
-) -> Result<CicStm, LofError> {
+) -> Result<Stm<Cic>, LofError> {
     // compute dbis for the left params and use them for arity and constructor types
     let (parameter_terms, store) = map_typed_variables(&parameters);
     let ariety_term = elaborate_expression_rec(&ariety, &store);
@@ -445,7 +446,7 @@ fn elaborate_inductive(
         })
         .collect();
 
-    Ok(CicStm::InductiveDef(
+    Ok(Statement::Inductive(
         type_name.to_string(),
         parameter_terms,
         Box::new(ariety_term),
@@ -457,17 +458,17 @@ fn elaborate_inductive(
 fn elaborate_axiom(
     axiom_name: &String,
     formula: &Expression,
-) -> Result<CicStm, LofError> {
+) -> Result<Stm<Cic>, LofError> {
     let elaborated_formula = elaborate_expression(&formula);
-    Ok(Axiom(axiom_name.to_string(), Box::new(elaborated_formula)))
+    Ok(Statement::Axiom(axiom_name.to_string(), elaborated_formula))
 }
 //
 //
 fn elaborate_theorem(
     theorem_name: &String,
     formula: &Expression,
-    proof: &Union<Expression, Vec<Tactic<Expression>>>,
-) -> Result<CicStm, LofError> {
+    proof: &Union<Expression, Vec<Tactic<Expression, Expression>>>,
+) -> Result<Stm<Cic>, LofError> {
     let elaborated_formula = elaborate_expression(&formula);
     let elaborated_proof = match proof {
         L(proof_term) => {
@@ -475,21 +476,23 @@ fn elaborate_theorem(
             L(cic_proof_term)
         }
         R(interactive_proof) => {
-            let cic_interactive_proof: Vec<Tactic<CicTerm>> =
-                simple_map(interactive_proof.to_owned(), |tactic| {
-                    elaborate_tactic::<CicTerm, _>(tactic, |exp| {
-                        elaborate_expression(&exp)
-                    })
-                    //TODO this is a temporary solution, doesnt handle errors gracefully
-                    .unwrap()
-                });
+            let cic_interactive_proof = interactive_proof
+                .iter()
+                .map(|tactic| {
+                    elaborate_tactic(
+                        tactic.to_owned(),
+                        |exp| Ok(elaborate_expression(&exp)),
+                        |exp| Ok(elaborate_expression(&exp)),
+                    )
+                })
+                .collect::<Result<Vec<_>, LofError>>()?;
             R(cic_interactive_proof)
         }
     };
 
-    Ok(Theorem(
+    Ok(Statement::Theorem(
         theorem_name.to_string(),
-        Box::new(elaborated_formula),
+        elaborated_formula,
         elaborated_proof,
     ))
 }

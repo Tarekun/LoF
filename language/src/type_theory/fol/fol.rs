@@ -3,7 +3,8 @@ use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::type_check::{type_check_arrow, type_check_forall};
 use crate::error::LofError;
 use crate::misc::Union::{self, L, R};
-use crate::parser::api::{Expression, Statement, Tactic};
+use crate::parser::api::Statement::{Auto, Axiom, Fun, Global, Solve, Theorem};
+use crate::parser::api::{Expression, LofStatement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
@@ -12,9 +13,6 @@ use crate::type_theory::commons::type_check::{
     type_check_variable,
 };
 use crate::type_theory::environment::Environment;
-use crate::type_theory::fol::fol::FolStm::{
-    Auto, Axiom, Fun, Global, Solve, Theorem,
-};
 use crate::type_theory::fol::type_check::{
     fol_type_check_fun, type_check_conjunction, type_check_disjunction,
     type_check_not, type_check_predicate, type_check_tuple,
@@ -26,38 +24,15 @@ use crate::type_theory::grammars::fol::{
     FolTerm::{self, Abstraction, Application, Let, Tuple, Variable},
 };
 use crate::type_theory::grammars::traits::NamedSubstitution;
-use crate::type_theory::interface::{Interactive, Kernel, Reducer, TypeTheory};
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum FolStm {
-    /// axiom_name, formula
-    Axiom(String, FolFormula),
-    /// theorem_name, formula, proof
-    Theorem(
-        String,
-        Box<FolFormula>,
-        Union<FolTerm, Vec<Tactic<Union<FolTerm, FolFormula>>>>,
-    ),
-    /// (var_name, var_type, definition_body)
-    Global(String, Option<FolFormula>, Box<FolTerm>),
-    /// (fun_name, args, out_type, body, is_rec)
-    Fun(
-        String,
-        Vec<(String, FolFormula)>,
-        Box<FolFormula>,
-        Box<FolTerm>,
-        bool,
-    ),
-    Auto(FolFormula),
-    Solve(Vec<FolFormula>),
-}
+use crate::type_theory::interface::{
+    Interactive, Kernel, Reducer, Stm, TypeTheory,
+};
 
 pub struct Fol;
 
 impl TypeTheory for Fol {
     type Term = FolTerm;
     type Type = FolFormula;
-    type Stm = FolStm;
     type Exp = Union<FolTerm, FolFormula>;
 
     fn default_environment() -> Environment<Fol> {
@@ -98,7 +73,9 @@ impl TypeTheory for Fol {
     fn elaborate_expression(exp: &Expression) -> Result<Self::Exp, LofError> {
         elaborate_expression(exp)
     }
-    fn elaborate_statement(stm: &Statement) -> Result<Schedule<Fol>, LofError> {
+    fn elaborate_statement(
+        stm: &LofStatement,
+    ) -> Result<Schedule<Fol>, LofError> {
         elaborate_statement(stm)
     }
 }
@@ -181,7 +158,7 @@ impl Kernel for Fol {
 
     // TODO i need to decide what exact type to return here
     fn type_check_stm(
-        stm: &Self::Stm,
+        stm: &Stm<Fol>,
         environment: &mut Environment<Fol>,
     ) -> Result<Self::Type, LofError> {
         match stm {
@@ -214,6 +191,7 @@ impl Kernel for Fol {
                 }
                 Ok(Predicate("Solved".to_string(), vec![]))
             }
+            _ => Err(LofError::unsupported_construct("FOL", stm)),
         }
     }
 }
@@ -252,7 +230,7 @@ impl Reducer for Fol {
 
     fn evaluate_statement(
         environment: &mut Environment<Fol>,
-        stm: &FolStm,
+        stm: &Stm<Fol>,
     ) -> Result<(), LofError> {
         evaluate_statement(environment, stm)
     }
@@ -271,7 +249,7 @@ impl Interactive for Fol {
 
     fn type_check_tactic(
         environment: &mut Environment<Fol>,
-        tactic: &Tactic<Self::Exp>,
+        tactic: &Tactic<Self::Term, Self::Type>,
         target: &Self::Type,
         partial_proof: &Self::Term,
     ) -> Result<(Self::Term, Vec<Self::Type>), LofError> {

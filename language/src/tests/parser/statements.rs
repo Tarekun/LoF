@@ -319,7 +319,7 @@ mod unit_tests {
             parser.parse_statement("axiom nat : TYPE;").unwrap(),
             (
                 "",
-                Axiom("nat".to_string(), Box::new(VarUse("TYPE".to_string())))
+                Axiom("nat".to_string(), VarUse("TYPE".to_string()))
             ),
             "Axiom node isnt properly constructed"
         );
