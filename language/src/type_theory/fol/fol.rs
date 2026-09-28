@@ -249,7 +249,7 @@ impl Interactive for Fol {
 
     fn type_check_tactic(
         environment: &mut Environment<Fol>,
-        tactic: &Tactic<Self::Exp>,
+        tactic: &Tactic<Self::Term, Self::Type>,
         target: &Self::Type,
         partial_proof: &Self::Term,
     ) -> Result<(Self::Term, Vec<Self::Type>), LofError> {

@@ -13,12 +13,12 @@ impl LofParser {
     fn begin<'a>(
         &self,
         input: &'a str,
-    ) -> PResult<'a, Tactic<Expression>> {
+    ) -> PResult<'a, Tactic<Expression, Expression>> {
         let (input, _) = preceded(multispace0, tag("begin"))(input)?;
         Ok((input, Begin()))
     }
 
-    fn qed<'a>(&self, input: &'a str) -> PResult<'a, Tactic<Expression>> {
+    fn qed<'a>(&self, input: &'a str) -> PResult<'a, Tactic<Expression, Expression>> {
         let (input, _) = preceded(multispace0, tag("qed."))(input)?;
         Ok((input, Qed()))
     }
@@ -26,7 +26,7 @@ impl LofParser {
     fn intro<'a>(
         &self,
         input: &'a str,
-    ) -> PResult<'a, Tactic<Expression>> {
+    ) -> PResult<'a, Tactic<Expression, Expression>> {
         let (input, _) = preceded(multispace0, tag("intro"))(input)?;
         let (input, (var_name, opt_type)) = preceded(multispace1, |input| {
             self.parse_optionally_typed_identifier(input)
@@ -44,7 +44,7 @@ impl LofParser {
     fn exact<'a>(
         &self,
         input: &'a str,
-    ) -> PResult<'a, Tactic<Expression>> {
+    ) -> PResult<'a, Tactic<Expression, Expression>> {
         let (input, _) = preceded(multispace0, tag("exact"))(input)?;
         let (input, proof_term) =
             preceded(multispace1, |input| self.parse_expression(input))(input)?;
@@ -55,7 +55,7 @@ impl LofParser {
     fn apply<'a>(
         &self,
         input: &'a str,
-    ) -> PResult<'a, Tactic<Expression>> {
+    ) -> PResult<'a, Tactic<Expression, Expression>> {
         let (input, _) = preceded(multispace0, tag("apply"))(input)?;
         let (input, proof_term) =
             preceded(multispace1, |input| self.parse_expression(input))(input)?;
@@ -66,7 +66,7 @@ impl LofParser {
     pub fn parse_tactic<'a>(
         &self,
         input: &'a str,
-    ) -> PResult<'a, Tactic<Expression>> {
+    ) -> PResult<'a, Tactic<Expression, Expression>> {
         alt((
             |input| self.begin(input),
             |input| self.qed(input),
@@ -79,14 +79,14 @@ impl LofParser {
     pub fn parse_interactive_proof<'a>(
         &self,
         input: &'a str,
-    ) -> PResult<'a, Vec<Tactic<Expression>>> {
+    ) -> PResult<'a, Vec<Tactic<Expression, Expression>>> {
         let (input, _) = self.begin(input)?;
         let (input, parsed_tactics) =
             many0(|input| self.parse_tactic(input))(input)?;
 
         // strip begin/qed markers as they are syntactic delimiters, not proof steps
         // TODO reevaluate this approahc
-        let tactics: Vec<Tactic<Expression>> = parsed_tactics
+        let tactics: Vec<Tactic<Expression, Expression>> = parsed_tactics
             .into_iter()
             .filter(|t| t != &Begin() && t != &Qed())
             .collect();

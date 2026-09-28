@@ -467,7 +467,7 @@ fn elaborate_axiom(
 fn elaborate_theorem(
     theorem_name: &String,
     formula: &Expression,
-    proof: &Union<Expression, Vec<Tactic<Expression>>>,
+    proof: &Union<Expression, Vec<Tactic<Expression, Expression>>>,
 ) -> Result<Stm<Cic>, LofError> {
     let elaborated_formula = elaborate_expression(&formula);
     let elaborated_proof = match proof {
@@ -476,14 +476,16 @@ fn elaborate_theorem(
             L(cic_proof_term)
         }
         R(interactive_proof) => {
-            let cic_interactive_proof: Vec<Tactic<CicTerm>> =
-                simple_map(interactive_proof.to_owned(), |tactic| {
-                    elaborate_tactic::<CicTerm, _>(tactic, |exp| {
-                        elaborate_expression(&exp)
-                    })
-                    //TODO this is a temporary solution, doesnt handle errors gracefully
-                    .unwrap()
-                });
+            let cic_interactive_proof = interactive_proof
+                .iter()
+                .map(|tactic| {
+                    elaborate_tactic(
+                        tactic.to_owned(),
+                        |exp| Ok(elaborate_expression(&exp)),
+                        |exp| Ok(elaborate_expression(&exp)),
+                    )
+                })
+                .collect::<Result<Vec<_>, LofError>>()?;
             R(cic_interactive_proof)
         }
     };

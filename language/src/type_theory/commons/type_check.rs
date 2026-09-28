@@ -448,7 +448,7 @@ pub fn eq_type_check_theorem<T: TypeTheory + Kernel + Interactive>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
-    proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
+    proof: &Union<T::Term, Vec<Tactic<T::Term, T::Type>>>,
 ) -> Result<T::Type, LofError> {
     type_check_theorem_base(
         environment,
@@ -468,7 +468,7 @@ pub fn u_type_check_theorem<T: TypeTheory + Kernel + Interactive + Refiner>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
-    proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
+    proof: &Union<T::Term, Vec<Tactic<T::Term, T::Type>>>,
 ) -> Result<T::Type, LofError> {
     type_check_theorem_base(
         environment,
@@ -490,7 +490,7 @@ fn type_check_theorem_base<
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
-    proof: &Union<T::Term, Vec<Tactic<T::Exp>>>,
+    proof: &Union<T::Term, Vec<Tactic<T::Term, T::Type>>>,
     mut are_compatible: P,
 ) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(formula, environment)?;
@@ -527,7 +527,7 @@ fn type_check_theorem_base<
     }
     // include theorem_name into the context for following script, for both
     // term-mode and tactic-mode proofs
-    let _ = evaluate_theorem::<T, T::Exp>(
+    let _ = evaluate_theorem::<T>(
         environment,
         theorem_name,
         formula,
@@ -548,12 +548,12 @@ pub fn type_check_auto<T: TypeTheory + Kernel>(
 
 fn type_check_interactive_proof<T: TypeTheory + Interactive>(
     environment: &mut Environment<T>,
-    interactive_proof: &[Tactic<T::Exp>],
+    interactive_proof: &[Tactic<T::Term, T::Type>],
     target: &T::Type,
 ) -> Result<T::Term, LofError> {
     fn solver<T: TypeTheory + Interactive>(
         environment: &mut Environment<T>,
-        interactive_proof: &[Tactic<T::Exp>],
+        interactive_proof: &[Tactic<T::Term, T::Type>],
         mut subgoals: Vec<T::Type>,
         partial_proof: T::Term,
     ) -> Result<T::Term, LofError> {

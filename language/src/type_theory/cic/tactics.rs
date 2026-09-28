@@ -14,7 +14,7 @@ use crate::type_theory::interface::{
 
 pub fn type_check_tactic(
     environment: &mut Environment<Cic>,
-    tactic: &Tactic<CicTerm>,
+    tactic: &Tactic<CicTerm, CicTerm>,
     target: &CicTerm,
     partial_proof: &CicTerm,
 ) -> Result<(CicTerm, Vec<CicTerm>), LofError> {

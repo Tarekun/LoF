@@ -14,11 +14,7 @@ use std::cmp::Ordering;
 use std::fmt::Debug;
 
 /// Statements elaborated in the grammars of the type system `T`
-pub type Stm<T> = Statement<
-    <T as TypeTheory>::Term,
-    <T as TypeTheory>::Type,
-    <T as TypeTheory>::Exp,
->;
+pub type Stm<T> = Statement<<T as TypeTheory>::Term, <T as TypeTheory>::Type>;
 
 /// Base trait for type systems. Requires a grammar for terms
 /// and one for types, plus a function that returns the default
@@ -281,7 +277,7 @@ pub trait Interactive: TypeTheory {
     /// Returns an updated (proof_term, subgoals) pair
     fn type_check_tactic(
         environment: &mut Environment<Self>,
-        tactic: &Tactic<Self::Exp>,
+        tactic: &Tactic<Self::Term, Self::Type>,
         target: &Self::Type,
         partial_proof: &Self::Term,
     ) -> Result<(Self::Term, Vec<Self::Type>), LofError>

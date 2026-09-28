@@ -7,7 +7,6 @@ use crate::type_theory::grammars::fol::{
     FolTerm::{self, Abstraction, Application, Let, Tuple, Variable},
 };
 use crate::error::LofError;
-use crate::misc::simple_map;
 use crate::parser::api::{LofStatement, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::commons::elaboration::{
@@ -314,31 +313,31 @@ pub fn elaborate_axiom(
 pub fn elaborate_theorem(
     theorem_name: &String,
     formula: &Expression,
-    proof: &Union<Expression, Vec<Tactic<Expression>>>,
+    proof: &Union<Expression, Vec<Tactic<Expression, Expression>>>,
 ) -> Result<Stm<Fol>, LofError> {
     let fol_formula_union = elaborate_expression(formula)?;
     let fol_formula = expect_type(fol_formula_union)?;
-    let proof: Union<FolTerm, Vec<Tactic<Union<FolTerm, FolFormula>>>> =
-        match proof {
-            L(proof_term) => {
-                let fol_proof_term = elaborate_expression(proof_term)?;
-                let fol_proof_term = expect_term(fol_proof_term)?;
-                L(fol_proof_term)
-            }
-            R(interactive_proof) => {
-                let fol_interactive_proof: Vec<
-                    Tactic<Union<FolTerm, FolFormula>>,
-                > = simple_map(interactive_proof.to_vec(), |tactic| {
-                    elaborate_tactic::<Union<FolTerm, FolFormula>, _>(
-                        tactic,
-                        |exp| elaborate_expression(&exp).unwrap(),
+    let proof: Union<FolTerm, Vec<Tactic<FolTerm, FolFormula>>> = match proof
+    {
+        L(proof_term) => {
+            let fol_proof_term = elaborate_expression(proof_term)?;
+            let fol_proof_term = expect_term(fol_proof_term)?;
+            L(fol_proof_term)
+        }
+        R(interactive_proof) => {
+            let fol_interactive_proof = interactive_proof
+                .iter()
+                .map(|tactic| {
+                    elaborate_tactic(
+                        tactic.to_owned(),
+                        |exp| expect_term(elaborate_expression(&exp)?),
+                        |exp| expect_type(elaborate_expression(&exp)?),
                     )
-                    //TODO this is a temporary solution, doesnt handle errors gracefully
-                    .unwrap()
-                });
-                R(fol_interactive_proof)
-            }
-        };
+                })
+                .collect::<Result<Vec<_>, LofError>>()?;
+            R(fol_interactive_proof)
+        }
+    };
 
     Ok(Theorem(theorem_name.to_string(), fol_formula, proof))
 }

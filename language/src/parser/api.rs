@@ -39,14 +39,14 @@ pub enum Expression {
     ),
 }
 #[derive(Debug, PartialEq, Clone)]
-pub enum Statement<Term, Type, Exp> {
+pub enum Statement<Term, Type> {
     Comment(),
     FileRoot(String, Vec<LofAst>),
     DirRoot(String, Vec<LofAst>),
     EmptyRoot(Vec<LofAst>),
     Axiom(String, Type),
     /// (theorem_name, formula, proof)
-    Theorem(String, Type, Union<Term, Vec<Tactic<Exp>>>), //NOTE: this is the only place Exp needs to be used, would be nice to get rid of it
+    Theorem(String, Type, Union<Term, Vec<Tactic<Term, Type>>>),
     /// (var_name, var_type, definition_body)
     Global(String, Option<Type>, Term),
     /// (fun_name, args, out_type, body, is_rec)
@@ -60,14 +60,17 @@ pub enum Statement<Term, Type, Exp> {
     HClause(Type, Vec<Type>),
 }
 /// Statements as produced by the LoF parser, before elaboration into a type system
-pub type LofStatement = Statement<Expression, Expression, Expression>;
+pub type LofStatement = Statement<Expression, Expression>;
 #[derive(Debug, PartialEq, Clone)]
-pub enum Tactic<E> {
+pub enum Tactic<Term, Type> {
     Begin(),
     Qed(),
-    Intro(String, E),
-    Exact(E),
-    Apply(E),
+    /// (assumption_name, assumption_type)
+    Intro(String, Type),
+    /// (proof_term)
+    Exact(Term),
+    /// (lemma)
+    Apply(Term),
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum LofAst {

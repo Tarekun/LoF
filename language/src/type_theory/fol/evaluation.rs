@@ -1,7 +1,7 @@
 use super::fol::Fol;
 use super::fol_utils::make_multiarg_fun_type;
 use crate::type_theory::grammars::fol::{
-    FolFormula::{self, Not},
+    FolFormula::Not,
     FolTerm::{self, Abstraction, Application, Let, Variable},
 };
 use crate::error::LofError;
@@ -12,15 +12,12 @@ use crate::type_theory::commons::evaluation::{
     evaluate_auto, evaluate_fun, evaluate_solve, reduce_application, reduce_let,
 };
 use crate::type_theory::fol::fol_utils::{clausify, term_to_cnf};
-use crate::{
-    misc::Union,
-    type_theory::{
-        commons::evaluation::{
-            evaluate_axiom, evaluate_global, evaluate_theorem, reduce_variable,
-        },
-        environment::Environment,
-        interface::Stm,
+use crate::type_theory::{
+    commons::evaluation::{
+        evaluate_axiom, evaluate_global, evaluate_theorem, reduce_variable,
     },
+    environment::Environment,
+    interface::Stm,
 };
 
 //########################### TERM βδ-REDUCTION
@@ -92,7 +89,7 @@ pub fn evaluate_statement(
             )
         }
         Theorem(theorem_name, formula, proof) => {
-            evaluate_theorem::<Fol, Union<FolTerm, FolFormula>>(
+            evaluate_theorem::<Fol>(
                 environment,
                 theorem_name,
                 formula,

@@ -251,7 +251,7 @@ pub fn evaluate_statement(
             )
         }
         Theorem(theorem_name, formula, proof) => {
-            evaluate_theorem::<Cic, CicTerm>(
+            evaluate_theorem::<Cic>(
                 environment,
                 theorem_name,
                 formula,
