@@ -77,6 +77,7 @@ mod tests {
         mod tactics;
     }
     mod tptp {
+        mod artifacts;
         mod cnf;
         mod fof;
         mod problem;
