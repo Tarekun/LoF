@@ -37,18 +37,24 @@ pub trait TypeTheory {
     /// Computes default system equality. Returns Ok(()) if the check is
     /// successfull, an error message otherwise.
     /// This is the equality checked used by the commons library for consistency
-    fn base_term_equality(
+    fn term_judgemental_equality(
+        env: &Environment<Self>,
         term1: &Self::Term,
         term2: &Self::Term,
-    ) -> Result<(), LofError>;
+    ) -> Result<(), LofError>
+    where
+        Self: Sized;
 
     /// Computes default system equality. Returns Ok(()) if the check is
     /// successfull, an error message otherwise.
     /// This is the equality checked used by the commons library for consistency
-    fn base_type_equality(
+    fn type_judgemental_equality(
+        env: &Environment<Self>,
         type1: &Self::Type,
         type2: &Self::Type,
-    ) -> Result<(), LofError>;
+    ) -> Result<(), LofError>
+    where
+        Self: Sized;
 
     fn elaborate_expression(exp: &Expression) -> Result<Self::Exp, LofError>;
     fn elaborate_statement(

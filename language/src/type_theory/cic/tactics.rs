@@ -9,7 +9,7 @@ use crate::type_theory::cic::cic_utils::{
 };
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::{
-    Interactive, Kernel, Reducer, Refiner, TypeInference, TypeTheory,
+    Interactive, Kernel, Reducer, Refiner, TypeInference,
 };
 
 pub fn type_check_tactic(
@@ -49,7 +49,7 @@ fn type_check_intro(
 ) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
     match target {
         Product(_, domain, codomain) => {
-            if Cic::base_type_equality(ass_type, domain).is_ok() {
+            if Cic::types_unify(environment, ass_type, domain).is_ok() {
                 // make the introduced assumption available to later tactic steps
                 environment.add_to_context(ass_name, ass_type);
                 let partial_proof = swap_proof_hole(partial_proof, &Abstraction(

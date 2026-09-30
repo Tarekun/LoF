@@ -28,6 +28,9 @@ use crate::type_theory::commons::type_check::{
 };
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::Environment;
+use crate::type_theory::grammars::traits::{
+    Reduction, ReductionEq, SyntacticalEq,
+};
 use crate::type_theory::interface::{
     Interactive, Kernel, Reducer, Refiner, Stm, TypeInference, TypeTheory,
 };
@@ -72,6 +75,18 @@ pub enum CicTerm {
     /// index
     Meta(i32),
 }
+impl Reduction<Cic> for CicTerm {
+    fn step(&self, env: &Environment<Cic>) -> CicTerm {
+        one_step_reduction(env, self)
+    }
+}
+impl SyntacticalEq for CicTerm {
+    fn syntactically_equal(&self, other: &Self) -> bool {
+        *self == *other
+    }
+}
+impl ReductionEq<Cic> for CicTerm {}
+
 pub struct Cic;
 impl TypeTheory for Cic {
     type Term = CicTerm;
@@ -87,23 +102,33 @@ impl TypeTheory for Cic {
         Environment::with_defaults(axioms, Vec::default(), vec![])
     }
 
-    // uses unification, implementing structural equality under some
-    // metavariable substitution
-    fn base_term_equality(
+    fn term_judgemental_equality(
+        env: &Environment<Cic>,
         term1: &CicTerm,
         term2: &CicTerm,
     ) -> Result<(), LofError> {
-        // tbh im not really sure these specific functions should use unification instead of syntactic equality
-        let _ = cic_so_unification(term1, term2)?;
-        Ok(())
+        if term1.equal_up_to_reduction(term2, env) {
+            Ok(())
+        } else {
+            Err(LofError::custom(format!(
+                "{:?} and {:?} are not equal",
+                term1, term2
+            )))
+        }
     }
-    fn base_type_equality(
+    fn type_judgemental_equality(
+        env: &Environment<Cic>,
         type1: &CicTerm,
         type2: &CicTerm,
     ) -> Result<(), LofError> {
-        // tbh im not really sure these specific functions should use unification instead of syntactic equality
-        let _ = cic_so_unification(type1, type2)?;
-        Ok(())
+        if type1.equal_up_to_reduction(type2, env) {
+            Ok(())
+        } else {
+            Err(LofError::custom(format!(
+                "{:?} and {:?} are not equal",
+                type1, type2
+            )))
+        }
     }
 
     fn elaborate_expression(exp: &Expression) -> Result<CicTerm, LofError> {

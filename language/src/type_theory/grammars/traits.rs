@@ -55,11 +55,11 @@ pub trait Reduction<T: TypeTheory> {
 }
 
 pub trait SyntacticalEq {
-    /// Returns `true` iff `self` and `term2` are exactly the same expression
+    /// Returns `true` iff `self` and `other` are exactly the same expression
     fn syntactically_equal(&self, other: &Self) -> bool;
 }
 pub trait ReductionEq<T: TypeTheory>: Reduction<T> + SyntacticalEq {
-    /// Returns `true` iff `self` and `term2` are exactly the same expression when reduced to their normal form
+    /// Returns `true` iff `self` and `other` are exactly the same expression when reduced to their normal form
     fn equal_up_to_reduction(&self, other: &Self, env: &Environment<T>) -> bool
     where
         Self: Clone + PartialEq,

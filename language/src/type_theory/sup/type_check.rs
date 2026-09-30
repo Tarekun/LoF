@@ -44,11 +44,11 @@ pub fn type_check_atomic(
 //
 //
 pub fn type_check_equality(
-    _: &mut Environment<Sup>,
+    env: &mut Environment<Sup>,
     t1: &CnfTerm,
     t2: &CnfTerm,
 ) -> Result<CnfFormula, LofError> {
-    Sup::base_term_equality(t1, t2)?;
+    Sup::term_judgemental_equality(env, t1, t2)?;
     Ok(Equality(t1.clone(), t2.clone()))
 }
 //
@@ -139,7 +139,12 @@ fn type_check_nary(
         ));
     }
     for i in 0..formal_types.len() {
-        if Sup::base_type_equality(&formal_types[i], &actual_types[i]).is_err()
+        if Sup::type_judgemental_equality(
+            environment,
+            &formal_types[i],
+            &actual_types[i],
+        )
+        .is_err()
         {
             return Err(LofError::type_mismatch(
                 format!("predicate `{}` argument", applied),
