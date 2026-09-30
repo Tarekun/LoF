@@ -1,3 +1,4 @@
+use crate::type_theory::grammars::traits::SyntacticalEq;
 use crate::type_theory::{
     commons::unification::Substitution,
     grammars::{
@@ -313,16 +314,15 @@ fn test_term_containment() {
 fn test_syntactic_equality() {
     let fx = app("f", vec![var("x")]);
 
-    assert!(fx.are_syntactically_equal(&fx.clone()));
+    assert!(fx.syntactically_equal(&fx.clone()));
     assert!(
-        !fx.are_syntactically_equal(&app("f", vec![var("y")])),
+        !fx.syntactically_equal(&app("f", vec![var("y")])),
         "Terms differing only by variable name are syntactically equal"
     );
     assert!(atom("P", vec![fx.clone()])
-        .are_syntactically_equal(&atom("P", vec![fx.clone()])));
+        .syntactically_equal(&atom("P", vec![fx.clone()])));
     assert!(
-        !atom("P", vec![fx.clone()])
-            .are_syntactically_equal(&atom("Q", vec![fx])),
+        !atom("P", vec![fx.clone()]).syntactically_equal(&atom("Q", vec![fx])),
         "Atoms with different predicates are syntactically equal"
     );
 }
