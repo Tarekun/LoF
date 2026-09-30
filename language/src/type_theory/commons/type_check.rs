@@ -120,7 +120,8 @@ pub fn type_check_application<
     let function_type = T::type_check_term(left, environment)?;
 
     if let Some((domain, codomain)) = unpack_fun_type(&function_type) {
-        if T::base_type_equality(&domain, &arg_type).is_ok() {
+        if T::type_judgemental_equality(environment, &domain, &arg_type).is_ok()
+        {
             Ok(codomain)
         } else {
             Err(LofError::type_mismatch(
@@ -210,7 +211,8 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
         var_type.to_owned().unwrap()
     };
 
-    if T::base_type_equality(&var_type, &body_type).is_ok() {
+    if T::type_judgemental_equality(environment, &var_type, &body_type).is_ok()
+    {
         Ok(environment.with_local_substitution(
             var_name,
             body,
@@ -247,7 +249,8 @@ pub fn i_type_check_let<T: TypeTheory + Kernel + Refiner>(
         var_type.to_owned().unwrap()
     };
 
-    if T::base_type_equality(&var_type, &body_type).is_ok() {
+    if T::type_judgemental_equality(environment, &var_type, &body_type).is_ok()
+    {
         let opened_scope = T::term_open(scope, var_name);
         Ok(environment.with_local_substitution(
             var_name,
@@ -280,7 +283,8 @@ pub fn type_check_global<T: TypeTheory + Kernel>(
     };
     let _ = T::type_check_type(&var_type, environment)?;
 
-    if T::base_type_equality(&var_type, &body_type).is_ok() {
+    if T::type_judgemental_equality(environment, &var_type, &body_type).is_ok()
+    {
         let _ =
             evaluate_global::<T>(environment, var_name, &Some(var_type), body);
         Ok(body_type)
@@ -320,7 +324,8 @@ pub fn type_check_function<
         .with_local_assumptions(&assumptions, |local_env| {
             T::type_check_term(&body, local_env)
         })?;
-    if T::base_type_equality(out_type, &body_type).is_err() {
+    if T::type_judgemental_equality(environment, out_type, &body_type).is_err()
+    {
         return Err(LofError::type_mismatch(
             format!("function `{}`", fun_name),
             out_type,
@@ -405,7 +410,9 @@ pub fn i_type_check_function<
         .with_local_assumptions(&assumptions, |local_env| {
             T::type_check_term(&opened_body, local_env)
         })?;
-    if T::base_type_equality(&opened_out_type, &body_type).is_err() {
+    if T::type_judgemental_equality(environment, &opened_out_type, &body_type)
+        .is_err()
+    {
         return Err(LofError::type_mismatch(
             format!("function `{}`", fun_name),
             &opened_out_type,
@@ -455,8 +462,9 @@ pub fn eq_type_check_theorem<T: TypeTheory + Kernel + Interactive>(
         theorem_name,
         formula,
         proof,
-        |proof_type, formula, _| {
-            T::base_type_equality(proof_type, formula).is_ok()
+        |proof_type, formula, environment| {
+            T::type_judgemental_equality(environment, proof_type, formula)
+                .is_ok()
         },
     )
 }
@@ -527,12 +535,7 @@ fn type_check_theorem_base<
     }
     // include theorem_name into the context for following script, for both
     // term-mode and tactic-mode proofs
-    let _ = evaluate_theorem::<T>(
-        environment,
-        theorem_name,
-        formula,
-        proof,
-    );
+    let _ = evaluate_theorem::<T>(environment, theorem_name, formula, proof);
 
     Ok(formula.to_owned())
 }

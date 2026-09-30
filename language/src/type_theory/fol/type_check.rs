@@ -1,14 +1,16 @@
 use super::fol::Fol;
 use super::fol_utils::make_multiarg_fun_type;
 use crate::error::LofError;
-use crate::type_theory::grammars::fol::{
-    FolFormula::{self, Arrow, Conjunction, Disjunction, ForAll, Not, Predicate},
-    FolTerm::{self, Abstraction},
-};
 use crate::type_theory::commons::type_check::{
     type_check_fo_universal, type_check_function,
 };
 use crate::type_theory::environment::Environment;
+use crate::type_theory::grammars::fol::{
+    FolFormula::{
+        self, Arrow, Conjunction, Disjunction, ForAll, Not, Predicate,
+    },
+    FolTerm::{self, Abstraction},
+};
 use crate::type_theory::interface::{Kernel, TypeTheory};
 
 //########################### TERMS TYPE CHECKING
@@ -45,11 +47,16 @@ pub fn type_check_predicate(
 
                 match (formal_type, actual_type) {
                     (Some(formal_type), Some(actual_type)) => {
-                        if let Err(_msg) =
-                            Fol::base_type_equality(&actual_type, &arg_types[i])
-                        {
+                        if let Err(_msg) = Fol::type_judgemental_equality(
+                            environment,
+                            &actual_type,
+                            &arg_types[i],
+                        ) {
                             return Err(LofError::type_mismatch(
-                                format!("predicate `{}` application", pred_name),
+                                format!(
+                                    "predicate `{}` application",
+                                    pred_name
+                                ),
                                 formal_type,
                                 &actual_type,
                             ));

@@ -49,7 +49,8 @@ impl TypeTheory for Fol {
     }
 
     // TODO only supports identical expressions
-    fn base_term_equality(
+    fn term_judgemental_equality(
+        _env: &Environment<Fol>,
         term1: &Self::Term,
         term2: &Self::Term,
     ) -> Result<(), LofError> {
@@ -59,7 +60,8 @@ impl TypeTheory for Fol {
             Err(LofError::type_mismatch("equality check", term1, term2))
         }
     }
-    fn base_type_equality(
+    fn type_judgemental_equality(
+        _env: &Environment<Fol>,
         type1: &Self::Type,
         type2: &Self::Type,
     ) -> Result<(), LofError> {

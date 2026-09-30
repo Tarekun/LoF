@@ -30,7 +30,7 @@ pub trait NamedSubstitution<T> {
 /// Trait for expression reduction. Requires the implementation of
 /// one step reduction (`step`) and using it implements right away
 /// a transitive closure of it
-// TODO: this should really depend on any given TypeTheory, currently
+// TODO: this shouldnt really depend on any given TypeTheory, currently
 // this is needed only because Environment depends on T, but it would
 // only need the type for terms and types
 pub trait Reduction<T: TypeTheory> {
@@ -51,6 +51,22 @@ pub trait Reduction<T: TypeTheory> {
             }
             reduced = next
         }
+    }
+}
+
+pub trait SyntacticalEq {
+    /// Returns `true` iff `self` and `other` are exactly the same expression
+    fn syntactically_equal(&self, other: &Self) -> bool;
+}
+pub trait ReductionEq<T: TypeTheory>: Reduction<T> + SyntacticalEq {
+    /// Returns `true` iff `self` and `other` are exactly the same expression when reduced to their normal form
+    fn equal_up_to_reduction(&self, other: &Self, env: &Environment<T>) -> bool
+    where
+        Self: Clone + PartialEq,
+    {
+        let self_reduced = self.reduce_to_normal(env);
+        let other_reduced = other.reduce_to_normal(env);
+        self_reduced.syntactically_equal(&other_reduced)
     }
 }
 

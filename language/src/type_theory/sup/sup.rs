@@ -33,7 +33,8 @@ impl TypeTheory for Sup {
         Environment::with_defaults(vec![], vec![], vec![])
     }
 
-    fn base_term_equality(
+    fn term_judgemental_equality(
+        _env: &Environment<Self>,
         term1: &CnfTerm,
         term2: &CnfTerm,
     ) -> Result<(), LofError> {
@@ -43,7 +44,8 @@ impl TypeTheory for Sup {
             Err(LofError::type_mismatch("equality check", term1, term2))
         }
     }
-    fn base_type_equality(
+    fn type_judgemental_equality(
+        _env: &Environment<Self>,
         type1: &CnfFormula,
         type2: &CnfFormula,
     ) -> Result<(), LofError> {

@@ -7,7 +7,7 @@ use crate::{
                 CnfFormula::{Atom, Clause, Equality, ForAll, Not},
                 CnfTerm::{Application, Variable},
             },
-            traits::{ToCnfFormula, ToCnfTerm, Unification},
+            traits::{SyntacticalEq, ToCnfFormula, ToCnfTerm, Unification},
         },
     },
 };
@@ -105,14 +105,9 @@ impl fmt::Debug for CnfFormula {
 //############################# CHECKS ON EXPRESSIONS
 
 impl CnfTerm {
-    /// Returns `true` iff `self` and `term2` are exactly the same expression
-    pub fn are_syntactically_equal(&self, term2: &CnfTerm) -> bool {
-        *self == *term2
-    }
-
     /// Returns `true` iff `term` contains `target` inside
     pub fn contains(&self, target: &CnfTerm) -> bool {
-        if self.are_syntactically_equal(target) {
+        if self.syntactically_equal(target) {
             return true;
         }
 
@@ -132,7 +127,7 @@ impl CnfTerm {
 
 impl CnfFormula {
     /// Returns `true` iff `self` and `formula2` are exactly the same expression
-    pub fn are_syntactically_equal(&self, formula2: &CnfFormula) -> bool {
+    pub fn syntactically_equal(&self, formula2: &CnfFormula) -> bool {
         *self == *formula2
     }
 
@@ -166,7 +161,7 @@ impl CnfFormula {
                 false
             }
             // identity of equals
-            Equality(left, right) => left.are_syntactically_equal(right),
+            Equality(left, right) => left.syntactically_equal(right),
 
             // TODO review
             _ => false,
@@ -186,7 +181,7 @@ impl CnfFormula {
             d_lits
                 .iter()
                 //TODO currently this is syntactic equality with no mgu support
-                .any(|d_lit| c_lit.are_syntactically_equal(d_lit))
+                .any(|d_lit| c_lit.syntactically_equal(d_lit))
         })
     }
 }
@@ -218,7 +213,7 @@ impl CnfTerm {
     /// Returns a new term identical to `self` where every occurance of `target` is
     /// substituted by `arg`
     pub fn substitute_term(&self, target: &CnfTerm, arg: &CnfTerm) -> CnfTerm {
-        if self.are_syntactically_equal(target) {
+        if self.syntactically_equal(target) {
             return arg.to_owned();
         }
 
@@ -312,6 +307,12 @@ impl CnfFormula {
 }
 
 //############################# EXPRESSIONS MANIPULATION
+
+impl SyntacticalEq for CnfTerm {
+    fn syntactically_equal(&self, other: &CnfTerm) -> bool {
+        *self == *other
+    }
+}
 
 fn terms_unify_with_base(
     term1: &CnfTerm,
