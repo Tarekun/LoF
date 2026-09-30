@@ -1,6 +1,6 @@
 use super::cic::CicTerm;
 use super::cic::CicTerm::{
-    Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Meta, Proj, Product, Sort, Variable,
 };
 use crate::error::LofError;
 use crate::type_theory::cic::cic::{Cic, NameKind};
@@ -64,6 +64,12 @@ fn structurally_equal(term1: &CicTerm, term2: &CicTerm) -> bool {
             structurally_equal(body1, body2)
                 && structurally_equal(scope1, scope2)
         }
+        // same field of the same type; the targets are compared later, via
+        // `explode` pushing them back onto the ucs queue as their own
+        // constraint pair
+        (Proj(type1, field1, _), Proj(type2, field2, _)) => {
+            type1 == type2 && field1 == field2
+        }
         // TODO this explosion is order dependent on the branches, itd be nice to
         // reorder branches in some deterministic way
         (Match(matched1, branches1), Match(matched2, branches2)) => {
@@ -95,6 +101,7 @@ fn explode(term: &CicTerm) -> Vec<CicTerm> {
         Application(left, right) => {
             vec![(**left).to_owned(), (**right).to_owned()]
         }
+        Proj(_, _, target) => vec![(**target).to_owned()],
         // TODO this explosion is order dependent on the branches, itd be nice to
         // reorder branches in some deterministic way
         Match(matched_term, branches) => {
@@ -136,6 +143,7 @@ fn occurs_meta_check(meta_index: i32, term: &CicTerm) -> Result<(), LofError> {
             occurs_meta_check(meta_index, &left)?;
             occurs_meta_check(meta_index, &right)
         }
+        Proj(_, _, target) => occurs_meta_check(meta_index, target),
         Match(matched, branches) => {
             for (pattern, body) in branches {
                 occurs_meta_check(meta_index, pattern)?;
@@ -168,6 +176,7 @@ fn occurs_var_check(term: &CicTerm, name: &str) -> bool {
         Application(func, arg) => {
             occurs_var_check(func, name) || occurs_var_check(arg, name)
         }
+        Proj(_, _, target) => occurs_var_check(target, name),
         Match(scrutinee, branches) => {
             occurs_var_check(scrutinee, name)
                 || branches.iter().any(|(pattern, body)| {
@@ -277,14 +286,26 @@ pub fn cic_collect_unifications(
 
             let arg_type = Cic::type_check_term(arg, environment)?;
             let fun_type = Cic::type_check_term(fun, environment)?;
-            let first_arg_type = &get_arg_types(&fun_type)[0];
+            // The function's type can arrive un-reduced (a dependent
+            // eliminator's result is literally `motive(target, proof)`), in
+            // which case its Pi-chain isn't visible yet. Normalize before
+            // giving up, and emit no constraint if it still has no argument
+            // to constrain - a genuine arity error is reported by the
+            // application's own type checking, not here.
+            let argument_types = match get_arg_types(&fun_type).first() {
+                Some(_) => get_arg_types(&fun_type),
+                None => get_arg_types(&Cic::normalize_term(
+                    environment, &fun_type,
+                )),
+            };
+            let own_constraint = match argument_types.first() {
+                Some(first_arg_type) => {
+                    vec![(first_arg_type.to_owned(), arg_type)]
+                }
+                None => vec![],
+            };
 
-            Ok([
-                fun_cons,
-                vec![(first_arg_type.to_owned(), arg_type)],
-                arg_cons,
-            ]
-            .concat())
+            Ok([fun_cons, own_constraint, arg_cons].concat())
         }
         Product(var_name, domain, codomain) => {
             let domain_cons = cic_collect_unifications(domain, environment)?;

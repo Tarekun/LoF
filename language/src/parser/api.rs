@@ -58,6 +58,23 @@ pub enum Statement<Term, Type> {
     Solve(Vec<Type>),
     /// head, [subgoals]
     HClause(Type, Vec<Type>),
+    /// (equivalence_name, type_a, type_b, forward, backward, section,
+    /// retraction, dep_elim, opt_eta, dep_constr entries, iota entries)
+    Equivalence(
+        String,
+        Box<Type>,
+        Box<Type>,
+        Box<Term>,
+        Box<Term>,
+        Box<Term>,
+        Box<Term>,
+        Box<Term>,
+        Option<Box<Term>>,
+        Vec<(String, Term)>,
+        Vec<(String, Term)>,
+    ),
+    /// (new_name, new_formula_or_type, old_name, equivalence_name)
+    Transport(String, Box<Type>, String, String),
 }
 /// Statements as produced by the LoF parser, before elaboration into a type system
 pub type LofStatement = Statement<Expression, Expression>;

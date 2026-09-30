@@ -1,0 +1,45 @@
+# EXPECTED-FAILURE fixture (asserted to fail by
+# `test_transport_expected_failures` in runtime/entrypoints.rs).
+#
+# The transport engine converts a *top-level* `fun rec`-style `match` on
+# the source type into a `dep_elim` application. A `match` over the source
+# type appearing anywhere else - here, nested under a constructor
+# application rather than being the function's own recursion split - has no
+# such conversion, because the source type's constructors need not
+# correspond to constructors of the target type at all (that is the whole
+# point of DepConstr). Rather than silently emitting a `match` whose
+# "patterns" are arbitrary DepConstr terms - which is not a well-formed
+# pattern match - the engine rejects it explicitly.
+#
+# See docs/language/systems/transport.md, "Limitations".
+
+!theory_block cic
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+!end_block
+
+# a `match` on Nat that is NOT the top-level recursion split: it sits
+# under an `s(...)` application
+global nested_match : Nat -> Nat :=
+  (\lambda n:Nat. s((match n with | z => z, | s(nn) => nn,)));
+
+equivalence NatSelf : Nat <-> Nat {
+  forward    := (\lambda n:Nat. n);
+  backward   := (\lambda n:Nat. n);
+  section    := (\lambda n:Nat. refl(Nat, n));
+  retraction := (\lambda n:Nat. refl(Nat, n));
+  dep_elim   := e_Nat;
+  dep_constr {
+    | z => z
+    | s => s
+  }
+  iota {
+  }
+}
+
+transport nested_match_copy : Nat -> Nat from nested_match using NatSelf;
