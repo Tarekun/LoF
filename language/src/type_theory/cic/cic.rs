@@ -7,8 +7,8 @@ use crate::parser::api::{Expression, LofStatement, Statement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::cic::cic::CicTerm::{Application, Product};
 use crate::type_theory::cic::cic_utils::{
-    close_term, make_multiarg_fun_type, open_term, substitute_and_lift,
-    substitute_meta,
+    alpha_equivalent, close_term, make_multiarg_fun_type, open_term,
+    substitute_and_lift, substitute_meta,
 };
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
@@ -29,7 +29,7 @@ use crate::type_theory::commons::type_check::{
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::Environment;
 use crate::type_theory::grammars::traits::{
-    Reduction, ReductionEq, SyntacticalEq,
+    AlphaEquiv, Reduction, ReductionEq, SyntacticalEq,
 };
 use crate::type_theory::interface::{
     Interactive, Kernel, Reducer, Refiner, Stm, TypeInference, TypeTheory,
@@ -85,7 +85,23 @@ impl SyntacticalEq for CicTerm {
         *self == *other
     }
 }
-impl ReductionEq<Cic> for CicTerm {}
+impl AlphaEquiv for CicTerm {
+    fn alpha_equivalent(&self, other: &Self) -> bool {
+        alpha_equivalent(self, other)
+    }
+}
+impl ReductionEq<Cic> for CicTerm {
+    /// Normal forms are compared up to α-equivalence
+    fn equal_up_to_reduction(
+        &self,
+        other: &Self,
+        env: &Environment<Cic>,
+    ) -> bool {
+        let self_reduced = self.reduce_to_normal(env);
+        let other_reduced = other.reduce_to_normal(env);
+        self_reduced.alpha_equivalent(&other_reduced)
+    }
+}
 
 pub struct Cic;
 impl TypeTheory for Cic {
