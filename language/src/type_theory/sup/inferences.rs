@@ -48,9 +48,7 @@ fn rewrite_term(term: &CnfTerm, from: &CnfTerm, to: &CnfTerm) -> CnfTerm {
 }
 
 fn rewrite_formula(
-    φ: &CnfFormula,
-    from: &CnfTerm,
-    to: &CnfTerm,
+    φ: &CnfFormula, from: &CnfTerm, to: &CnfTerm
 ) -> CnfFormula {
     let rewrite = |term: &CnfTerm| rewrite_term(term, from, to);
     match φ {
@@ -694,7 +692,7 @@ mod unit_tests {
         );
         // terms are constructed to enforce t < s and t' < t
         let t = Application("t".to_string(), vec![Variable("x".to_string())]);
-        let t_prime = Variable("t_prime".to_string());
+        let t_prime = Application("t_prime".to_string(), vec![]);
         let rest = Atom("P".to_string(), vec![]);
 
         // s(x,y)=t(x) ; s(x,y)=t' ⊦ s(x,y)=t(x) ; t(x)≠t'
@@ -826,7 +824,7 @@ mod unit_tests {
         // terms are constructed to enforce t < s and t' < t
         let tx = Application("t".to_string(), vec![Variable("x".to_string())]);
         let tk = Application("t".to_string(), vec![k.clone()]);
-        let t_prime = Variable("t_prime".to_string());
+        let t_prime = Application("t_prime".to_string(), vec![]);
 
         let (derived, _) = eq_factoring(
             &mut Clause(vec![
@@ -848,9 +846,13 @@ mod unit_tests {
     #[test]
     fn test_eq_factoring_keeps_unselected() {
         let selection_fn = get_selection_fn(SelectionFunction::All);
-        let s = Application("s".to_string(), vec![Variable("x".to_string())]);
-        let t = Application("t".to_string(), vec![]);
-        let t_prime = Variable("t_prime".to_string());
+        // terms are constructed to enforce t < s and t' < t
+        let s = Application(
+            "s".to_string(),
+            vec![Variable("x".to_string()), Variable("y".to_string())],
+        );
+        let t_prime = Application("t_prime".to_string(), vec![]);
+        let t = Application("t".to_string(), vec![t_prime.clone()]);
         // the answer literal is never selected, so it must be carried over as unselected
         let clause = with_answer_literal(&Clause(vec![
             Equality(s.clone(), t.clone()),
@@ -881,7 +883,7 @@ mod unit_tests {
             Application("l".to_string(), vec![Variable("x".to_string())]);
         // terms are constructed to enforce r < l and t' < t[s]
         let r = Application("r".to_string(), vec![]);
-        let t_prime = Variable("t'".to_string());
+        let t_prime = Application("t'".to_string(), vec![]);
         let t = Application("t".to_string(), vec![unifiable.clone()]);
         let t_subst = Application("t".to_string(), vec![r.clone()]);
         let p = Atom("L".to_string(), vec![unifiable.clone()]);
