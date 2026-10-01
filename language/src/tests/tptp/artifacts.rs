@@ -4,6 +4,7 @@
 #[cfg(test)]
 mod end_to_end {
     use crate::{
+        config::SelectionFunction,
         error::LofError,
         tptp::{
             header::Status,
@@ -11,11 +12,24 @@ mod end_to_end {
             syntax::Role,
         },
         type_theory::{
-            algorithms::dpll::{dpll, dpll_prove},
-            grammars::prop::PropFormula::{self, Atom, Conjunction},
+            algorithms::{
+                dpll::{dpll, dpll_prove},
+                saturation::{
+                    saturate_bounded,
+                    SaturationOutcome::{Refutation, Saturated, StepLimit},
+                },
+            },
+            grammars::{
+                cnf::CnfFormula,
+                prop::PropFormula::{self, Atom, Conjunction},
+            },
+            sup::freedom::{get_selection_fn, pick_clause},
         },
     };
     use std::{fs, path::Path};
+
+    /// Given clauses after which saturation gives up on a clausal problem
+    const MAX_STEPS: usize = 500;
 
     /// Returns the paths of every `.p` problem directly under
     /// `test_artifacts/tptp/<directory>`
@@ -78,27 +92,70 @@ mod end_to_end {
         })
     }
 
-    #[test]
-    fn test_propositional_artifacts() {
+    /// Computes the status of a clausal problem with SUP saturation
+    fn decide_clausal(problem: &TptpProblem) -> Result<Status, LofError> {
+        let TptpBody::Clausal(inputs) = &problem.body else {
+            return Err(LofError::custom("Not a clausal problem"));
+        };
+        let clauses: Vec<CnfFormula> =
+            inputs.iter().map(|input| input.formula.clone()).collect();
+        let selection_fn = get_selection_fn(SelectionFunction::Maximal);
+        match saturate_bounded(&clauses, &selection_fn, pick_clause, MAX_STEPS)?
+        {
+            Refutation(_) => Ok(Status::Unsatisfiable),
+            Saturated => Ok(Status::Satisfiable),
+            StepLimit => Err(LofError::custom(format!(
+                "SUP found no outcome within {} steps",
+                MAX_STEPS
+            ))),
+        }
+    }
+
+    /// Solves every problem at `paths` with `decide`, describing each one
+    /// whose outcome disagrees with its header's status
+    fn failures(
+        paths: Vec<String>,
+        decide: fn(&TptpProblem) -> Result<Status, LofError>,
+    ) -> Vec<String> {
         let mut failures = vec![];
-        for path in artifacts("prp") {
+        for path in paths {
             let outcome = load_tptp_file(&path).and_then(|problem| {
-                let status = decide_propositional(&problem)?;
-                Ok((problem.header.status, status))
+                Ok((problem.header.status, decide(&problem)?))
             });
             match outcome {
                 Ok((expected, found)) if expected == found => {}
                 Ok((expected, found)) => failures.push(format!(
-                    "{}: header says {:?}, DPLL found {:?}",
+                    "{}: header says {:?}, found {:?}",
                     path, expected, found
                 )),
                 Err(err) => failures.push(format!("{}: {}", path, err)),
             }
         }
+        failures
+    }
 
+    #[test]
+    fn test_propositional_artifacts() {
+        let failures = failures(artifacts("prp"), decide_propositional);
         assert!(
             failures.is_empty(),
             "Propositional artifacts with unexpected outcomes:\n{}",
+            failures.join("\n")
+        );
+    }
+
+    #[test]
+    /// Traces every given clause, shown when the test fails
+    fn test_clausal_artifacts() {
+        let _ = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_test_writer()
+            .try_init();
+        let failures = failures(artifacts("cnf"), decide_clausal);
+        assert!(
+            failures.is_empty(),
+            "Clausal artifacts with unexpected outcomes:\n{}",
             failures.join("\n")
         );
     }
@@ -141,18 +198,13 @@ mod end_to_end {
 #[cfg(test)]
 mod clausal {
     use crate::{
-        config::SelectionFunction,
         tptp::{
             problem::{load_tptp_file, TptpBody},
             syntax::Role,
         },
-        type_theory::{
-            algorithms::saturation::saturate,
-            grammars::cnf::{
-                CnfFormula::{self, Atom, Clause, Equality, Not},
-                CnfTerm::{self, Application, Variable},
-            },
-            sup::freedom::{get_selection_fn, pick_clause},
+        type_theory::grammars::cnf::{
+            CnfFormula::{self, Atom, Clause, Equality, Not},
+            CnfTerm::{self, Application, Variable},
         },
     };
 
@@ -324,19 +376,6 @@ mod clausal {
                 ),
             ],
             "group_problem.p doesnt resolve its selective include"
-        );
-    }
-
-    #[test]
-    fn test_saturation() {
-        let clauses: Vec<CnfFormula> = load_cnf("socrates.p")
-            .into_iter()
-            .map(|(_, _, clause)| clause)
-            .collect();
-        let selection_fn = get_selection_fn(SelectionFunction::Maximal);
-        assert!(
-            saturate(&clauses, &selection_fn, pick_clause).is_ok(),
-            "SUP cant refute socrates.p"
         );
     }
 }
