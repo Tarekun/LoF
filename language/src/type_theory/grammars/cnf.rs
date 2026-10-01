@@ -172,8 +172,8 @@ impl CnfFormula {
     /// Checks wheter clause `self` subsumes `D`, ie if `self`≐`E` where `E` is a subset
     /// of literals of `D`
     pub fn subsumes(&self, D: &CnfFormula) -> bool {
-        let Clause(c_lits) = self else { return false };
-        let Clause(d_lits) = D else { return false };
+        let c_lits = self.unpack_literals();
+        let d_lits = D.unpack_literals();
 
         // TODO if i implement Eq and Hash for CnfFormula in a way that supports
         // alpha equivalence this time complexity can be reduced from O(nm) to O(n+m)
