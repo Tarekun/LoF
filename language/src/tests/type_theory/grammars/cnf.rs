@@ -361,12 +361,21 @@ fn test_subsumption_edge_cases() {
         "Clause subsumes a clause missing one of its literals"
     );
     assert!(
-        !p.subsumes(&Clause(vec![p.clone()])),
-        "Subsumption holds for a subsuming literal that isnt a clause"
+        p.subsumes(&Clause(vec![q.clone(), p.clone()])),
+        "Unit clauses given as bare literals dont subsume"
     );
     assert!(
-        !Clause(vec![p.clone()]).subsumes(&p),
-        "Subsumption holds for a subsumed literal that isnt a clause"
+        Clause(vec![p.clone()]).subsumes(&p),
+        "Unit clauses given as bare literals arent subsumed"
+    );
+    assert!(
+        !q.subsumes(&p),
+        "Unit clause subsumes a unit clause with a different literal"
+    );
+    let equality = Equality(var("x"), var("y"));
+    assert!(
+        equality.subsumes(&Clause(vec![p.clone(), equality.clone()])),
+        "Unit equalities dont subsume"
     );
 }
 
