@@ -34,7 +34,8 @@ pub fn get_forall_innermost(forall: &CnfFormula) -> CnfFormula {
 }
 
 /// Implements standard Knuth-Bendix ordering of terms. Ordering ties are not
-/// broken using the internal names, so ex. `Variable`s are all isomorphic
+/// broken using the internal names, so ex. `Variable`s are all isomorphic.
+/// Terms that can't be ordered return `Equal`
 pub fn kbo_terms(term1: &CnfTerm, term2: &CnfTerm) -> Ordering {
     /// Every symbol and variable weighs 1, so a term weighs its size and is
     /// always heavier than its proper subterms
@@ -44,32 +45,56 @@ pub fn kbo_terms(term1: &CnfTerm, term2: &CnfTerm) -> Ordering {
             Application(_, args) => 1 + args.iter().map(weight).sum::<usize>(),
         }
     }
-
-    let w1 = weight(term1);
-    let w2 = weight(term2);
-    if w1 != w2 {
-        return w1.cmp(&w2);
-    }
-
-    // in case terms have the same weight
-    match (term1, term2) {
-        (Variable(_), Variable(_)) => Equal,
-        (Variable(_), Application(_, _)) => Less,
-        (Application(_, _), Variable(_)) => Greater,
-        (Application(_, args1), Application(_, args2)) => {
-            match args1.len().cmp(&args2.len()) {
-                Ordering::Equal => {
-                    for (argl, argr) in args1.iter().zip(args2.iter()) {
-                        match kbo_terms(argl, argr) {
-                            Ordering::Equal => continue,
-                            non_eq => return non_eq,
-                        }
-                    }
-                    Equal
-                }
-                non_eq => non_eq,
+    fn count_vars(term: &CnfTerm, counts: &mut HashMap<String, usize>) {
+        match term {
+            Variable(var) => *counts.entry(var.clone()).or_default() += 1,
+            Application(_, args) => {
+                args.iter().for_each(|arg| count_vars(arg, counts))
             }
         }
+    }
+    /// Variable condition: a term can only be greater than another if each
+    /// variable occurs in it at least as many times. Otherwise substituting a
+    /// large enough term for a variable could reverse the ordering, eg
+    /// f(X, a, a) is heavier than g(X, X) but f(h(h(a)), a, a) isnt heavier
+    /// than g(h(h(a)), h(h(a)))
+    fn dominates(
+        counts: &HashMap<String, usize>,
+        other: &HashMap<String, usize>,
+    ) -> bool {
+        other
+            .iter()
+            .all(|(var, n)| counts.get(var).is_some_and(|m| m >= n))
+    }
+
+    let (mut vars1, mut vars2) = (HashMap::new(), HashMap::new());
+    count_vars(term1, &mut vars1);
+    count_vars(term2, &mut vars2);
+
+    let ordering = match weight(term1).cmp(&weight(term2)) {
+        Equal => match (term1, term2) {
+            // in case terms have the same weight
+            (Variable(_), Variable(_)) => Equal,
+            (Variable(_), Application(_, _)) => Less,
+            (Application(_, _), Variable(_)) => Greater,
+            (Application(_, args1), Application(_, args2)) => {
+                match args1.len().cmp(&args2.len()) {
+                    Equal => args1
+                        .iter()
+                        .zip(args2)
+                        .map(|(argl, argr)| kbo_terms(argl, argr))
+                        .find(|ordering| *ordering != Equal)
+                        .unwrap_or(Equal),
+                    non_eq => non_eq,
+                }
+            }
+        },
+        non_eq => non_eq,
+    };
+    match ordering {
+        Greater if dominates(&vars1, &vars2) => Greater,
+        Less if dominates(&vars2, &vars1) => Less,
+        _ => Equal,
     }
 }
 pub fn kbo_types(φ1: &CnfFormula, φ2: &CnfFormula) -> Ordering {
@@ -333,6 +358,7 @@ mod tests {
         CnfFormula::{Atom, Clause, Equality, Not},
         CnfTerm::{self, Application, Variable},
     };
+    use crate::type_theory::grammars::traits::Unification;
     use crate::type_theory::sup::freedom::drop_maximal_literals;
     use crate::type_theory::sup::sup_utils::{
         extract_answer, kbo_terms, kbo_types, match_term, with_answer_literal,
@@ -437,14 +463,58 @@ mod tests {
         );
 
         assert_eq!(
-            kbo_terms(&anon, &Application("f".to_string(), vec![arg.clone()])),
+            kbo_terms(&anon, &Application("f".to_string(), vec![anon.clone()])),
             Less,
             "simple variable isnt strictly less than function application"
         );
         assert_eq!(
-            kbo_terms(&Application("f".to_string(), vec![arg.clone()]), &anon),
+            kbo_terms(&Application("f".to_string(), vec![anon.clone()]), &anon),
             Greater,
             "simple variable isnt strictly less than function application"
+        );
+        assert_eq!(
+            kbo_terms(&anon, &Application("f".to_string(), vec![arg.clone()])),
+            Equal,
+            "variable is ordered against a term it doesnt occur in"
+        );
+    }
+
+    #[test]
+    fn test_kbo_term_stable_under_substitution() {
+        let x = Variable("X".to_string());
+        let a = Application("a".to_string(), vec![]);
+        let h = |t: CnfTerm| Application("h".to_string(), vec![t]);
+        let f = |args: Vec<CnfTerm>| Application("f".to_string(), args);
+        let g = |args: Vec<CnfTerm>| Application("g".to_string(), args);
+        let σ = Substitution::from([("X".to_string(), h(h(a.clone())))]);
+
+        // f(X, a, a) is heavier than g(X, X), but X occurs more in g
+        let left = f(vec![x.clone(), a.clone(), a.clone()]);
+        let right = g(vec![x.clone(), x.clone()]);
+        assert_eq!(
+            kbo_terms(
+                &left.apply_substitution(&σ),
+                &right.apply_substitution(&σ)
+            ),
+            Less,
+            "f(h(h(a)), a, a) isnt less than g(h(h(a)), h(h(a)))"
+        );
+        assert_eq!(
+            kbo_terms(&left, &right),
+            Equal,
+            "terms are ordered although an instance reverses their ordering"
+        );
+        assert_eq!(
+            kbo_terms(&right, &left),
+            Equal,
+            "terms are ordered although an instance reverses their ordering"
+        );
+
+        // f(X, X) is heavier than g(X) and stays so in every instance
+        assert_eq!(
+            kbo_terms(&f(vec![x.clone(), x.clone()]), &g(vec![x.clone()])),
+            Greater,
+            "terms satisfying the variable condition arent ordered by weight"
         );
     }
 
