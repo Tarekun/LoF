@@ -36,10 +36,12 @@ pub fn get_forall_innermost(forall: &CnfFormula) -> CnfFormula {
 /// Implements standard Knuth-Bendix ordering of terms. Ordering ties are not
 /// broken using the internal names, so ex. `Variable`s are all isomorphic
 pub fn kbo_terms(term1: &CnfTerm, term2: &CnfTerm) -> Ordering {
-    fn weight(term: &CnfTerm) -> i32 {
+    /// Every symbol and variable weighs 1, so a term weighs its size and is
+    /// always heavier than its proper subterms
+    fn weight(term: &CnfTerm) -> usize {
         match term {
             Variable(_) => 1,
-            Application(_, args) => 1 + (args.len() as i32),
+            Application(_, args) => 1 + args.iter().map(weight).sum::<usize>(),
         }
     }
 
@@ -116,13 +118,15 @@ pub fn kbo_types(φ1: &CnfFormula, φ2: &CnfFormula) -> Ordering {
             kbo_types(body1, body2)
         }
 
-        // order formulas by constructor kind if they are different
+        // order formulas by constructor kind if they are different. negative
+        // literals are greater than positive ones, as in the SUP literal
+        // ordering ¬(s = t) is the multiset {s, s, t, t} while s = t is {s, t}
         (Atom(_, _), _) => Ordering::Less,
         (_, Atom(_, _)) => Ordering::Greater,
-        (Not(_), _) => Ordering::Less,
-        (_, Not(_)) => Ordering::Greater,
         (Equality(_, _), _) => Ordering::Less,
         (_, Equality(_, _)) => Ordering::Greater,
+        (Not(_), _) => Ordering::Less,
+        (_, Not(_)) => Ordering::Greater,
         (Clause(_), _) => Ordering::Less,
         (_, Clause(_)) => Ordering::Greater,
     }
@@ -326,9 +330,10 @@ pub fn extract_answer(
 mod tests {
     use crate::type_theory::commons::unification::Substitution;
     use crate::type_theory::grammars::cnf::{
-        CnfFormula::{Atom, Clause, Not},
+        CnfFormula::{Atom, Clause, Equality, Not},
         CnfTerm::{self, Application, Variable},
     };
+    use crate::type_theory::sup::freedom::drop_maximal_literals;
     use crate::type_theory::sup::sup_utils::{
         extract_answer, kbo_terms, kbo_types, match_term, with_answer_literal,
     };
@@ -401,9 +406,8 @@ mod tests {
     #[test]
     fn test_match_term() {
         let var = |name: &str| Variable(name.to_string());
-        let f = |l: CnfTerm, r: CnfTerm| {
-            Application("f".to_string(), vec![l, r])
-        };
+        let f =
+            |l: CnfTerm, r: CnfTerm| Application("f".to_string(), vec![l, r]);
         let a = Application("a".to_string(), vec![]);
 
         let σ = match_term(&f(var("X"), var("X")), &f(a.clone(), a.clone()))
@@ -445,6 +449,31 @@ mod tests {
     }
 
     #[test]
+    fn test_kbo_term_weights_whole_terms() {
+        let zero = Application("0".to_string(), vec![]);
+        let s = |t: CnfTerm| Application("s".to_string(), vec![t]);
+        let add =
+            |l: CnfTerm, r: CnfTerm| Application("+".to_string(), vec![l, r]);
+        let small =
+            add(s(Variable("n".to_string())), Variable("m".to_string()));
+        let big = add(zero.clone(), small.clone());
+
+        // with weights counting only direct arguments both weigh 3, and the
+        // tie is broken by s(n) > 0, letting demodulation by 0 + x = x
+        // rewrite +(s(n), m) to the larger +(0, +(s(n), m)) forever
+        assert_eq!(
+            kbo_terms(&small, &big),
+            Less,
+            "A term isnt less than a term containing it"
+        );
+        assert_eq!(
+            kbo_terms(&big, &small),
+            Greater,
+            "A term isnt greater than its proper subterms"
+        );
+    }
+
+    #[test]
     fn test_kbo_types() {
         let n = Variable("n".to_string());
         let p = Atom("P".to_string(), vec![n.clone()]);
@@ -467,6 +496,40 @@ mod tests {
             kbo_types(&p, &q),
             Equal,
             "Clause with less literals isnt strictly less than one with more"
+        );
+    }
+
+    #[test]
+    fn test_negative_literals_exceed_equalities() {
+        let (x, y) = (Variable("X".to_string()), Variable("Y".to_string()));
+        let f = |t: &CnfTerm| Application("f".to_string(), vec![t.clone()]);
+        let equality = Equality(x.clone(), y.clone());
+        let negated_equality = Not(Box::new(Equality(f(&x), f(&y))));
+        let negated_atom =
+            Not(Box::new(Atom("P".to_string(), vec![x.clone(), y.clone()])));
+
+        assert_eq!(
+            kbo_types(&negated_equality, &equality),
+            Greater,
+            "Negated equalities arent greater than equalities"
+        );
+        assert_eq!(
+            kbo_types(&equality, &negated_atom),
+            Less,
+            "Equalities arent less than negated atoms"
+        );
+
+        // X = Y ∨ ¬P(X, Y) ∨ f(X) ≠ f(Y): selecting the non orientable X = Y
+        // lets it superpose into every term
+        let mut clause = vec![
+            equality.clone(),
+            negated_atom.clone(),
+            negated_equality.clone(),
+        ];
+        let selected = drop_maximal_literals(&mut clause);
+        assert!(
+            !selected.contains(&equality),
+            "Maximal literal selection picks a positive equality over negative literals"
         );
     }
 }
