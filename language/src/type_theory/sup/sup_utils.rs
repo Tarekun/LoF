@@ -10,6 +10,7 @@ use crate::type_theory::{
     },
 };
 use std::cmp::Ordering::{self, Equal, Greater, Less};
+use std::collections::HashMap;
 
 /// Returns the ordered vector of formal argument types of nested universal quantification
 pub fn get_arg_types(forall: &CnfFormula) -> Vec<CnfFormula> {
@@ -125,6 +126,42 @@ pub fn kbo_types(φ1: &CnfFormula, φ2: &CnfFormula) -> Ordering {
         (Clause(_), _) => Ordering::Less,
         (_, Clause(_)) => Ordering::Greater,
     }
+}
+
+/// One way matching: returns the substitution σ of the variables of `pattern`
+/// such that `pattern`σ = `term`, if any. The variables of `term` are left
+/// untouched, as if they were constants
+pub fn match_term(
+    pattern: &CnfTerm,
+    term: &CnfTerm,
+) -> Option<Substitution<CnfTerm>> {
+    fn solver(
+        pattern: &CnfTerm,
+        term: &CnfTerm,
+        bindings: &mut HashMap<String, CnfTerm>,
+    ) -> bool {
+        match (pattern, term) {
+            (Variable(var), _) => match bindings.get(var) {
+                Some(bound) => bound == term,
+                None => {
+                    bindings.insert(var.clone(), term.clone());
+                    true
+                }
+            },
+            (Application(f, f_args), Application(g, g_args)) => {
+                f == g
+                    && f_args.len() == g_args.len()
+                    && f_args
+                        .iter()
+                        .zip(g_args)
+                        .all(|(p, t)| solver(p, t, bindings))
+            }
+            _ => false,
+        }
+    }
+
+    let mut bindings = HashMap::new();
+    solver(pattern, term, &mut bindings).then(|| Substitution::from(bindings))
 }
 
 /// Returns a clone of the first subterm of `term` that can be unified with `target`.
@@ -293,7 +330,7 @@ mod tests {
         CnfTerm::{self, Application, Variable},
     };
     use crate::type_theory::sup::sup_utils::{
-        extract_answer, kbo_terms, kbo_types, with_answer_literal,
+        extract_answer, kbo_terms, kbo_types, match_term, with_answer_literal,
     };
     use std::cmp::Ordering::{Equal, Greater, Less};
 
@@ -358,6 +395,29 @@ mod tests {
             with_answer_literal(&Atom("P".to_string(), vec![a.clone()])),
             Atom("P".to_string(), vec![a.clone()]),
             "Ground clause got an answer literal"
+        );
+    }
+
+    #[test]
+    fn test_match_term() {
+        let var = |name: &str| Variable(name.to_string());
+        let f = |l: CnfTerm, r: CnfTerm| {
+            Application("f".to_string(), vec![l, r])
+        };
+        let a = Application("a".to_string(), vec![]);
+
+        let σ = match_term(&f(var("X"), var("X")), &f(a.clone(), a.clone()))
+            .expect("A pattern doesnt match its instance");
+        assert_eq!(σ.get("X"), Some(&a));
+        assert!(
+            match_term(&f(var("X"), var("X")), &f(a.clone(), var("Y")))
+                .is_none(),
+            "A pattern matches binding one variable to two different terms"
+        );
+        assert!(
+            match_term(&f(a.clone(), var("X")), &f(var("Y"), a.clone()))
+                .is_none(),
+            "Matching binds variables of the matched term"
         );
     }
 
