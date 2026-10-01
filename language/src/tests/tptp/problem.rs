@@ -6,7 +6,10 @@ mod unit_tests {
             problem::{parse_tptp, TptpBody, TptpInput},
             syntax::Role,
         },
-        type_theory::grammars::prop::PropFormula::{Arrow, Atom},
+        type_theory::grammars::{
+            cnf::{CnfFormula, CnfTerm},
+            prop::PropFormula::{Arrow, Atom},
+        },
     };
 
     /// A problem with the given `% SPC` and status, and `body` as formulas
@@ -45,6 +48,49 @@ mod unit_tests {
                 },
             ]),
             "Propositional problems arent parsed to propositional formulas"
+        );
+    }
+
+    #[test]
+    fn test_clausal_problem() {
+        let clausal = parse_tptp(&problem(
+            "Unsatisfiable",
+            "CNF_UNS_EPR_NEQ_HRN",
+            "cnf(a, axiom, p(X)).
+            cnf(b, negated_conjecture, ~ p(a)).",
+        ))
+        .unwrap();
+
+        assert_eq!(
+            clausal.body,
+            TptpBody::Clausal(vec![
+                TptpInput {
+                    name: "a".to_string(),
+                    role: Role::Axiom,
+                    formula: CnfFormula::Atom(
+                        "p".to_string(),
+                        vec![CnfTerm::Variable("X".to_string())]
+                    ),
+                },
+                TptpInput {
+                    name: "b".to_string(),
+                    role: Role::NegatedConjecture,
+                    formula: CnfFormula::Not(Box::new(CnfFormula::Atom(
+                        "p".to_string(),
+                        vec![CnfTerm::Application("a".to_string(), vec![])]
+                    ))),
+                },
+            ]),
+            "First order CNF problems arent parsed to CNF clauses"
+        );
+        assert!(
+            parse_tptp(&problem(
+                "Unsatisfiable",
+                "CNF_UNS_RFO_NEQ_HRN",
+                "fof(a, axiom, p)."
+            ))
+            .is_err(),
+            "`fof` formulas are accepted in a CNF problem"
         );
     }
 
