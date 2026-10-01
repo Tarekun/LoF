@@ -8,6 +8,14 @@ use crate::{
     },
 };
 
+pub trait BottomTop {
+    /// Returns `true` iff `self` represents bottom (or false)
+    fn is_bottom(&self) -> bool;
+
+    /// Returns `true` iff `self` represents top (or true)
+    fn is_top(&self) -> bool;
+}
+
 /// Trait for type checking/well formedness quick access.
 /// This trait must be parametric on a TypeTheory, because typing rules
 /// are of a type system, not a grammar

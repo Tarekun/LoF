@@ -3,12 +3,13 @@ use crate::{
     type_theory::grammars::{
         cnf::CnfFormula,
         prop::{
-            PropFormula::{
-                Arrow, Atom, Bottom, Conjunction, Disjunction, Not, Top,
-            },
+            PropFormula::{Arrow, Atom, Conjunction, Disjunction, Not},
             PropTerm::{Abstraction, Application, Let, Tuple, Variable},
         },
-        traits::{Complement, NamedSubstitution, SyntacticalEq, ToCnfFormula},
+        traits::{
+            BottomTop, Complement, NamedSubstitution, SyntacticalEq,
+            ToCnfFormula,
+        },
     },
 };
 use std::collections::{BTreeSet, HashMap};
@@ -38,16 +39,10 @@ pub enum PropTerm {
 
 #[derive(Clone, PartialEq)]
 /// A formula of Propositional Logic, with propositional variables as
-/// `Atom`s, the constants `Top` and `Bottom` and the full set of connectives.
-/// An empty `Conjunction` is equivalent to `Top`, an empty `Disjunction`
-/// to `Bottom`
+/// `Atom`s and the full set of connectives
 pub enum PropFormula {
     /// atom_name
     Atom(String),
-    /// ⊤
-    Top,
-    /// ⊥
-    Bottom,
     Not(Box<PropFormula>),
     /// [conjuncts]
     Conjunction(Vec<PropFormula>),
@@ -89,8 +84,6 @@ impl PropFormula {
         };
         match self {
             Atom(name) => name.to_string(),
-            Top => "⊤".to_string(),
-            Bottom => "⊥".to_string(),
             Not(f) => format!("¬({})", f.parenthesized()),
             Conjunction(fs) if fs.is_empty() => "⊤".to_string(),
             Conjunction(fs) => format!("({})", join(fs, " ∧ ")),
@@ -104,7 +97,7 @@ impl PropFormula {
 }
 impl fmt::Display for PropFormula {
     /// Prints the formula with the minimal amount of parentheses, given
-    /// the precedence ¬ > ∧ > ∨ > → > ↔ and → being right associative.
+    /// the precedence ¬ > ∧ > ∨ > → and → being right associative.
     /// Nested conjunctions/disjunctions are parenthesized to keep the
     /// structure of the AST visible
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -116,8 +109,6 @@ impl fmt::Display for PropFormula {
         };
         match self {
             Atom(name) => write!(f, "{}", name),
-            Top => write!(f, "⊤"),
-            Bottom => write!(f, "⊥"),
             Not(psi) => write!(f, "¬{}", psi.to_string_within(5)),
             Conjunction(fs) if fs.is_empty() => write!(f, "⊤"),
             Conjunction(fs) => write!(f, "{}", join(fs, " ∧ ", 5)),
@@ -152,32 +143,27 @@ impl PropFormula {
         }
     }
 
-    /// Returns `true` iff `self` is a literal, a disjunction of literals or
-    /// the empty clause `Bottom`
+    /// Returns `true` iff `self` is a literal or a disjunction of literals
     pub fn is_clause(&self) -> bool {
         match self {
-            Bottom => true,
             Disjunction(lits) => lits.iter().all(|lit| lit.is_literal()),
             _ => self.is_literal(),
         }
     }
 
-    /// Returns `true` iff `self` is in negation normal form, ie it contains
-    /// no implications/equivalences and negations only wrap atoms
+    /// Returns `true` iff `self` is in negation normal form
     pub fn is_nnf(&self) -> bool {
         match self {
-            Atom(_) | Top | Bottom => true,
+            Atom(_) => true,
             Not(_) => self.is_literal(),
             Conjunction(fs) | Disjunction(fs) => fs.iter().all(|f| f.is_nnf()),
             Arrow(_, _) => false,
         }
     }
 
-    /// Returns `true` iff `self` is a clause, a conjunction of clauses or
-    /// the empty conjunction `Top`
+    /// Returns `true` iff `self` is a clause or a conjunction of clauses
     pub fn is_cnf(&self) -> bool {
         match self {
-            Top => true,
             Conjunction(clauses) => clauses.iter().all(|c| c.is_clause()),
             _ => self.is_clause(),
         }
@@ -251,7 +237,6 @@ impl PropFormula {
     pub fn atoms(&self) -> BTreeSet<String> {
         match self {
             Atom(name) => BTreeSet::from([name.to_string()]),
-            Top | Bottom => BTreeSet::new(),
             Not(psi) => psi.atoms(),
             Conjunction(fs) | Disjunction(fs) => {
                 fs.iter().flat_map(|f| f.atoms()).collect()
@@ -274,8 +259,6 @@ impl PropFormula {
             Atom(name) => *valuation
                 .get(name)
                 .ok_or_else(|| LofError::unbound_variable(name))?,
-            Top => true,
-            Bottom => false,
             Not(psi) => !psi.evaluate(valuation)?,
             Conjunction(fs) => {
                 for f in fs {
@@ -429,7 +412,6 @@ impl NamedSubstitution<PropFormula> for PropFormula {
                     self.to_owned()
                 }
             }
-            Top | Bottom => self.to_owned(),
             Not(psi) => Not(sub(psi)),
             Conjunction(fs) => Conjunction(sub_all(fs)),
             Disjunction(fs) => Disjunction(sub_all(fs)),
@@ -443,9 +425,9 @@ impl NamedSubstitution<PropFormula> for PropFormula {
 //
 //############################# NORMAL FORMS
 
+// TODO fully drop and rely on FOL, using a .to_fol().to_cnf() pipeline
 impl PropFormula {
-    /// Removes implications and equivalences and pushes negations to atoms.
-    /// Negated constants are resolved (¬⊤ = ⊥, ¬⊥ = ⊤)
+    /// Removes implications and pushes negations to atoms
     pub fn negation_normal_form(&self) -> PropFormula {
         fn solver(φ: &PropFormula, negate: bool) -> PropFormula {
             match φ {
@@ -454,20 +436,6 @@ impl PropFormula {
                         Not(Box::new(φ.to_owned()))
                     } else {
                         φ.to_owned()
-                    }
-                }
-                Top => {
-                    if negate {
-                        Bottom
-                    } else {
-                        Top
-                    }
-                }
-                Bottom => {
-                    if negate {
-                        Top
-                    } else {
-                        Bottom
                     }
                 }
                 Not(ψ) => solver(ψ, !negate),
@@ -529,16 +497,12 @@ impl PropFormula {
         }
 
         match (self, cnf) {
-            // neutral element of the outer connective: no rows
-            (Top, true) | (Bottom, false) => vec![],
-            // absorbing element of the outer connective: one empty row
-            (Top, false) | (Bottom, true) => vec![vec![]],
             (Atom(_), _) | (Not(_), _) => vec![vec![self.to_owned()]],
-            // outer connective, rows are concatenated
+            // outer connective, rows are concatenated (no rows if empty)
             (Conjunction(fs), true) | (Disjunction(fs), false) => {
                 fs.iter().flat_map(|ψ| ψ.normal_form_matrix(cnf)).collect()
             }
-            // inner connective, rows are distributed
+            // inner connective, rows are distributed (one empty row if empty)
             (Disjunction(fs), true) | (Conjunction(fs), false) => {
                 let mut result = vec![vec![]];
                 for ψ in fs {
@@ -562,14 +526,14 @@ impl PropFormula {
 
     /// Transforms the formula into a CNF logically equivalent one.
     /// Returns the vector of (conjuncted) clauses, each one being either a
-    /// literal, a `Disjunction` of literals or `Bottom` for the empty
-    /// clause. An empty vector stands for `Top`
+    /// literal or a `Disjunction` of literals (⊥ for the empty clause).
+    /// An empty vector stands for ⊤
     pub fn conjunction_normal_form(&self) -> Vec<PropFormula> {
         self.negation_normal_form()
             .normal_form_matrix(true)
             .into_iter()
             .map(|mut clause| match clause.len() {
-                0 => Bottom,
+                0 => Disjunction(vec![]),
                 1 => clause.remove(0),
                 _ => Disjunction(clause),
             })
@@ -578,14 +542,14 @@ impl PropFormula {
 
     /// Transforms the formula into a DNF logically equivalent one.
     /// Returns the vector of (disjuncted) cubes, each one being either a
-    /// literal, a `Conjunction` of literals or `Top` for the empty cube.
-    /// An empty vector stands for `Bottom`
+    /// literal or a `Conjunction` of literals (⊤ for the empty cube).
+    /// An empty vector stands for ⊥
     pub fn disjunction_normal_form(&self) -> Vec<PropFormula> {
         self.negation_normal_form()
             .normal_form_matrix(false)
             .into_iter()
             .map(|mut cube| match cube.len() {
-                0 => Top,
+                0 => Conjunction(vec![]),
                 1 => cube.remove(0),
                 _ => Conjunction(cube),
             })
@@ -606,14 +570,23 @@ impl SyntacticalEq for PropFormula {
     }
 }
 
+impl BottomTop for PropFormula {
+    /// ⊥ is the empty coproduct family
+    fn is_bottom(&self) -> bool {
+        matches!(self, Disjunction(fs) if fs.is_empty())
+    }
+    /// ⊤ is the empty product family
+    fn is_top(&self) -> bool {
+        matches!(self, Conjunction(fs) if fs.is_empty())
+    }
+}
+
 impl Complement for PropFormula {
     /// Returns the negation of `self`, simplifying double negations and
     /// swapping constants
     fn complement(&self) -> PropFormula {
         match self {
             Not(psi) => (**psi).to_owned(),
-            Top => Bottom,
-            Bottom => Top,
             _ => Not(Box::new(self.to_owned())),
         }
     }

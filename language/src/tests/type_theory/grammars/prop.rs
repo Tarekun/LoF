@@ -6,14 +6,13 @@ use crate::{
             cnf::CnfFormula,
             prop::{
                 PropFormula::{
-                    self, Arrow, Atom, Bottom, Conjunction, Disjunction, Not,
-                    Top,
+                    self, Arrow, Atom, Conjunction, Disjunction, Not,
                 },
                 PropTerm::{
                     self, Abstraction, Application, Let, Tuple, Variable,
                 },
             },
-            traits::{Complement, NamedSubstitution, ToCnfFormula},
+            traits::{BottomTop, Complement, NamedSubstitution, ToCnfFormula},
         },
         sup::freedom::{get_selection_fn, pick_clause},
     },
@@ -74,8 +73,11 @@ fn sample_formulas() -> Vec<PropFormula> {
         iff(a.clone(), b.clone()),
         not(iff(a.clone(), arrow(b.clone(), c.clone()))),
         arrow(
-            Conjunction(vec![a.clone(), Disjunction(vec![b.clone(), Top])]),
-            Disjunction(vec![not(c.clone()), Bottom]),
+            Conjunction(vec![
+                a.clone(),
+                Disjunction(vec![b.clone(), Conjunction(vec![])]),
+            ]),
+            Disjunction(vec![not(c.clone()), Disjunction(vec![])]),
         ),
         Disjunction(vec![
             Conjunction(vec![a.clone(), b.clone()]),
@@ -160,7 +162,9 @@ fn test_evaluation() {
         "True cant imply false"
     );
     assert_eq!(
-        iff(atom("B"), Bottom).evaluate(&valuation).unwrap(),
+        iff(atom("B"), Disjunction(vec![]))
+            .evaluate(&valuation)
+            .unwrap(),
         true,
         "Equivalence of falsities isnt true"
     );
@@ -282,8 +286,8 @@ fn test_negation_normal_form() {
         "NNF algorithm doesnt resolve double negation"
     );
     assert_eq!(
-        not(Top).negation_normal_form(),
-        Bottom,
+        not(Conjunction(vec![])).negation_normal_form(),
+        Disjunction(vec![]),
         "NNF algorithm doesnt resolve negated constants"
     );
     for φ in sample_formulas() {
@@ -310,7 +314,7 @@ fn test_normal_forms() {
         "CNF algorithm keeps tautological clauses"
     );
     assert_eq!(
-        Disjunction(vec![a.clone(), a.clone(), Bottom])
+        Disjunction(vec![a.clone(), a.clone(), Disjunction(vec![])])
             .conjunction_normal_form(),
         vec![a.clone()],
         "CNF algorithm keeps duplicate literals or falsities"
@@ -320,8 +324,14 @@ fn test_normal_forms() {
         vec![],
         "DNF algorithm keeps contradictory cubes"
     );
-    assert_eq!(Bottom.conjunction_normal_form(), vec![Bottom]);
-    assert_eq!(Top.disjunction_normal_form(), vec![Top]);
+    assert_eq!(
+        Disjunction(vec![]).conjunction_normal_form(),
+        vec![Disjunction(vec![])]
+    );
+    assert_eq!(
+        Conjunction(vec![]).disjunction_normal_form(),
+        vec![Conjunction(vec![])]
+    );
 
     for φ in sample_formulas() {
         let cnf = Conjunction(φ.conjunction_normal_form());
@@ -340,7 +350,8 @@ fn test_complement() {
         atom("A"),
         "Complement doesnt simplify double negation"
     );
-    assert_eq!(Top.complement(), Bottom);
+    assert!(Conjunction(vec![]).is_top() && !Conjunction(vec![]).is_bottom());
+    assert!(Disjunction(vec![]).is_bottom());
 }
 
 #[test]
@@ -355,8 +366,11 @@ fn test_to_cnf() {
             CnfFormula::Atom("B".to_string(), vec![]),
         ])]
     );
-    assert_eq!(Bottom.to_cnf(), vec![CnfFormula::Clause(vec![])]);
-    assert_eq!(Top.to_cnf(), vec![]);
+    assert_eq!(
+        Disjunction(vec![]).to_cnf(),
+        vec![CnfFormula::Clause(vec![])]
+    );
+    assert_eq!(Conjunction(vec![]).to_cnf(), vec![]);
 }
 
 #[test]
