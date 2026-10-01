@@ -40,8 +40,9 @@ The form and the order alone decide how the formulas are parsed. Each variant of
 | SPC | Logic | Keyword | `TptpBody` variant |
 |---|---|---|---|
 | `FOF_*_PRP` | Propositional | `fof` | `Propositional(Vec<TptpInput<PropFormula>>)` |
+| `CNF_*_EPR`, `CNF_*_RFO` | First order clauses | `cnf` | `Clausal(Vec<TptpInput<CnfFormula>>)` |
 
-Any other class is rejected with an `Unsupported` error. `include` directives aren't supported yet and fail to parse.
+Any other class is rejected with an `Unsupported` error, including propositional CNF (`CNF_*_PRP`). `include` directives aren't supported yet and fail to parse.
 
 ## Propositional problems
 
@@ -60,3 +61,20 @@ Propositional formulas use the full FOF connective syntax and map onto `PropForm
 Quoted atoms lose their quotes, so `'p'` and `p` are the same atom. First-order constructs (quantifiers, variables, atoms with arguments, equality) are not part of the grammar, so they fail to parse.
 
 The problems in `test_artifacts/tptp/prp/` are decided end to end with DPLL (`algorithms::dpll`), and the result is checked against each header's `Status`.
+
+## Clausal problems
+
+Each `cnf` formula is a disjunction of literals, optionally wrapped in parentheses, and maps onto `CnfFormula`:
+
+| TPTP | CnfFormula |
+|---|---|
+| `X` (upper word) | `CnfTerm::Variable`, implicitly universally quantified |
+| `f(t1, …, tn)`, `a` | `CnfTerm::Application`, constants with no arguments |
+| `p(t1, …, tn)`, `p` | `Atom(p, args)` |
+| `s = t` / `s != t` | `Equality(s, t)` / `Not(Equality(s, t))` |
+| `~ L` | `Not(L)` |
+| `L1 \| … \| Ln` | `Clause([L1, …, Ln])`. A unit clause is the bare literal, as SUP expects |
+
+Defined words (`$true`, `$false`), numbers and distinct objects (`"…"`) aren't supported yet.
+
+The problems in `test_artifacts/tptp/cnf/` are compared clause by clause, and `socrates.p` is refuted with SUP saturation.

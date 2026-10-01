@@ -29,15 +29,28 @@ pub fn sym<'a>(
     preceded(ws0, tag(symbol))
 }
 
-/// `<lower_word> ::= <lower_alpha><alpha_numeric>*`
-pub fn lower_word(input: &str) -> PResult<'_, &str> {
+/// A word starting with a character satisfying `first`, followed by
+/// `<alpha_numeric>*`
+fn word<'a>(
+    first: fn(char) -> bool,
+) -> impl FnMut(&'a str) -> PResult<'a, &'a str> {
     preceded(
         ws0,
         recognize(pair(
-            satisfy(|c| c.is_ascii_lowercase()),
+            satisfy(first),
             take_while(|c: char| c.is_ascii_alphanumeric() || c == '_'),
         )),
-    )(input)
+    )
+}
+
+/// `<lower_word> ::= <lower_alpha><alpha_numeric>*`
+pub fn lower_word(input: &str) -> PResult<'_, &str> {
+    word(|c| c.is_ascii_lowercase())(input)
+}
+
+/// `<upper_word> ::= <upper_alpha><alpha_numeric>*`, used for variables
+pub fn upper_word(input: &str) -> PResult<'_, &str> {
+    word(|c| c.is_ascii_uppercase())(input)
 }
 
 /// `<single_quoted>`: returns the content without quotes, resolving the `\'`

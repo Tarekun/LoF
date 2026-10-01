@@ -41,8 +41,8 @@ mod end_to_end {
     /// Computes the status of a propositional problem with DPLL. The
     /// conjectures are proved jointly, as TPTP requires
     fn decide_propositional(problem: &TptpProblem) -> Result<Status, LofError> {
-        let inputs = match &problem.body {
-            TptpBody::Propositional(inputs) => inputs,
+        let TptpBody::Propositional(inputs) = &problem.body else {
+            return Err(LofError::custom("Not a propositional problem"));
         };
         let (conjectures, premises): (Vec<_>, Vec<_>) = inputs
             .iter()
@@ -112,8 +112,8 @@ mod end_to_end {
         let problem = load_tptp_file(&path).unwrap();
 
         assert_eq!(problem.header.field("Problem"), Some("Modus ponens"));
-        let inputs = match problem.body {
-            TptpBody::Propositional(inputs) => inputs,
+        let TptpBody::Propositional(inputs) = problem.body else {
+            panic!("modus_ponens.p isnt parsed as a propositional problem")
         };
         let summary: Vec<_> = inputs
             .into_iter()
@@ -135,6 +135,173 @@ mod end_to_end {
                 ("q".to_string(), Role::Conjecture, atom("q")),
             ],
             "modus_ponens.p isnt parsed to the expected propositional formulas"
+        );
+    }
+}
+#[cfg(test)]
+mod clausal {
+    use crate::{
+        config::SelectionFunction,
+        tptp::{
+            problem::{load_tptp_file, TptpBody},
+            syntax::Role,
+        },
+        type_theory::{
+            algorithms::saturation::saturate,
+            grammars::cnf::{
+                CnfFormula::{self, Atom, Clause, Equality, Not},
+                CnfTerm::{self, Application, Variable},
+            },
+            sup::freedom::{get_selection_fn, pick_clause},
+        },
+    };
+
+    /// Loads the CNF test artifact `file_name` as (name, role, clause) triples
+    fn load_cnf(file_name: &str) -> Vec<(String, Role, CnfFormula)> {
+        let path = format!(
+            "{}/../test_artifacts/tptp/cnf/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            file_name
+        );
+        let problem = load_tptp_file(&path)
+            .unwrap_or_else(|err| panic!("Cannot load {}: {}", file_name, err));
+        let TptpBody::Clausal(inputs) = problem.body else {
+            panic!("{} isnt parsed as a clausal problem", file_name)
+        };
+        inputs
+            .into_iter()
+            .map(|input| (input.name, input.role, input.formula))
+            .collect()
+    }
+
+    fn var(name: &str) -> CnfTerm {
+        Variable(name.to_string())
+    }
+    fn constant(name: &str) -> CnfTerm {
+        Application(name.to_string(), vec![])
+    }
+    fn fun(name: &str, args: Vec<CnfTerm>) -> CnfTerm {
+        Application(name.to_string(), args)
+    }
+    fn pred(name: &str, args: Vec<CnfTerm>) -> CnfFormula {
+        Atom(name.to_string(), args)
+    }
+    fn not(φ: CnfFormula) -> CnfFormula {
+        Not(Box::new(φ))
+    }
+    fn input(
+        name: &str,
+        role: Role,
+        clause: CnfFormula,
+    ) -> (String, Role, CnfFormula) {
+        (name.to_string(), role, clause)
+    }
+
+    #[test]
+    fn test_horn_clauses() {
+        assert_eq!(
+            load_cnf("socrates.p"),
+            vec![
+                input(
+                    "men_are_mortal",
+                    Role::Axiom,
+                    Clause(vec![
+                        not(pred("man", vec![var("X")])),
+                        pred("mortal", vec![var("X")]),
+                    ])
+                ),
+                input(
+                    "socrates_is_a_man",
+                    Role::Axiom,
+                    pred("man", vec![constant("socrates")])
+                ),
+                input(
+                    "socrates_is_not_mortal",
+                    Role::NegatedConjecture,
+                    not(pred("mortal", vec![constant("socrates")]))
+                ),
+            ],
+            "socrates.p isnt parsed to the expected clauses"
+        );
+    }
+
+    #[test]
+    fn test_equational_clauses() {
+        let multiply = |l: CnfTerm, r: CnfTerm| fun("multiply", vec![l, r]);
+        assert_eq!(
+            load_cnf("equality.p"),
+            vec![
+                input(
+                    "left_identity",
+                    Role::Axiom,
+                    Equality(
+                        multiply(constant("identity"), var("X")),
+                        var("X")
+                    )
+                ),
+                input(
+                    "associativity",
+                    Role::Axiom,
+                    Equality(
+                        multiply(multiply(var("X"), var("Y")), var("Z")),
+                        multiply(var("X"), multiply(var("Y"), var("Z")))
+                    )
+                ),
+                input(
+                    "distinct_elements",
+                    Role::Axiom,
+                    not(Equality(constant("a"), constant("b")))
+                ),
+                input(
+                    "conditional_equality",
+                    Role::Hypothesis,
+                    Clause(vec![
+                        Equality(var("X"), var("Y")),
+                        not(pred("equivalent", vec![var("X"), var("Y")])),
+                        not(Equality(
+                            fun("f", vec![var("X")]),
+                            fun("f", vec![var("Y")])
+                        )),
+                    ])
+                ),
+            ],
+            "equality.p isnt parsed to the expected clauses"
+        );
+    }
+
+    #[test]
+    fn test_lexical_corner_cases() {
+        assert_eq!(
+            load_cnf("syntax.p"),
+            vec![
+                input(
+                    "quoted_atoms",
+                    Role::Axiom,
+                    pred("abc", vec![constant("Mixed Case"), var("X")])
+                ),
+                input(
+                    "7",
+                    Role::Plain,
+                    Clause(vec![
+                        pred("p", vec![var("X")]),
+                        pred("q", vec![var("X")]),
+                    ])
+                ),
+            ],
+            "syntax.p isnt parsed to the expected clauses"
+        );
+    }
+
+    #[test]
+    fn test_saturation() {
+        let clauses: Vec<CnfFormula> = load_cnf("socrates.p")
+            .into_iter()
+            .map(|(_, _, clause)| clause)
+            .collect();
+        let selection_fn = get_selection_fn(SelectionFunction::Maximal);
+        assert!(
+            saturate(&clauses, &selection_fn, pick_clause).is_ok(),
+            "SUP cant refute socrates.p"
         );
     }
 }
