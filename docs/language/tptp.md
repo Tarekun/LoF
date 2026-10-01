@@ -40,9 +40,11 @@ The form and the order alone decide how the formulas are parsed. Each variant of
 | SPC | Logic | Keyword | `TptpBody` variant |
 |---|---|---|---|
 | `FOF_*_PRP` | Propositional | `fof` | `Propositional(Vec<TptpInput<PropFormula>>)` |
-| `CNF_*_EPR`, `CNF_*_RFO` | First order clauses | `cnf` | `Clausal(Vec<TptpInput<CnfFormula>>)` |
+| `CNF_*_PRP`, `CNF_*_EPR`, `CNF_*_RFO` | Clauses | `cnf` | `Clausal(Vec<TptpInput<CnfFormula>>)` |
 
-Any other class is rejected with an `Unsupported` error, including propositional CNF (`CNF_*_PRP`). `include` directives aren't supported yet and fail to parse.
+Any other class is rejected with an `Unsupported` error. Propositional CNF problems are parsed as clauses over atoms without arguments (a TODO tracks parsing them to `PropFormula` instead).
+
+`include('file', [names])` directives are replaced by the formulas of the included file, parsed in the logic of the including problem. The included file's own header is ignored, as axiom files don't declare a Status or SPC. The optional list selects formulas by name. `file` is looked up in the including file's directory, then in the `$TPTP` library root. `parse_tptp` uses the working directory as the including directory.
 
 ## Propositional problems
 
@@ -77,4 +79,4 @@ Each `cnf` formula is a disjunction of literals, optionally wrapped in parenthes
 
 Defined words (`$true`, `$false`), numbers and distinct objects (`"…"`) aren't supported yet.
 
-The problems in `test_artifacts/tptp/cnf/` are compared clause by clause, and `socrates.p` is refuted with SUP saturation.
+The problems in `test_artifacts/tptp/cnf/` are compared clause by clause, `group_problem.p` with a selective include of `Axioms/groups.ax`, and `socrates.p` is refuted with SUP saturation.

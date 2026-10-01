@@ -109,14 +109,19 @@ mod unit_tests {
             .is_err(),
             "First order problems are parsed as propositional"
         );
-        assert!(
+        assert_eq!(
             parse_tptp(&problem(
                 "Unsatisfiable",
                 "CNF_UNS_PRP",
                 "cnf(a, axiom, p)."
             ))
-            .is_err(),
-            "Propositional CNF problems are accepted before being supported"
+            .map(|p| p.body),
+            Ok(TptpBody::Clausal(vec![TptpInput {
+                name: "a".to_string(),
+                role: Role::Axiom,
+                formula: CnfFormula::Atom("p".to_string(), vec![]),
+            }])),
+            "Propositional CNF problems arent parsed to nullary CNF atoms"
         );
         assert!(
             parse_tptp(&problem(
@@ -144,10 +149,10 @@ mod unit_tests {
             parse_tptp(&problem(
                 "Satisfiable",
                 "FOF_SAT_PRP",
-                "include('Axioms/PRP001+0.ax')."
+                "include('Axioms/missing.ax')."
             ))
             .is_err(),
-            "Include directives are accepted before being supported"
+            "Includes of missing files are accepted"
         );
         assert!(
             parse_tptp(&problem(

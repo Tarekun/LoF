@@ -293,6 +293,41 @@ mod clausal {
     }
 
     #[test]
+    fn test_includes() {
+        let multiply = |l: CnfTerm, r: CnfTerm| fun("multiply", vec![l, r]);
+        assert_eq!(
+            load_cnf("group_problem.p"),
+            vec![
+                input(
+                    "left_identity",
+                    Role::Axiom,
+                    Equality(
+                        multiply(constant("identity"), var("X")),
+                        var("X")
+                    )
+                ),
+                input(
+                    "left_inverse",
+                    Role::Axiom,
+                    Equality(
+                        multiply(fun("inverse", vec![var("X")]), var("X")),
+                        constant("identity")
+                    )
+                ),
+                input(
+                    "prove_right_identity",
+                    Role::NegatedConjecture,
+                    not(Equality(
+                        multiply(constant("a"), constant("identity")),
+                        constant("a")
+                    ))
+                ),
+            ],
+            "group_problem.p doesnt resolve its selective include"
+        );
+    }
+
+    #[test]
     fn test_saturation() {
         let clauses: Vec<CnfFormula> = load_cnf("socrates.p")
             .into_iter()
