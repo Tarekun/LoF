@@ -15,6 +15,12 @@ mod runtime {
     pub mod entrypoints;
     pub mod program;
 }
+pub mod tptp {
+    pub mod header;
+    pub mod problem;
+    pub mod prp;
+    pub mod syntax;
+}
 pub mod type_theory {
     // pub mod commons;
     pub mod environment;
@@ -69,6 +75,13 @@ mod tests {
         mod expressions;
         mod statements;
         mod tactics;
+    }
+    mod tptp {
+        mod artifacts;
+        mod header;
+        mod problem;
+        mod prp;
+        mod syntax;
     }
     mod type_theory {
         mod fol {
