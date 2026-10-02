@@ -625,6 +625,42 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
     )
 }
 
+pub fn alpha_equivalent(actual: &CicTerm, expected: &CicTerm) -> bool {
+    match (actual, expected) {
+        (Sort(s1), Sort(s2)) => s1 == s2,
+        (Meta(i1), Meta(i2)) => i1 == i2,
+        (
+            Variable(_, NameKind::Bound(i1)),
+            Variable(_, NameKind::Bound(i2)),
+        ) => i1 == i2,
+        (Variable(_, NameKind::Bound(_)), _)
+        | (_, Variable(_, NameKind::Bound(_))) => false,
+        (Variable(n1, _), Variable(n2, _)) => n1 == n2,
+        (Abstraction(_, d1, b1), Abstraction(_, d2, b2)) => {
+            alpha_equivalent(d1, d2) && alpha_equivalent(b1, b2)
+        }
+        (Product(_, d1, c1), Product(_, d2, c2)) => {
+            alpha_equivalent(d1, d2) && alpha_equivalent(c1, c2)
+        }
+        (Application(f1, a1), Application(f2, a2)) => {
+            alpha_equivalent(f1, f2) && alpha_equivalent(a1, a2)
+        }
+        (Let(_, _, v1, s1), Let(_, _, v2, s2)) => {
+            alpha_equivalent(v1, v2) && alpha_equivalent(s1, s2)
+        }
+        (Match(m1, branches1), Match(m2, branches2)) => {
+            alpha_equivalent(m1, m2)
+                && branches1.len() == branches2.len()
+                && branches1.iter().zip(branches2.iter()).all(
+                    |((p1, b1), (p2, b2))| {
+                        alpha_equivalent(p1, p2) && alpha_equivalent(b1, b2)
+                    },
+                )
+        }
+        _ => false,
+    }
+}
+
 /// Given an inductive type (family) name, return the name
 /// of the respective eliminator
 // pub fn eliminator_name_from_type(type_name: &str) -> String {

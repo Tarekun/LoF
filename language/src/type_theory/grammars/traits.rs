@@ -66,6 +66,11 @@ pub trait SyntacticalEq {
     /// Returns `true` iff `self` and `other` are exactly the same expression
     fn syntactically_equal(&self, other: &Self) -> bool;
 }
+pub trait AlphaEquiv {
+    /// Returns `true` iff `self` and `other` are the same expression up to
+    /// the renaming of bound variables (α-conversion)
+    fn alpha_equivalent(&self, other: &Self) -> bool;
+}
 pub trait ReductionEq<T: TypeTheory>: Reduction<T> + SyntacticalEq {
     /// Returns `true` iff `self` and `other` are exactly the same expression when reduced to their normal form
     fn equal_up_to_reduction(&self, other: &Self, env: &Environment<T>) -> bool
