@@ -15,6 +15,7 @@ use crate::type_theory::sup::inferences::{
 use crate::type_theory::sup::sup_utils::{
     extract_answer, is_answer_literal, with_answer_literal,
 };
+use tracing::{debug, trace};
 
 /// Checks if a formula φ is the empty clause, ignoring answer literals
 fn is_bottom(φ: &CnfFormula) -> bool {
@@ -103,13 +104,29 @@ fn generating_inferences(
     newly_derived
 }
 
-/// Saturation loop implementation. Simply computes the derivation colusure
-/// of `clauses`, using the given `selection_fn` and `giving_clause_fn`
-pub fn saturate(
+#[derive(Debug, PartialEq)]
+/// How a bounded saturation run ended
+pub enum SaturationOutcome {
+    /// The empty clause was derived, so the clauses are unsatisfiable. Holds
+    /// the answer substitution
+    Refutation(Substitution<CnfTerm>),
+    /// No inference is left without deriving the empty clause, so the clauses
+    /// are satisfiable
+    Saturated,
+    /// The step limit was reached before either
+    StepLimit,
+}
+
+/// Saturation loop implementation. Computes the derivation closure of
+/// `clauses` using the given `selection_fn` and `giving_clause_fn`, processing
+/// at most `max_steps` given clauses. Each given clause is traced at `TRACE`
+/// level, together with the sizes of the kept and unprocessed sets
+pub fn saturate_bounded(
     clauses: &Vec<CnfFormula>,
     selection_fn: &SelectionFunctionSignature,
     giving_clause_fn: GivingClauseSignature,
-) -> Result<Substitution<CnfTerm>, LofError> {
+    max_steps: usize,
+) -> Result<SaturationOutcome, LofError> {
     let mut unprocessed = clauses.clone();
     let mut kept = vec![];
 
@@ -120,7 +137,9 @@ pub fn saturate(
         // dry like a mf
         ($clause:expr, $kept:expr) => {
             if is_bottom(&$clause) {
-                return extract_answer(&$clause);
+                debug!("Refutation found");
+                return extract_answer(&$clause)
+                    .map(SaturationOutcome::Refutation);
             }
             if is_redundant(&$clause, &$kept) {
                 continue;
@@ -128,14 +147,20 @@ pub fn saturate(
         };
     }
 
-    loop {
+    for step in 1..=max_steps {
         if unprocessed.is_empty() {
-            return Err(LofError::custom(
-                "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along",
-            ));
+            debug!(kept = kept.len(), "Saturated without a refutation");
+            return Ok(SaturationOutcome::Saturated);
         }
 
         let clause = giving_clause_fn(&mut unprocessed)?;
+        trace!(
+            step,
+            kept = kept.len(),
+            unprocessed = unprocessed.len(),
+            "given {:?}",
+            clause
+        );
 
         termination!(clause, kept);
         let clause = forward_simplification(&kept, clause);
@@ -147,6 +172,29 @@ pub fn saturate(
         kept.push(clause);
 
         unprocessed.extend(new_clauses);
+    }
+
+    debug!(
+        max_steps,
+        kept = kept.len(),
+        unprocessed = unprocessed.len(),
+        "Step limit reached"
+    );
+    Ok(SaturationOutcome::StepLimit)
+}
+
+/// Saturation loop without a step limit, see `saturate_bounded`. Returns the
+/// answer substitution of the refutation, or an error if `clauses` saturate
+pub fn saturate(
+    clauses: &Vec<CnfFormula>,
+    selection_fn: &SelectionFunctionSignature,
+    giving_clause_fn: GivingClauseSignature,
+) -> Result<Substitution<CnfTerm>, LofError> {
+    match saturate_bounded(clauses, selection_fn, giving_clause_fn, usize::MAX)? {
+        SaturationOutcome::Refutation(answer) => Ok(answer),
+        _ => Err(LofError::custom(
+            "Saturated the input set with no found contraddiction. Turns out it was satisfyable all along",
+        )),
     }
 }
 
