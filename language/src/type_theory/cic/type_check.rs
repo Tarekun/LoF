@@ -302,7 +302,7 @@ pub fn inductive_eliminator(
     }
     /// Creation of the first parameters ( a :: α\[A\] )
     fn make_right_param_vars(ariety: &CicTerm) -> Vec<CicTerm> {
-        // TODO might need to rename right_params, i think they're all anonymous
+        // anonymous binders have been named, see `name_anonymous_indices`
         let right_params: Vec<CicTerm> = get_variables_as_terms(ariety);
         right_params
     }
@@ -453,6 +453,18 @@ pub fn inductive_eliminator(
         cases
     }
 
+    fn name_anonymous_indices(ariety: &CicTerm, position: usize) -> CicTerm {
+        match ariety {
+            Product(name, domain, codomain) => Product(
+                if name == "_" { format!("idx_{}", position) } else { name.to_owned() },
+                domain.clone(),
+                Box::new(name_anonymous_indices(codomain, position + 1)),
+            ),
+            _ => ariety.to_owned(),
+        }
+    }
+
+    let ariety = name_anonymous_indices(&ariety, 0);
     let left_param_vars = make_left_param_vars(params.clone());
     // 0 is a placeholder value, the eliminator type is indexed when returned 
     let result_var = Variable(format!("er_{}", type_name), NameKind::Bound(PLACEHOLDER_DBI)); // er = eliminator result, C in the paper
