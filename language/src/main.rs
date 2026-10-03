@@ -16,6 +16,7 @@ mod runtime {
     pub mod program;
 }
 pub mod tptp {
+    pub mod cnf;
     pub mod header;
     pub mod problem;
     pub mod prp;
@@ -78,6 +79,7 @@ mod tests {
     }
     mod tptp {
         mod artifacts;
+        mod cnf;
         mod header;
         mod problem;
         mod prp;

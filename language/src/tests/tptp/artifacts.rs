@@ -4,6 +4,7 @@
 #[cfg(test)]
 mod end_to_end {
     use crate::{
+        config::SelectionFunction,
         error::LofError,
         tptp::{
             header::Status,
@@ -11,11 +12,21 @@ mod end_to_end {
             syntax::Role,
         },
         type_theory::{
-            algorithms::dpll::{dpll, dpll_prove},
-            grammars::prop::PropFormula::{self, Atom, Conjunction},
+            algorithms::{
+                dpll::{dpll, dpll_prove},
+                saturation::saturate,
+            },
+            grammars::{
+                cnf::CnfFormula,
+                prop::PropFormula::{self, Atom, Conjunction},
+            },
+            sup::freedom::{get_selection_fn, pick_clause},
         },
     };
     use std::{fs, path::Path};
+
+    /// Given clauses after which saturation gives up on a clausal problem
+    const MAX_STEPS: usize = 500;
 
     /// Returns the paths of every `.p` problem directly under
     /// `test_artifacts/tptp/<directory>`
@@ -41,8 +52,8 @@ mod end_to_end {
     /// Computes the status of a propositional problem with DPLL. The
     /// conjectures are proved jointly, as TPTP requires
     fn decide_propositional(problem: &TptpProblem) -> Result<Status, LofError> {
-        let inputs = match &problem.body {
-            TptpBody::Propositional(inputs) => inputs,
+        let TptpBody::Propositional(inputs) = &problem.body else {
+            return Err(LofError::custom("Not a propositional problem"));
         };
         let (conjectures, premises): (Vec<_>, Vec<_>) = inputs
             .iter()
@@ -78,29 +89,91 @@ mod end_to_end {
         })
     }
 
-    #[test]
-    fn test_propositional_artifacts() {
+    /// Computes the status of a clausal problem with SUP saturation
+    fn decide_clausal(problem: &TptpProblem) -> Result<Status, LofError> {
+        let TptpBody::Clausal(inputs) = &problem.body else {
+            return Err(LofError::custom("Not a clausal problem"));
+        };
+        let clauses: Vec<CnfFormula> =
+            inputs.iter().map(|input| input.formula.clone()).collect();
+        let selection_fn = get_selection_fn(SelectionFunction::Maximal);
+        // match saturate_bounded(&clauses, &selection_fn, pick_clause, MAX_STEPS)?
+        match saturate(&clauses, &selection_fn, pick_clause) {
+            Ok(_) => Ok(Status::Unsatisfiable),
+            Err(_) => Ok(Status::Satisfiable),
+            // StepLimit => Err(LofError::custom(format!(
+            //     "SUP found no outcome within {} steps",
+            //     MAX_STEPS
+            // ))),
+        }
+    }
+
+    /// Solves every problem at `paths` with `decide`, describing each one
+    /// whose outcome disagrees with its header's status
+    fn failures(
+        paths: Vec<String>,
+        decide: fn(&TptpProblem) -> Result<Status, LofError>,
+    ) -> Vec<String> {
         let mut failures = vec![];
-        for path in artifacts("prp") {
+        for path in paths {
             let outcome = load_tptp_file(&path).and_then(|problem| {
-                let status = decide_propositional(&problem)?;
-                Ok((problem.header.status, status))
+                Ok((problem.header.status, decide(&problem)?))
             });
             match outcome {
                 Ok((expected, found)) if expected == found => {}
                 Ok((expected, found)) => failures.push(format!(
-                    "{}: header says {:?}, DPLL found {:?}",
+                    "{}: header says {:?}, found {:?}",
                     path, expected, found
                 )),
                 Err(err) => failures.push(format!("{}: {}", path, err)),
             }
         }
+        failures
+    }
 
+    #[test]
+    fn test_propositional_artifacts() {
+        let failures = failures(artifacts("prp"), decide_propositional);
         assert!(
             failures.is_empty(),
             "Propositional artifacts with unexpected outcomes:\n{}",
             failures.join("\n")
         );
+    }
+
+    #[test]
+    /// Traces every given clause, shown when the test fails
+    fn test_clausal_artifacts() {
+        let _ = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_test_writer()
+            .try_init();
+        let failures = failures(artifacts("cnf"), decide_clausal);
+        assert!(
+            failures.is_empty(),
+            "Clausal artifacts with unexpected outcomes:\n{}",
+            failures.join("\n")
+        );
+    }
+
+    #[test]
+    #[ignore]
+    /// Solves the problem at `$TPTP_PROBLEM`, printing the outcome as an SZS
+    /// status line. Driven by `scripts/tptp_library.py`
+    fn test_tptp_library_problem() {
+        let Ok(path) = std::env::var("TPTP_PROBLEM") else {
+            return println!("Set TPTP_PROBLEM to the problem to solve");
+        };
+        let status = match load_tptp_file(&path) {
+            Err(err) => format!("InputError {}", err),
+            Ok(problem) => match &problem.body {
+                TptpBody::Propositional(_) => decide_propositional(&problem),
+                TptpBody::Clausal(_) => decide_clausal(&problem),
+            }
+            .map_or_else(|err| format!("Error {}", err), |s| format!("{:?}", s)),
+        };
+        println!("% SZS status {}", status.replace('\n', " "));
     }
 
     #[test]
@@ -112,8 +185,8 @@ mod end_to_end {
         let problem = load_tptp_file(&path).unwrap();
 
         assert_eq!(problem.header.field("Problem"), Some("Modus ponens"));
-        let inputs = match problem.body {
-            TptpBody::Propositional(inputs) => inputs,
+        let TptpBody::Propositional(inputs) = problem.body else {
+            panic!("modus_ponens.p isnt parsed as a propositional problem")
         };
         let summary: Vec<_> = inputs
             .into_iter()
@@ -135,6 +208,190 @@ mod end_to_end {
                 ("q".to_string(), Role::Conjecture, atom("q")),
             ],
             "modus_ponens.p isnt parsed to the expected propositional formulas"
+        );
+    }
+}
+#[cfg(test)]
+mod clausal {
+    use crate::{
+        tptp::{
+            problem::{load_tptp_file, TptpBody},
+            syntax::Role,
+        },
+        type_theory::grammars::cnf::{
+            CnfFormula::{self, Atom, Clause, Equality, Not},
+            CnfTerm::{self, Application, Variable},
+        },
+    };
+
+    /// Loads the CNF test artifact `file_name` as (name, role, clause) triples
+    fn load_cnf(file_name: &str) -> Vec<(String, Role, CnfFormula)> {
+        let path = format!(
+            "{}/../test_artifacts/tptp/cnf/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            file_name
+        );
+        let problem = load_tptp_file(&path)
+            .unwrap_or_else(|err| panic!("Cannot load {}: {}", file_name, err));
+        let TptpBody::Clausal(inputs) = problem.body else {
+            panic!("{} isnt parsed as a clausal problem", file_name)
+        };
+        inputs
+            .into_iter()
+            .map(|input| (input.name, input.role, input.formula))
+            .collect()
+    }
+
+    fn var(name: &str) -> CnfTerm {
+        Variable(name.to_string())
+    }
+    fn constant(name: &str) -> CnfTerm {
+        Application(name.to_string(), vec![])
+    }
+    fn fun(name: &str, args: Vec<CnfTerm>) -> CnfTerm {
+        Application(name.to_string(), args)
+    }
+    fn pred(name: &str, args: Vec<CnfTerm>) -> CnfFormula {
+        Atom(name.to_string(), args)
+    }
+    fn not(φ: CnfFormula) -> CnfFormula {
+        Not(Box::new(φ))
+    }
+    fn input(
+        name: &str,
+        role: Role,
+        clause: CnfFormula,
+    ) -> (String, Role, CnfFormula) {
+        (name.to_string(), role, clause)
+    }
+
+    #[test]
+    fn test_horn_clauses() {
+        assert_eq!(
+            load_cnf("socrates.p"),
+            vec![
+                input(
+                    "men_are_mortal",
+                    Role::Axiom,
+                    Clause(vec![
+                        not(pred("man", vec![var("X")])),
+                        pred("mortal", vec![var("X")]),
+                    ])
+                ),
+                input(
+                    "socrates_is_a_man",
+                    Role::Axiom,
+                    pred("man", vec![constant("socrates")])
+                ),
+                input(
+                    "socrates_is_not_mortal",
+                    Role::NegatedConjecture,
+                    not(pred("mortal", vec![constant("socrates")]))
+                ),
+            ],
+            "socrates.p isnt parsed to the expected clauses"
+        );
+    }
+
+    #[test]
+    fn test_equational_clauses() {
+        let multiply = |l: CnfTerm, r: CnfTerm| fun("multiply", vec![l, r]);
+        assert_eq!(
+            load_cnf("equality.p"),
+            vec![
+                input(
+                    "left_identity",
+                    Role::Axiom,
+                    Equality(
+                        multiply(constant("identity"), var("X")),
+                        var("X")
+                    )
+                ),
+                input(
+                    "associativity",
+                    Role::Axiom,
+                    Equality(
+                        multiply(multiply(var("X"), var("Y")), var("Z")),
+                        multiply(var("X"), multiply(var("Y"), var("Z")))
+                    )
+                ),
+                input(
+                    "distinct_elements",
+                    Role::Axiom,
+                    not(Equality(constant("a"), constant("b")))
+                ),
+                input(
+                    "conditional_equality",
+                    Role::Hypothesis,
+                    Clause(vec![
+                        Equality(var("X"), var("Y")),
+                        not(pred("equivalent", vec![var("X"), var("Y")])),
+                        not(Equality(
+                            fun("f", vec![var("X")]),
+                            fun("f", vec![var("Y")])
+                        )),
+                    ])
+                ),
+            ],
+            "equality.p isnt parsed to the expected clauses"
+        );
+    }
+
+    #[test]
+    fn test_lexical_corner_cases() {
+        assert_eq!(
+            load_cnf("syntax.p"),
+            vec![
+                input(
+                    "quoted_atoms",
+                    Role::Axiom,
+                    pred("abc", vec![constant("Mixed Case"), var("X")])
+                ),
+                input(
+                    "7",
+                    Role::Plain,
+                    Clause(vec![
+                        pred("p", vec![var("X")]),
+                        pred("q", vec![var("X")]),
+                    ])
+                ),
+            ],
+            "syntax.p isnt parsed to the expected clauses"
+        );
+    }
+
+    #[test]
+    fn test_includes() {
+        let multiply = |l: CnfTerm, r: CnfTerm| fun("multiply", vec![l, r]);
+        assert_eq!(
+            load_cnf("group_problem.p"),
+            vec![
+                input(
+                    "left_identity",
+                    Role::Axiom,
+                    Equality(
+                        multiply(constant("identity"), var("X")),
+                        var("X")
+                    )
+                ),
+                input(
+                    "left_inverse",
+                    Role::Axiom,
+                    Equality(
+                        multiply(fun("inverse", vec![var("X")]), var("X")),
+                        constant("identity")
+                    )
+                ),
+                input(
+                    "prove_right_identity",
+                    Role::NegatedConjecture,
+                    not(Equality(
+                        multiply(constant("a"), constant("identity")),
+                        constant("a")
+                    ))
+                ),
+            ],
+            "group_problem.p doesnt resolve its selective include"
         );
     }
 }

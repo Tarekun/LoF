@@ -69,10 +69,15 @@ impl TptpHeader {
 }
 
 /// Parses the header of the TPTP problem `source`. Field lines look like
-/// `% Name : value`, lines indented further continue the previous field
+/// `% Name : value`, lines indented further continue the previous field.
+/// The header ends at the first line that is neither a comment nor blank
 pub fn parse_header(source: &str) -> Result<TptpHeader, LofError> {
     let mut fields: Vec<(String, String)> = vec![];
-    for comment in source.lines().map_while(|line| line.strip_prefix('%')) {
+    let comments = source
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map_while(|line| line.strip_prefix('%'));
+    for comment in comments {
         let field = comment
             .strip_prefix(' ')
             .and_then(|line| line.split_once(':'))
