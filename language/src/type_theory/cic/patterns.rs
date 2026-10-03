@@ -8,14 +8,17 @@ use crate::error::LofError;
 use crate::type_theory::environment::Environment;
 use crate::type_theory::interface::Reducer;
 
-/// A local entry introduced by a match pattern for its branch body
+/// An entry of the local context, eg one introduced by a match pattern for
+/// its branch body
 #[derive(Debug, Clone, PartialEq)]
-pub enum PatternEntry {
-    /// constructor argument bound by the pattern: (name, type)
+pub enum LocalEntry {
+    /// local assumption, eg a constructor argument bound by the pattern:
+    /// (name, type)
     Assume(String, CicTerm),
-    /// pattern variable sitting in a parameter position of the inductive
-    /// type: it doesnt bind anything new, it's an alias for the parameter
-    /// the matched term was instantiated with: (name, value, type)
+    /// local definition, eg a pattern variable sitting in a parameter
+    /// position of the inductive type: it doesnt bind anything new, it's an
+    /// alias for the parameter the matched term was instantiated with:
+    /// (name, value, type)
     Define(String, CicTerm, CicTerm),
 }
 
@@ -61,7 +64,7 @@ pub fn pattern_telescope(
     environment: &Environment<Cic>,
     pattern: &CicTerm,
     matched_type: &CicTerm,
-) -> Result<(String, Vec<PatternEntry>), LofError> {
+) -> Result<(String, Vec<LocalEntry>), LofError> {
     let mut entries = vec![];
     let constructor =
         solve_pattern(environment, pattern, matched_type, &mut entries)?;
@@ -72,7 +75,7 @@ fn solve_pattern(
     environment: &Environment<Cic>,
     pattern: &CicTerm,
     matched_type: &CicTerm,
-    entries: &mut Vec<PatternEntry>,
+    entries: &mut Vec<LocalEntry>,
 ) -> Result<String, LofError> {
     let constructor_name = match get_applied_function(pattern) {
         Variable(name, _) => name,
@@ -134,7 +137,7 @@ fn solve_pattern(
             match argument {
                 // every variable is a binder, see `pattern_binder_names`
                 Variable(name, _) => entries.push(
-                    PatternEntry::Define(name.to_owned(), actual.clone(), domain),
+                    LocalEntry::Define(name.to_owned(), actual.clone(), domain),
                 ),
                 // a hole in a parameter position stands for the parameter itself
                 Meta(HOLE_INDEX) => {}
@@ -151,7 +154,7 @@ fn solve_pattern(
                 // every variable is a binder (`_` is an anonymous one), see
                 // `pattern_binder_names`
                 Variable(name, _) => {
-                    entries.push(PatternEntry::Assume(name.to_owned(), domain))
+                    entries.push(LocalEntry::Assume(name.to_owned(), domain))
                 }
                 Application(_, _) => {
                     let nested_type = Cic::normalize_term(environment, &domain);
@@ -180,24 +183,24 @@ fn solve_pattern(
     Ok(constructor_name)
 }
 
-/// Runs `callable` with every pattern entry in the environment
-pub fn with_pattern_entries<F: FnOnce(&mut Environment<Cic>) -> R, R>(
+/// Runs `callable` with every local entry in the environment
+pub fn with_local_entries<F: FnOnce(&mut Environment<Cic>) -> R, R>(
     environment: &mut Environment<Cic>,
-    entries: &[PatternEntry],
+    entries: &[LocalEntry],
     callable: F,
 ) -> R {
     match entries.split_first() {
         None => callable(environment),
-        Some((PatternEntry::Assume(name, typee), rest)) => environment
+        Some((LocalEntry::Assume(name, typee), rest)) => environment
             .with_local_assumption(name, typee, |local_env| {
-                with_pattern_entries(local_env, rest, callable)
+                with_local_entries(local_env, rest, callable)
             }),
-        Some((PatternEntry::Define(name, value, typee), rest)) => environment
+        Some((LocalEntry::Define(name, value, typee), rest)) => environment
             .with_local_substitution(
                 name,
                 value,
                 &Some(typee.to_owned()),
-                |local_env| with_pattern_entries(local_env, rest, callable),
+                |local_env| with_local_entries(local_env, rest, callable),
             ),
     }
 }

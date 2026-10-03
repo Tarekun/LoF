@@ -7,13 +7,12 @@
 //! assignment. Metavariables only exist inside the context that created them:
 //! every refinement owns its context and must solve all of its metavariables
 //! before its output reaches the kernel. Tactic goals are metavariables too.
-use super::cic::CicTerm::{
-    self, Abstraction, Application, Let, Match, Meta, Product, Sort,
-    Variable,
+use super::cic::CicTerm::{self, Meta};
+use super::cic_utils::{
+    free_locals, map_subterms, meta_occurs, strip_unique_name,
+    UNIQUE_NAME_SEPARATOR,
 };
-use super::cic_utils::{free_locals, meta_occurs, strip_unique_name, UNIQUE_NAME_SEPARATOR};
 use crate::error::LofError;
-use crate::misc::simple_map;
 use std::collections::BTreeMap;
 
 /// Declaration of a metavariable: `context ⊢ ?m : typee`
@@ -38,7 +37,7 @@ pub struct MetaContext {
     next_index: i32,
     /// constraints `expected ≐ actual` with a flexible head (eg `?f x`),
     /// waiting for their metavariables to be solved
-    postponed: Vec<(CicTerm, CicTerm)>,
+    pub postponed: Vec<(CicTerm, CicTerm)>,
 }
 
 impl MetaContext {
@@ -59,14 +58,6 @@ impl MetaContext {
             },
         );
         Meta(index)
-    }
-
-    /// Declares a new metavariable standing for a type in `context`:
-    /// `context ⊢ ?T : ?s` where `?s` is itself an unknown sort. Every sort
-    /// has type TYPE (TYPE : TYPE, PROP : TYPE), which ends the regress
-    pub fn fresh_type_meta(&mut self, context: Vec<(String, CicTerm)>) -> CicTerm {
-        let sort = self.fresh_meta(context.clone(), Sort("TYPE".to_string()));
-        self.fresh_meta(context, sort)
     }
 
     pub fn decl(&self, index: &i32) -> Option<&MetaDecl> {
@@ -119,21 +110,6 @@ impl MetaContext {
         Ok(())
     }
 
-    /// Postpones the constraint `expected ≐ actual`
-    pub fn postpone(&mut self, expected: CicTerm, actual: CicTerm) {
-        self.postponed.push((expected, actual));
-    }
-
-    /// Removes and returns the postponed constraints
-    pub fn take_postponed(&mut self) -> Vec<(CicTerm, CicTerm)> {
-        std::mem::take(&mut self.postponed)
-    }
-
-    /// Constraints that are still postponed
-    pub fn postponed(&self) -> &[(CicTerm, CicTerm)] {
-        &self.postponed
-    }
-
     /// Replaces every assigned metavariable in `term` with its value
     pub fn instantiate(&self, term: &CicTerm) -> CicTerm {
         match term {
@@ -142,33 +118,7 @@ impl MetaContext {
                 Some(value) => self.instantiate(value),
                 None => term.to_owned(),
             },
-            Sort(_) | Variable(_, _) => term.to_owned(),
-            Application(l, r) => Application(
-                Box::new(self.instantiate(l)),
-                Box::new(self.instantiate(r)),
-            ),
-            Abstraction(n, d, b) => Abstraction(
-                n.to_string(),
-                Box::new(self.instantiate(d)),
-                Box::new(self.instantiate(b)),
-            ),
-            Product(n, d, b) => Product(
-                n.to_string(),
-                Box::new(self.instantiate(d)),
-                Box::new(self.instantiate(b)),
-            ),
-            Let(n, t, v, s) => Let(
-                n.to_string(),
-                Box::new((**t).as_ref().map(|t| self.instantiate(t))),
-                Box::new(self.instantiate(v)),
-                Box::new(self.instantiate(s)),
-            ),
-            Match(m, branches) => Match(
-                Box::new(self.instantiate(m)),
-                simple_map(branches.clone(), |(pattern, body)| {
-                    (self.instantiate(&pattern), self.instantiate(&body))
-                }),
-            ),
+            _ => map_subterms(term, |t| self.instantiate(t)),
         }
     }
 }

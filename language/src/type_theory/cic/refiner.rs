@@ -18,11 +18,12 @@ use super::cic::CicTerm::{
 use super::cic::{Cic, CicTerm, NameKind, HOLE_INDEX};
 use super::cic_utils::{
     close_term_as, make_multiarg_fun_type, open_term, pattern_binder_names,
-    substitute_and_lift, substitute_local,
+    substitute_and_lift, substitute_local, subterms,
 };
 use super::metavariables::{MetaContext, NameGenerator};
 use super::patterns::{
-    open_branch, pattern_telescope, with_pattern_entries, PatternEntry,
+    open_branch, pattern_telescope, with_local_entries,
+    LocalEntry::{self, Assume, Define},
 };
 use super::unification::unify;
 use crate::error::LofError;
@@ -43,29 +44,17 @@ pub struct RefinerState {
 }
 
 impl RefinerState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Brings the local assumptions `locals` in scope
-    pub fn enter_locals(&mut self, locals: &[(String, CicTerm)]) {
-        self.locals.extend(locals.iter().cloned());
-    }
-
-    /// Removes the last `count` local assumptions from the scope
-    pub fn exit_locals(&mut self, count: usize) {
-        self.locals.truncate(self.locals.len() - count);
-    }
-
     /// Declares a new metavariable of type `typee` in the current local context
     pub fn fresh_meta(&mut self, typee: CicTerm) -> CicTerm {
         self.metas.fresh_meta(self.locals.clone(), typee)
     }
 
     /// Declares a new metavariable standing for a type in the current local
-    /// context
-    pub fn fresh_type_meta(&mut self) -> CicTerm {
-        self.metas.fresh_type_meta(self.locals.clone())
+    /// context: `?T : ?s` where `?s` is itself an unknown sort. Every sort
+    /// has type TYPE (TYPE : TYPE, PROP : TYPE), which ends the regress
+    fn fresh_type_meta(&mut self) -> CicTerm {
+        let sort = self.fresh_meta(Sort("TYPE".to_string()));
+        self.fresh_meta(sort)
     }
 
     /// Unifies `expected ≐ actual`, `origin` describes where the constraint
@@ -77,16 +66,22 @@ impl RefinerState {
         actual: &CicTerm,
         origin: &str,
     ) -> Result<(), LofError> {
-        unify(environment, &mut self.metas, &mut self.names, expected, actual)
-            .map_err(|error| {
-                LofError::custom(format!(
-                    "Refinement failed on {}: expected {:?}, found {:?} ({})",
-                    origin,
-                    self.metas.instantiate(expected),
-                    self.metas.instantiate(actual),
-                    error
-                ))
-            })
+        unify(
+            environment,
+            &mut self.metas,
+            &mut self.names,
+            expected,
+            actual,
+        )
+        .map_err(|error| {
+            LofError::custom(format!(
+                "Refinement failed on {}: expected {:?}, found {:?} ({})",
+                origin,
+                self.metas.instantiate(expected),
+                self.metas.instantiate(actual),
+                error
+            ))
+        })
     }
 
     /// Closes the binder opened with `local` around `term`, giving it back its
@@ -99,7 +94,7 @@ impl RefinerState {
     /// Instantiates the solutions in `term`. Fails if any metavariable is
     /// left unsolved or any constraint couldnt be solved
     pub fn finalize(&self, term: &CicTerm) -> Result<CicTerm, LofError> {
-        if let Some((expected, actual)) = self.metas.postponed().first() {
+        if let Some((expected, actual)) = self.metas.postponed.first() {
             return Err(LofError::custom(format!(
                 "Refinement failed: cannot solve the higher order constraint {:?} ≐ {:?}",
                 self.metas.instantiate(expected),
@@ -107,16 +102,8 @@ impl RefinerState {
             )));
         }
         let refined = self.metas.instantiate(term);
-        self.ensure_no_holes(&refined)?;
-        Ok(refined)
-    }
-
-    /// Fails if `term` contains a metavariable (out of pattern parameter
-    /// positions, which are not holes to be filled but wildcards standing
-    /// for the parameters of the matched term)
-    pub fn ensure_no_holes(&self, term: &CicTerm) -> Result<(), LofError> {
-        match unresolved_metas(term).first() {
-            None => Ok(()),
+        match unsolved_meta(&refined) {
+            None => Ok(refined),
             // TODO(future refiner): unsolved holes are currently rejected,
             // which forbids eg `fun len (l: List(?)) : Nat`, where nothing
             // determines the type of the list elements. A fancier refiner
@@ -129,88 +116,47 @@ impl RefinerState {
                 "Could not infer hole ?[{}]{} in {:?}",
                 index,
                 self.metas
-                    .meta_type(index)
+                    .meta_type(&index)
                     .map(|typee| format!(" of type {:?}", typee))
                     .unwrap_or_default(),
-                term
+                refined
             ))),
         }
     }
 }
 
-/// Returns the metavariables (and holes) occurring in `term`, ignoring match
-/// patterns (where holes are wildcards)
-fn unresolved_metas(term: &CicTerm) -> Vec<i32> {
-    fn solver(term: &CicTerm, acc: &mut Vec<i32>) {
-        match term {
-            Meta(index) => acc.push(*index),
-            Sort(_) | Variable(_, _) => {}
-            Abstraction(_, l, r) | Product(_, l, r) | Application(l, r) => {
-                solver(l, acc);
-                solver(r, acc);
-            }
-            Let(_, t, v, s) => {
-                if let Some(t) = t.as_ref() {
-                    solver(t, acc);
-                }
-                solver(v, acc);
-                solver(s, acc);
-            }
-            Match(m, branches) => {
-                solver(m, acc);
-                for (_, body) in branches {
-                    solver(body, acc);
-                }
-            }
-        }
+/// Returns a metavariable (or hole) occurring in `term`, if any. Match
+/// patterns are ignored: holes there are wildcards standing for the
+/// parameters of the matched term, not holes to be filled
+fn unsolved_meta(term: &CicTerm) -> Option<i32> {
+    match term {
+        Meta(index) => Some(*index),
+        Match(matched_term, branches) => std::iter::once(&**matched_term)
+            .chain(branches.iter().map(|(_, body)| body))
+            .find_map(unsolved_meta),
+        _ => subterms(term).into_iter().find_map(unsolved_meta),
     }
-    let mut acc = vec![];
-    solver(term, &mut acc);
-    acc
 }
 
-//########################### SCOPING
-/// Runs `callable` with the local assumption `name : typee`
-pub fn under_assumption<R, F>(
+/// Runs `callable` with the local `entries` in scope, both in the
+/// environment and in the context of the metavariables declared meanwhile
+pub fn with_entries<R>(
     environment: &mut Environment<Cic>,
     state: &mut RefinerState,
-    name: &str,
-    typee: &CicTerm,
-    callable: F,
-) -> R
-where
-    F: FnOnce(&mut Environment<Cic>, &mut RefinerState) -> R,
-{
-    state.locals.push((name.to_string(), typee.to_owned()));
-    let result = environment
-        .with_local_assumption(name, typee, |local_env| callable(local_env, state));
-    state.locals.pop();
+    entries: &[LocalEntry],
+    callable: impl FnOnce(&mut Environment<Cic>, &mut RefinerState) -> R,
+) -> R {
+    let outer_scope = state.locals.len();
+    state.locals.extend(entries.iter().map(|entry| match entry {
+        Assume(name, typee) | Define(name, _, typee) => {
+            (name.to_owned(), typee.to_owned())
+        }
+    }));
+    let result =
+        with_local_entries(environment, entries, |env| callable(env, state));
+    state.locals.truncate(outer_scope);
     result
 }
-
-fn under_definition<R, F>(
-    environment: &mut Environment<Cic>,
-    state: &mut RefinerState,
-    name: &str,
-    value: &CicTerm,
-    typee: &CicTerm,
-    callable: F,
-) -> R
-where
-    F: FnOnce(&mut Environment<Cic>, &mut RefinerState) -> R,
-{
-    state.locals.push((name.to_string(), typee.to_owned()));
-    let result = environment.with_local_substitution(
-        name,
-        value,
-        &Some(typee.to_owned()),
-        |local_env| callable(local_env, state),
-    );
-    state.locals.pop();
-    result
-}
-
-//########################### SCOPING
 
 //########################### REFINEMENT
 /// Infers the type of `term`, returning the refined term along with it.
@@ -221,17 +167,13 @@ pub fn infer(
     term: &CicTerm,
 ) -> Result<(CicTerm, CicTerm), LofError> {
     match term {
-        Sort(sort_name) => {
-            let sort_type = environment
-                .get_variable_type(sort_name)
-                .ok_or_else(|| LofError::unbound_variable(sort_name))?;
-            Ok((term.to_owned(), sort_type))
+        Variable(var_name, NameKind::Bound(dbi)) => {
+            Err(LofError::custom(format!(
+                "Refiner met the dangling bound variable {}|{}",
+                var_name, dbi
+            )))
         }
-        Variable(var_name, NameKind::Bound(dbi)) => Err(LofError::custom(format!(
-            "Refiner met the dangling bound variable {}|{}",
-            var_name, dbi
-        ))),
-        Variable(var_name, _) => {
+        Sort(var_name) | Variable(var_name, _) => {
             let var_type = environment
                 .get_variable_type(var_name)
                 .ok_or_else(|| LofError::unbound_variable(var_name))?;
@@ -240,8 +182,7 @@ pub fn infer(
         // a hole of unknown type: both the hole and its type are unknown
         Meta(HOLE_INDEX) => {
             let meta_type = state.fresh_type_meta();
-            let meta = state.fresh_meta(meta_type.clone());
-            Ok((meta, meta_type))
+            Ok((state.fresh_meta(meta_type.clone()), meta_type))
         }
         Meta(index) => {
             let meta_type = state.metas.meta_type(index).ok_or_else(|| {
@@ -255,10 +196,10 @@ pub fn infer(
         Abstraction(var_name, var_type, body) => {
             let var_type = refine_type(environment, state, var_type)?;
             let local = state.names.fresh_local_name(var_name);
-            let opened_body = open_term(body, &local);
+            let assumption = [Assume(local.clone(), var_type.clone())];
             let (body, body_type) =
-                under_assumption(environment, state, &local, &var_type, |env, st| {
-                    infer(env, st, &opened_body)
+                with_entries(environment, state, &assumption, |env, st| {
+                    infer(env, st, &open_term(body, &local))
                 })?;
 
             Ok((
@@ -277,13 +218,10 @@ pub fn infer(
         Product(var_name, domain, codomain) => {
             let domain = refine_type(environment, state, domain)?;
             let local = state.names.fresh_local_name(var_name);
-            let opened_codomain = open_term(codomain, &local);
+            let assumption = [Assume(local.clone(), domain.clone())];
             let (codomain, codomain_sort) =
-                under_assumption(environment, state, &local, &domain, |env, st| {
-                    let (codomain, codomain_sort) = infer(env, st, &opened_codomain)?;
-                    let codomain_sort = Cic::normalize_term(env, &codomain_sort);
-                    ensure_sort(&codomain, &codomain_sort)?;
-                    Ok::<_, LofError>((codomain, codomain_sort))
+                with_entries(environment, state, &assumption, |env, st| {
+                    infer_sort(env, st, &open_term(codomain, &local))
                 })?;
 
             Ok((
@@ -296,7 +234,8 @@ pub fn infer(
             ))
         }
         Application(function, argument) => {
-            let (function, function_type) = infer(environment, state, function)?;
+            let (function, function_type) =
+                infer(environment, state, function)?;
             let function_type = Cic::normalize_term(
                 environment,
                 &state.metas.instantiate(&function_type),
@@ -324,7 +263,7 @@ pub fn infer(
             }
         }
         Let(var_name, var_type, value, scope) => {
-            let (value, refined_var_type, definition_type) = match &**var_type {
+            let (value, value_type) = match &**var_type {
                 Some(var_type) => {
                     let var_type = refine_type(environment, state, var_type)?;
                     let value = check(
@@ -334,28 +273,22 @@ pub fn infer(
                         &var_type,
                         &format!("let binding `{}`", var_name),
                     )?;
-                    (value, Some(var_type.clone()), var_type)
+                    (value, var_type)
                 }
-                None => {
-                    let (value, value_type) = infer(environment, state, value)?;
-                    (value, None, value_type)
-                }
+                None => infer(environment, state, value)?,
             };
             let local = state.names.fresh_local_name(var_name);
-            let opened_scope = open_term(scope, &local);
-            let (scope, scope_type) = under_definition(
-                environment,
-                state,
-                &local,
-                &value,
-                &definition_type,
-                |env, st| infer(env, st, &opened_scope),
-            )?;
+            let definition =
+                [Define(local.clone(), value.clone(), value_type.clone())];
+            let (scope, scope_type) =
+                with_entries(environment, state, &definition, |env, st| {
+                    infer(env, st, &open_term(scope, &local))
+                })?;
 
             Ok((
                 Let(
                     var_name.to_owned(),
-                    Box::new(refined_var_type),
+                    Box::new((**var_type).as_ref().map(|_| value_type)),
                     Box::new(value.clone()),
                     Box::new(state.close_binder(&scope, &local, var_name)),
                 ),
@@ -394,26 +327,17 @@ fn infer_match(
     let mut refined_branches = vec![];
     for (pattern, body) in branches {
         let (opened_pattern, opened_body, locals) =
-            open_branch(pattern, body, |name| state.names.fresh_local_name(name));
+            open_branch(pattern, body, |name| {
+                state.names.fresh_local_name(name)
+            });
         let (constructor, entries) =
             pattern_telescope(environment, &opened_pattern, &matched_type)?;
-        let pattern_locals: Vec<(String, CicTerm)> = entries
-            .iter()
-            .map(|entry| match entry {
-                PatternEntry::Assume(name, typee)
-                | PatternEntry::Define(name, _, typee) => {
-                    (name.to_owned(), typee.to_owned())
-                }
-            })
-            .collect();
-        state.enter_locals(&pattern_locals);
-        let branch = with_pattern_entries(environment, &entries, |env| {
-            let (body, body_type) = infer(env, state, &opened_body)?;
-            // aliases of the parameters are only defined in here
-            Ok::<_, LofError>((body, Cic::normalize_term(env, &body_type)))
-        });
-        state.exit_locals(pattern_locals.len());
-        let (body, body_type) = branch?;
+        let (body, body_type) =
+            with_entries(environment, state, &entries, |env, st| {
+                let (body, body_type) = infer(env, st, &opened_body)?;
+                // aliases of the parameters are only defined in here
+                Ok::<_, LofError>((body, Cic::normalize_term(env, &body_type)))
+            })?;
 
         match &return_type {
             None => return_type = Some(body_type),
@@ -463,15 +387,18 @@ pub fn check(
         (Meta(HOLE_INDEX), _) => Ok(state.fresh_meta(expected)),
         // the expected codomain is pushed under the binder, so that the
         // metavariables of the body are solved while the binder is in scope
-        (Abstraction(var_name, var_type, body), Product(_, domain, codomain)) => {
+        (
+            Abstraction(var_name, var_type, body),
+            Product(_, domain, codomain),
+        ) => {
             let var_type = refine_type(environment, state, var_type)?;
             state.unify(environment, domain, &var_type, origin)?;
             let local = state.names.fresh_local_name(var_name);
-            let opened_body = open_term(body, &local);
-            let opened_codomain = open_term(codomain, &local);
+            let assumption = [Assume(local.clone(), var_type.clone())];
             let body =
-                under_assumption(environment, state, &local, &var_type, |env, st| {
-                    check(env, st, &opened_body, &opened_codomain, origin)
+                with_entries(environment, state, &assumption, |env, st| {
+                    let codomain = open_term(codomain, &local);
+                    check(env, st, &open_term(body, &local), &codomain, origin)
                 })?;
 
             Ok(Abstraction(
@@ -497,40 +424,52 @@ pub fn refine_type(
     if let Meta(HOLE_INDEX) = typee {
         return Ok(state.fresh_type_meta());
     }
-    let (refined, sort) = infer(environment, state, typee)?;
-    let sort = Cic::normalize_term(environment, &state.metas.instantiate(&sort));
-    ensure_sort(&refined, &sort)?;
-    Ok(refined)
+    infer_sort(environment, state, typee).map(|(typee, _)| typee)
 }
 
-fn ensure_sort(typee: &CicTerm, sort: &CicTerm) -> Result<(), LofError> {
-    match sort {
+/// Refines `typee` returning it along with its sort, failing if it is not a
+/// type
+fn infer_sort(
+    environment: &mut Environment<Cic>,
+    state: &mut RefinerState,
+    typee: &CicTerm,
+) -> Result<(CicTerm, CicTerm), LofError> {
+    let (refined, sort) = infer(environment, state, typee)?;
+    match Cic::normalize_term(environment, &state.metas.instantiate(&sort)) {
         // a hole in type position has a yet unknown sort
-        Sort(_) | Meta(_) => Ok(()),
-        _ => Err(LofError::type_mismatch("refinement of a type", &"a sort", typee)),
+        sort @ (Sort(_) | Meta(_)) => Ok((refined, sort)),
+        _ => Err(LofError::type_mismatch(
+            "refinement of a type",
+            &"a sort",
+            &refined,
+        )),
     }
 }
 //########################### REFINEMENT
 
 //########################### STATEMENTS
+/// Runs `refinement` with a fresh state, returning its finalized output
+fn refine<F>(
+    environment: &mut Environment<Cic>,
+    refinement: F,
+) -> Result<CicTerm, LofError>
+where
+    F: FnOnce(
+        &mut Environment<Cic>,
+        &mut RefinerState,
+    ) -> Result<CicTerm, LofError>,
+{
+    let mut state = RefinerState::default();
+    let refined = refinement(environment, &mut state)?;
+    state.finalize(&refined)
+}
+
 /// Refines a standalone expression
 pub fn refine_expression(
     environment: &mut Environment<Cic>,
     term: &CicTerm,
 ) -> Result<CicTerm, LofError> {
-    let mut state = RefinerState::new();
-    let (refined, _) = infer(environment, &mut state, term)?;
-    state.finalize(&refined)
-}
-
-/// Refines a closed type
-fn refine_closed_type(
-    environment: &mut Environment<Cic>,
-    typee: &CicTerm,
-) -> Result<CicTerm, LofError> {
-    let mut state = RefinerState::new();
-    let refined = refine_type(environment, &mut state, typee)?;
-    state.finalize(&refined)
+    refine(environment, |env, st| Ok(infer(env, st, term)?.0))
 }
 
 /// Refines a function definition as the term it stands for, ie the
@@ -545,22 +484,32 @@ fn refine_fun(
     body: &CicTerm,
     is_rec: &bool,
 ) -> Result<Stm<Cic>, LofError> {
-    let mut state = RefinerState::new();
+    let mut state = RefinerState::default();
     let origin = format!("body of function `{}`", fun_name);
     let fun_type = make_multiarg_fun_type(args, out_type);
     let fun_type = refine_type(environment, &mut state, &fun_type)?;
-    let lambda = args.iter().rev().fold(body.to_owned(), |body, (name, typee)| {
-        Abstraction(name.to_owned(), Box::new(typee.to_owned()), Box::new(body))
-    });
-    let lambda = if *is_rec {
-        // the recursive reference is added with whatever holes the
-        // signature still has
-        under_assumption(environment, &mut state, fun_name, &fun_type, |env, st| {
-            check(env, st, &lambda, &fun_type, &origin)
-        })?
-    } else {
-        check(environment, &mut state, &lambda, &fun_type, &origin)?
+    let lambda =
+        args.iter()
+            .rev()
+            .fold(body.to_owned(), |body, (name, typee)| {
+                Abstraction(
+                    name.to_owned(),
+                    Box::new(typee.to_owned()),
+                    Box::new(body),
+                )
+            });
+    // the recursive reference is added with whatever holes the signature
+    // still has
+    let recursive_reference = match is_rec {
+        true => vec![Assume(fun_name.to_string(), fun_type.clone())],
+        false => vec![],
     };
+    let lambda = with_entries(
+        environment,
+        &mut state,
+        &recursive_reference,
+        |env, st| check(env, st, &lambda, &fun_type, &origin),
+    )?;
 
     // split the refined signature and abstraction back into their parts
     let mut out_type = state.finalize(&fun_type)?;
@@ -573,7 +522,9 @@ fn refine_fun(
                 out_type = *codomain;
                 body = *scope;
             }
-            _ => unreachable!("refinement preserves the binders of the function"),
+            _ => {
+                unreachable!("refinement preserves the binders of the function")
+            }
         }
     }
 
@@ -594,10 +545,11 @@ pub fn refine_statement(
 ) -> Result<Stm<Cic>, LofError> {
     match stm {
         Statement::Global(var_name, opt_type, body) => {
-            let mut state = RefinerState::new();
+            let mut state = RefinerState::default();
             let (body, var_type) = match opt_type {
                 Some(var_type) => {
-                    let var_type = refine_type(environment, &mut state, var_type)?;
+                    let var_type =
+                        refine_type(environment, &mut state, var_type)?;
                     let body = check(
                         environment,
                         &mut state,
@@ -615,7 +567,7 @@ pub fn refine_statement(
         }
         Statement::Axiom(axiom_name, formula) => Ok(Statement::Axiom(
             axiom_name.to_owned(),
-            refine_closed_type(environment, formula)?,
+            refine(environment, |env, st| refine_type(env, st, formula))?,
         )),
         Statement::Fun(fun_name, args, out_type, body, is_rec) => {
             refine_fun(environment, fun_name, args, out_type, body, is_rec)
@@ -626,7 +578,7 @@ pub fn refine_statement(
                 .chain(constructors.iter())
                 .map(|(_, typee)| typee)
                 .chain(std::iter::once(&**ariety))
-                .any(|typee| !unresolved_metas(typee).is_empty());
+                .any(|typee| unsolved_meta(typee).is_some());
             if has_holes {
                 Err(LofError::custom(format!(
                     "Holes are not supported in the definition of inductive type {}",
@@ -637,19 +589,13 @@ pub fn refine_statement(
             }
         }
         Statement::Theorem(theorem_name, formula, proof) => {
-            let formula = refine_closed_type(environment, formula)?;
+            let formula =
+                refine(environment, |env, st| refine_type(env, st, formula))?;
             let proof_term = match proof {
-                L(proof_term) => {
-                    let mut state = RefinerState::new();
-                    let proof_term = check(
-                        environment,
-                        &mut state,
-                        proof_term,
-                        &formula,
-                        &format!("proof of theorem `{}`", theorem_name),
-                    )?;
-                    state.finalize(&proof_term)?
-                }
+                L(proof_term) => refine(environment, |env, st| {
+                    let origin = format!("proof of theorem `{}`", theorem_name);
+                    check(env, st, proof_term, &formula, &origin)
+                })?,
                 R(tactics) => Cic::run_tactics(environment, &formula, tactics)
                     .map_err(|error| {
                         LofError::custom(format!(
@@ -658,14 +604,17 @@ pub fn refine_statement(
                         ))
                     })?,
             };
-            Ok(Statement::Theorem(theorem_name.to_owned(), formula, L(proof_term)))
+            Ok(Statement::Theorem(
+                theorem_name.to_owned(),
+                formula,
+                L(proof_term),
+            ))
         }
         _ => Ok(stm.to_owned()),
     }
 }
 
 //########################### STATEMENTS
-
 #[cfg(test)]
 #[path = "../../tests/type_theory/cic/refiner.rs"]
 mod tests;

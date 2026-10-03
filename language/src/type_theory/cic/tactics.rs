@@ -10,7 +10,8 @@ use super::cic_utils::{
     apply_arguments, localize, open_term, reclose_unique_binders, strip_unique_name,
     substitute_and_lift,
 };
-use super::refiner::{check, infer, refine_type, RefinerState};
+use super::patterns::LocalEntry::Assume;
+use super::refiner::{check, infer, refine_type, with_entries, RefinerState};
 use crate::error::LofError;
 use crate::parser::api::Tactic::{self, Apply, Begin, Exact, Intro, Qed};
 use crate::type_theory::cic::cic::Cic;
@@ -56,12 +57,9 @@ pub fn run_tactics(
     formula: &CicTerm,
     tactics: &[Tactic<CicTerm, CicTerm>],
 ) -> Result<CicTerm, LofError> {
-    let mut state = RefinerState::new();
+    let mut state = RefinerState::default();
     let root = state.fresh_meta(formula.to_owned());
-    let mut goals: VecDeque<i32> = match root {
-        Meta(id) => VecDeque::from([id]),
-        _ => unreachable!("fresh metavariables are metavariables"),
-    };
+    let mut goals = VecDeque::from(goal_ids(&state, &[root.clone()]));
 
     for tactic in tactics {
         if let Begin() | Qed() = tactic {
@@ -71,36 +69,28 @@ pub fn run_tactics(
             LofError::custom(format!("No goals left to apply tactic {:?} to", tactic))
         })?;
         let context = state.metas.decl(&id).unwrap().context.clone();
+        let assumptions: Vec<_> = context
+            .iter()
+            .map(|(name, typee)| Assume(name.to_owned(), typee.to_owned()))
+            .collect();
 
         // the goal context is only in scope while working on this goal
-        state.enter_locals(&context);
-        let new_goals = environment.with_local_assumptions(&context, |local_env| {
-            let target = Cic::normalize_term(
-                local_env,
-                &state.metas.meta_type(&id).unwrap(),
-            );
-            let goal = Goal {
-                id,
-                context: context.clone(),
-                target,
-            };
-            run_tactic(local_env, &mut state, &goal, tactic)
-        });
-        state.exit_locals(context.len());
+        let new_goals =
+            with_entries(environment, &mut state, &assumptions, |env, st| {
+                let target = st.metas.meta_type(&id).unwrap();
+                let target = Cic::normalize_term(env, &target);
+                let goal = Goal { id, context, target };
+                run_tactic(env, st, &goal, tactic)
+            })?;
 
-        for new_goal in new_goals?.into_iter().rev() {
+        for new_goal in new_goals.into_iter().rev() {
             goals.push_front(new_goal);
         }
     }
 
     if let Some(id) = focus(&state, &mut goals) {
-        let remaining = 1 + goals
-            .iter()
-            .filter(|goal| !state.metas.is_assigned(goal))
-            .count();
         return Err(LofError::custom(format!(
-            "Proof is incomplete: {} unproven goal(s), the first one is {:?}",
-            remaining,
+            "Proof is incomplete: goal {:?} is left unproven",
             state.metas.meta_type(&id).unwrap()
         )));
     }
@@ -158,10 +148,9 @@ fn run_intro(
     )?;
 
     let local = state.names.fresh_local_name(ass_name);
-    let assumption = [(local.clone(), (**domain).to_owned())];
-    state.enter_locals(&assumption);
-    let new_goal = state.fresh_meta(open_term(codomain, &local));
-    state.exit_locals(1);
+    let mut context = goal.context.clone();
+    context.push((local.clone(), (**domain).to_owned()));
+    let new_goal = state.metas.fresh_meta(context, open_term(codomain, &local));
 
     // the body of the abstraction refers to the introduced variable through
     // the local `local`, turned into a De Bruijn index once the proof term
@@ -170,10 +159,7 @@ fn run_intro(
         goal.id,
         &Abstraction(local, domain.clone(), Box::new(new_goal.clone())),
     )?;
-    match new_goal {
-        Meta(id) => Ok(vec![id]),
-        _ => unreachable!("fresh metavariables are metavariables"),
-    }
+    Ok(goal_ids(state, &[new_goal]))
 }
 
 /// `exact t` assigns `?g := t`, if the type of t matches the target
@@ -241,13 +227,18 @@ fn run_apply(
         .metas
         .assign(goal.id, &apply_arguments(&lemma, premises.clone()))?;
     // the premises not determined by unification are the new goals
-    Ok(premises
+    Ok(goal_ids(state, &premises))
+}
+
+/// Indices of the `metas` that are still unsolved, ie the open goals
+fn goal_ids(state: &RefinerState, metas: &[CicTerm]) -> Vec<i32> {
+    metas
         .iter()
-        .filter_map(|premise| match premise {
+        .filter_map(|meta| match meta {
             Meta(id) if !state.metas.is_assigned(id) => Some(*id),
             _ => None,
         })
-        .collect())
+        .collect()
 }
 
 //########################### UNIT TESTS

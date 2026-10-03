@@ -5,7 +5,7 @@ use crate::{
                 Cic, CicTerm::{self, Application, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI,
             }, cic_utils::{
                 alpha_equivalent, application_args, apply_arguments, check_positivity, clone_product_with_different_result, free_locals, get_applied_function, get_arg_types, get_prod_innermost, get_variables_as_terms, index_variables, is_instance_of, make_multiarg_fun_type,
-            }, evaluation::evaluate_inductive, patterns::{PatternEntry, open_branch, pattern_telescope, with_pattern_entries},
+            }, evaluation::evaluate_inductive, patterns::{LocalEntry, open_branch, pattern_telescope, with_local_entries},
         }, commons::type_check::type_check_variable, environment::Environment, grammars::traits::LocallyNameless, interface::{Kernel, Reducer},
     },
 };
@@ -22,13 +22,11 @@ pub fn cic_convertible(
     expected: &CicTerm,
 ) -> Result<(), LofError> {
     if alpha_equivalent(actual, expected, true) {
-    // if actual.alpha_equivalent(expected) {
         return Ok(());
     }
     let actual_normal = Cic::normalize_term(environment, actual);
     let expected_normal = Cic::normalize_term(environment, expected);
     if alpha_equivalent(&actual_normal, &expected_normal, true) {
-    // if actual_normal.alpha_equivalent(&expected_normal) {
         Ok(())
     } else {
         Err(LofError::type_mismatch(
@@ -93,14 +91,14 @@ pub fn type_check_match(
         let branch_only: Vec<String> = entries
             .iter()
             .filter_map(|entry| match entry {
-                PatternEntry::Assume(name, _) => Some(name.to_owned()),
-                PatternEntry::Define(_, _, _) => None,
+                LocalEntry::Assume(name, _) => Some(name.to_owned()),
+                LocalEntry::Define(_, _, _) => None,
             })
             .filter(|name| !environment.is_var_bound(name))
             .collect();
 
         let body_type =
-            with_pattern_entries(environment, &entries, |local_env| {
+            with_local_entries(environment, &entries, |local_env| {
                 let body_type = Cic::type_check_term(&opened_body, local_env)?;
                 Ok::<CicTerm, LofError>(Cic::normalize_term(local_env, &body_type))
             })?;

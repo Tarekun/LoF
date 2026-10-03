@@ -624,62 +624,62 @@ pub fn alpha_equivalent(
     }
 }
 
+/// Returns the immediate subterms of `term`
+pub fn subterms(term: &CicTerm) -> Vec<&CicTerm> {
+    match term {
+        Sort(_) | Variable(_, _) | Meta(_) => vec![],
+        Abstraction(_, l, r) | Product(_, l, r) | Application(l, r) => {
+            vec![l, r]
+        }
+        Let(_, var_type, body, scope) => {
+            (**var_type).iter().chain([&**body, &**scope]).collect()
+        }
+        Match(matched_term, branches) => std::iter::once(&**matched_term)
+            .chain(branches.iter().flat_map(|(pattern, body)| [pattern, body]))
+            .collect(),
+    }
+}
+
+/// Rebuilds `term` with `f` applied to each of its immediate subterms
+pub fn map_subterms<F: Fn(&CicTerm) -> CicTerm>(
+    term: &CicTerm,
+    f: F,
+) -> CicTerm {
+    match term {
+        Sort(_) | Variable(_, _) | Meta(_) => term.clone(),
+        Application(l, r) => Application(Box::new(f(l)), Box::new(f(r))),
+        Abstraction(n, d, b) => {
+            Abstraction(n.to_string(), Box::new(f(d)), Box::new(f(b)))
+        }
+        Product(n, d, b) => {
+            Product(n.to_string(), Box::new(f(d)), Box::new(f(b)))
+        }
+        Let(n, t, v, s) => Let(
+            n.to_string(),
+            Box::new((**t).as_ref().map(&f)),
+            Box::new(f(v)),
+            Box::new(f(s)),
+        ),
+        Match(m, branches) => Match(
+            Box::new(f(m)),
+            branches.iter().map(|(p, b)| (f(p), f(b))).collect(),
+        ),
+    }
+}
+
 /// Returns the names of all the locally free variables occurring in `term`
 pub fn free_locals(term: &CicTerm) -> HashSet<String> {
-    fn solver(term: &CicTerm, acc: &mut HashSet<String>) {
-        match term {
-            Variable(name, NameKind::Local()) => {
-                acc.insert(name.to_string());
-            }
-            Sort(_) | Meta(_) | Variable(_, _) => {}
-            Abstraction(_, l, r) | Product(_, l, r) | Application(l, r) => {
-                solver(l, acc);
-                solver(r, acc);
-            }
-            Let(_, var_type, body, scope) => {
-                if let Some(typee) = var_type.as_ref() {
-                    solver(typee, acc);
-                }
-                solver(body, acc);
-                solver(scope, acc);
-            }
-            Match(matched_term, branches) => {
-                solver(matched_term, acc);
-                for (pattern, body) in branches {
-                    solver(pattern, acc);
-                    solver(body, acc);
-                }
-            }
-        }
+    match term {
+        Variable(name, NameKind::Local()) => HashSet::from([name.to_string()]),
+        _ => subterms(term).into_iter().flat_map(free_locals).collect(),
     }
-
-    let mut acc = HashSet::new();
-    solver(term, &mut acc);
-    acc
 }
 
 /// Returns `true` iff the metavariable `index` occurs in `term`
 pub fn meta_occurs(index: i32, term: &CicTerm) -> bool {
     match term {
         Meta(other) => *other == index,
-        Sort(_) | Variable(_, _) => false,
-        Abstraction(_, l, r) | Product(_, l, r) | Application(l, r) => {
-            meta_occurs(index, l) || meta_occurs(index, r)
-        }
-        Let(_, var_type, body, scope) => {
-            var_type
-                .as_ref()
-                .as_ref()
-                .map_or(false, |t| meta_occurs(index, t))
-                || meta_occurs(index, body)
-                || meta_occurs(index, scope)
-        }
-        Match(matched_term, branches) => {
-            meta_occurs(index, matched_term)
-                || branches.iter().any(|(pattern, body)| {
-                    meta_occurs(index, pattern) || meta_occurs(index, body)
-                })
-        }
+        _ => subterms(term).into_iter().any(|t| meta_occurs(index, t)),
     }
 }
 
@@ -692,74 +692,24 @@ pub fn substitute_local(
     substitute_and_lift(&close_term(term, name), name, value)
 }
 
-/// Rebuilds every binder of `term` that was opened with a unique name (see
-/// `NameGenerator`): the locals still referring to it are turned back
-/// into De Bruijn indices and the binder gets its user facing name back.
-/// Needed by the tactic engine, where `intro` builds a binder whose body is a
-/// goal solved only later, with terms mentioning the introduced local
+/// Closes back the abstractions `intro` builds around a unique local (see
+/// `NameGenerator`), giving them their user facing name back: their bodies
+/// are goals solved only later, with terms mentioning the local
 pub fn reclose_unique_binders(term: &CicTerm) -> CicTerm {
-    fn close_binder(body: &CicTerm, name: &str) -> (String, CicTerm) {
-        let body = reclose_unique_binders(body);
-        if is_unique_name(name) {
-            let base = strip_unique_name(name).to_string();
-            let closed = close_term_as(&open_term(&body, name), name, &base);
-            (base, closed)
-        } else {
-            (name.to_string(), body)
-        }
-    }
-
     match term {
-        Sort(_) | Meta(_) | Variable(_, _) => term.clone(),
-        Application(left, right) => Application(
-            Box::new(reclose_unique_binders(left)),
-            Box::new(reclose_unique_binders(right)),
-        ),
-        Abstraction(var_name, domain, body) => {
-            let (name, body) = close_binder(body, var_name);
+        Abstraction(name, domain, body) if is_unique_name(name) => {
+            let base = strip_unique_name(name);
             Abstraction(
-                name,
+                base.to_string(),
                 Box::new(reclose_unique_binders(domain)),
-                Box::new(body),
+                Box::new(close_term_as(
+                    &reclose_unique_binders(body),
+                    name,
+                    base,
+                )),
             )
         }
-        Product(var_name, domain, codomain) => {
-            let (name, codomain) = close_binder(codomain, var_name);
-            Product(
-                name,
-                Box::new(reclose_unique_binders(domain)),
-                Box::new(codomain),
-            )
-        }
-        Let(var_name, var_type, definition, scope) => {
-            let (name, scope) = close_binder(scope, var_name);
-            Let(
-                name,
-                Box::new((**var_type).as_ref().map(reclose_unique_binders)),
-                Box::new(reclose_unique_binders(definition)),
-                Box::new(scope),
-            )
-        }
-        Match(matched_term, branches) => Match(
-            Box::new(reclose_unique_binders(matched_term)),
-            simple_map(branches.clone(), |(pattern, body)| {
-                let binders = pattern_binder_names(&pattern);
-                let mut pattern = reclose_unique_binders(&pattern);
-                let mut body = reclose_unique_binders(&body);
-                // reopen the whole telescope (innermost first), then close it
-                // back (outermost first) renaming every unique binder
-                for binder in binders.iter().rev() {
-                    pattern = open_term(&pattern, binder);
-                    body = open_term(&body, binder);
-                }
-                for binder in binders.iter() {
-                    let base = strip_unique_name(binder);
-                    pattern = close_term_as(&pattern, binder, base);
-                    body = close_term_as(&body, binder, base);
-                }
-                (pattern, body)
-            }),
-        ),
+        _ => map_subterms(term, reclose_unique_binders),
     }
 }
 
@@ -777,33 +727,14 @@ pub fn localize(term: &CicTerm, locals: &[(String, String)]) -> CicTerm {
                 None => term.clone(),
             }
         }
-        Sort(_) | Meta(_) | Variable(_, _) => term.clone(),
-        Application(l, r) => Application(
-            Box::new(localize(l, locals)),
-            Box::new(localize(r, locals)),
-        ),
-        Abstraction(n, d, b) => Abstraction(
-            n.to_string(),
-            Box::new(localize(d, locals)),
-            Box::new(localize(b, locals)),
-        ),
-        Product(n, d, b) => Product(
-            n.to_string(),
-            Box::new(localize(d, locals)),
-            Box::new(localize(b, locals)),
-        ),
-        Let(n, t, v, s) => Let(
-            n.to_string(),
-            Box::new((**t).as_ref().map(|t| localize(t, locals))),
-            Box::new(localize(v, locals)),
-            Box::new(localize(s, locals)),
-        ),
+        // patterns only mention constructors and their own binders
         Match(m, branches) => Match(
             Box::new(localize(m, locals)),
             simple_map(branches.clone(), |(pattern, body)| {
                 (pattern, localize(&body, locals))
             }),
         ),
+        _ => map_subterms(term, |t| localize(t, locals)),
     }
 }
 //########################### LOCALLY NAMELESS UTILITIES

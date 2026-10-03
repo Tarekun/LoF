@@ -53,16 +53,10 @@ fn unify_step(
             Ok(Step::Done)
         }
         // sorts are unified leniently: the kernel decides on cumulativity
-        (Sort(s1), Sort(s2)) => {
-            let universes = ["PROP", "TYPE"];
-            if universes.contains(&s1.as_str())
-                && universes.contains(&s2.as_str())
-            {
-                Ok(Step::Done)
-            } else {
-                Err(mismatch())
-            }
-        }
+        (Sort(s1), Sort(s2)) => match (s1.as_str(), s2.as_str()) {
+            ("PROP" | "TYPE", "PROP" | "TYPE") => Ok(Step::Done),
+            _ => Err(mismatch()),
+        },
         (Product(n1, d1, c1), Product(_, d2, c2))
         | (Abstraction(n1, d1, c1), Abstraction(_, d2, c2)) => {
             // bodies are compared opened with the same fresh local
@@ -139,20 +133,19 @@ pub fn unify(
                         queue.push_front(subproblem);
                     }
                 }
-                Step::Postpone => metas.postpone(expected, actual),
+                Step::Postpone => metas.postponed.push((expected, actual)),
             }
         }
 
         if !progress {
             return Ok(());
         }
-        queue.extend(metas.take_postponed());
+        queue.extend(std::mem::take(&mut metas.postponed));
         if queue.is_empty() {
             return Ok(());
         }
     }
 }
-
 #[cfg(test)]
 #[path = "../../tests/type_theory/cic/unification.rs"]
 mod tests;

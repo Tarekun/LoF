@@ -50,7 +50,7 @@ fn solve(
     for (expected, actual) in constraints {
         unify(&env, metas, &mut names, &expected, &actual)?;
     }
-    match metas.postponed().first() {
+    match metas.postponed.first() {
         None => Ok(()),
         Some(postponed) => Err(crate::error::LofError::custom(format!(
             "constraint {:?} left postponed",
