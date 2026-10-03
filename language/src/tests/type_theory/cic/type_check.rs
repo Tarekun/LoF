@@ -2088,4 +2088,42 @@ mod fun_stm {
             "Type checking accept function with a inconsistent declared and result type",
         );
     }
+
+    #[test]
+    fn test_type_check_fun_ill_typed_signature() {
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let zero = Variable("0".to_string(), NameKind::Const());
+        let mut test_env = packed_env();
+
+        // the bodies dont use the argument, so they type check on their own:
+        // only checking the signature can reject these definitions
+        for (arg_type, reason) in [
+            (
+                Variable("StupidUnboundName".to_string(), NameKind::Const()),
+                "an argument of unbound type",
+            ),
+            (zero.clone(), "an argument whose type is a term, not a type"),
+        ] {
+            assert!(
+                Cic::type_check_stm(
+                    &Fun(
+                        "f".to_string(),
+                        vec![("x".to_string(), arg_type)],
+                        Box::new(nat.clone()),
+                        Box::new(zero.clone()),
+                        false
+                    ),
+                    &mut test_env,
+                )
+                .is_err(),
+                "Type checking accepts a function with {}",
+                reason
+            );
+        }
+        assert_eq!(
+            test_env.get_variable_type("f"),
+            None,
+            "Ill typed functions must not be added to the context"
+        );
+    }
 }
