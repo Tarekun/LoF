@@ -30,11 +30,15 @@ pub struct MetaDecl {
 
 /// Metavariable context: declarations and assignments of all the
 /// metavariables created during a refinement, along with the supply of
-/// fresh metavariables
+/// fresh metavariables and the constraints over them that couldnt be solved
+/// yet
 #[derive(Debug, Clone, Default)]
 pub struct MetaContext {
     decls: BTreeMap<i32, MetaDecl>,
     next_index: i32,
+    /// constraints `expected ≐ actual` with a flexible head (eg `?f x`),
+    /// waiting for their metavariables to be solved
+    postponed: Vec<(CicTerm, CicTerm)>,
 }
 
 impl MetaContext {
@@ -65,10 +69,8 @@ impl MetaContext {
         self.fresh_meta(context, sort)
     }
 
-    pub fn is_assigned(&self, index: &i32) -> bool {
-        self.decls
-            .get(index)
-            .map_or(false, |decl| decl.assignment.is_some())
+    pub fn decl(&self, index: &i32) -> Option<&MetaDecl> {
+        self.decls.get(index)
     }
 
     /// Type of the metavariable, with the current assignments instantiated
@@ -109,6 +111,21 @@ impl MetaContext {
         }
         self.decls.get_mut(&index).unwrap().assignment = Some(value);
         Ok(())
+    }
+
+    /// Postpones the constraint `expected ≐ actual`
+    pub fn postpone(&mut self, expected: CicTerm, actual: CicTerm) {
+        self.postponed.push((expected, actual));
+    }
+
+    /// Removes and returns the postponed constraints
+    pub fn take_postponed(&mut self) -> Vec<(CicTerm, CicTerm)> {
+        std::mem::take(&mut self.postponed)
+    }
+
+    /// Constraints that are still postponed
+    pub fn postponed(&self) -> &[(CicTerm, CicTerm)] {
+        &self.postponed
     }
 
     /// Replaces every assigned metavariable in `term` with its value

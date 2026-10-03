@@ -24,7 +24,7 @@ use super::metavariables::{MetaContext, NameGenerator};
 use super::patterns::{
     open_branch, pattern_telescope, with_pattern_entries, PatternEntry,
 };
-use super::unification::cic_solve_unifications;
+use super::unification::unify;
 use crate::error::LofError;
 use crate::misc::Union::{L, R};
 use crate::parser::api::Statement;
@@ -77,43 +77,16 @@ impl RefinerState {
         actual: &CicTerm,
         origin: &str,
     ) -> Result<(), LofError> {
-        self.unify_metas(environment, expected, actual).map_err(|error| {
-            LofError::custom(format!(
-                "Refinement failed on {}: expected {:?}, found {:?} ({})",
-                origin,
-                self.metas.instantiate(expected),
-                self.metas.instantiate(actual),
-                error
-            ))
-        })
-    }
-
-    /// Solves `expected ≐ actual` with the CIC unification algorithm, and
-    /// assigns the metavariables it solved
-    fn unify_metas(
-        &mut self,
-        environment: &Environment<Cic>,
-        expected: &CicTerm,
-        actual: &CicTerm,
-    ) -> Result<(), LofError> {
-        let substitution = cic_solve_unifications(
-            vec![(self.metas.instantiate(expected), self.metas.instantiate(actual))],
-            environment,
-        )?;
-        for name in substitution.names() {
-            // the algorithm also solves (non constant) variables, which are
-            // rigid: those solutions are ignored, the kernel rejects whatever
-            // mismatch they hide
-            let index = match name.strip_prefix("metavariable_") {
-                Some(index) => index.parse::<i32>().unwrap(),
-                None => continue,
-            };
-            let value = substitution.get(name).unwrap();
-            if !self.metas.is_assigned(&index) {
-                self.metas.assign(index, value)?;
-            }
-        }
-        Ok(())
+        unify(environment, &mut self.metas, &mut self.names, expected, actual)
+            .map_err(|error| {
+                LofError::custom(format!(
+                    "Refinement failed on {}: expected {:?}, found {:?} ({})",
+                    origin,
+                    self.metas.instantiate(expected),
+                    self.metas.instantiate(actual),
+                    error
+                ))
+            })
     }
 
     /// Closes the binder opened with `local` around `term`, giving it back its
@@ -124,8 +97,15 @@ impl RefinerState {
     }
 
     /// Instantiates the solutions in `term`. Fails if any metavariable is
-    /// left unsolved
+    /// left unsolved or any constraint couldnt be solved
     pub fn finalize(&self, term: &CicTerm) -> Result<CicTerm, LofError> {
+        if let Some((expected, actual)) = self.metas.postponed().first() {
+            return Err(LofError::custom(format!(
+                "Refinement failed: cannot solve the higher order constraint {:?} ≐ {:?}",
+                self.metas.instantiate(expected),
+                self.metas.instantiate(actual),
+            )));
+        }
         let refined = self.metas.instantiate(term);
         self.ensure_no_holes(&refined)?;
         Ok(refined)
