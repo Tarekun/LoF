@@ -25,7 +25,7 @@ use crate::type_theory::grammars::fol::{
 };
 use crate::type_theory::grammars::traits::NamedSubstitution;
 use crate::type_theory::interface::{
-    Interactive, Kernel, Reducer, Stm, TypeTheory,
+    Interactive, Kernel, Reducer, Refiner, Stm, TypeTheory,
 };
 
 pub struct Fol;
@@ -260,3 +260,6 @@ impl Interactive for Fol {
         ))
     }
 }
+
+// FOL has no holes to be resolved
+impl Refiner for Fol {}

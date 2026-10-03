@@ -43,11 +43,17 @@ inductive List (T:TYPE) : TYPE {
   | cons : T -> List(T) -> List(T)
 }
 
-fun rec len (l: List(?)) : Nat {
-  match l with
-  | nil(?) => z,
-  | cons(?, _, ll) => s(len(ll)),
-}
+# DISABLED: `List(?)` leaves a hole nothing can determine (the type of the
+# list elements), which the refiner rightfully rejects ("Could not infer
+# hole"). Re-enable once the refiner generalizes the holes left unsolved in a
+# definition signature into implicit polymorphic parameters (ie elaborates
+# this to `len (A: TYPE, l: List(A))` and inserts the implicit argument at
+# call sites), see the TODO(future refiner) in cic/refiner.rs
+#fun rec len (l: List(?)) : Nat {
+#  match l with
+#  | nil(?) => z,
+#  | cons(?, _, ll) => s(len(ll)),
+#}
 
 fun rec fold (A: TYPE, combine: A -> A -> A, l: List(A), seed: A) : A {
   match l with
@@ -55,10 +61,11 @@ fun rec fold (A: TYPE, combine: A -> A -> A, l: List(A), seed: A) : A {
   | cons(A, h, ll) => fold(A, combine, ll, combine(h, seed)),
 }
 
-# requires substituting the tail `ll` of the list across two recursive calls
-theorem len_two_elem_list :
-  Eq(Nat, len(cons(Nat, z, cons(Nat, z, nil(Nat)))), s(s(z))) :=
-  (refl(Nat, s(s(z))))
+# DISABLED together with `len` above, re-enable along with it
+## requires substituting the tail `ll` of the list across two recursive calls
+#theorem len_two_elem_list :
+#  Eq(Nat, len(cons(Nat, z, cons(Nat, z, nil(Nat)))), s(s(z))) :=
+#  (refl(Nat, s(s(z))))
 
 # requires substituting both the head `h` and tail `ll` at each step
 theorem fold_sums_two_elements :

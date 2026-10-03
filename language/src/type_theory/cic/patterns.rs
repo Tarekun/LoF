@@ -1,5 +1,5 @@
 use super::cic::CicTerm::{Application, Meta, Product, Variable};
-use super::cic::{Cic, CicTerm};
+use super::cic::{Cic, CicTerm, HOLE_INDEX};
 use super::cic_utils::{
     application_args, get_applied_function, open_term, pattern_binder_names,
     substitute_and_lift,
@@ -137,7 +137,7 @@ fn solve_pattern(
                     PatternEntry::Define(name.to_owned(), actual.clone(), domain),
                 ),
                 // a hole in a parameter position stands for the parameter itself
-                Meta(_) => {}
+                Meta(HOLE_INDEX) => {}
                 _ => {
                     return Err(LofError::type_check_error(&format!(
                         "Parameter positions of pattern {:?} can only hold a variable or `?`, found {:?}",

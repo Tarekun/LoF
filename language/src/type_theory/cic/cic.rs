@@ -1,4 +1,5 @@
 use super::evaluation::{evaluate_statement, one_step_reduction};
+use super::refiner::{refine_expression, refine_statement};
 use super::tactics::type_check_tactic;
 use super::type_check::{cic_convertible, type_check_sort};
 use crate::error::LofError;
@@ -27,13 +28,18 @@ use crate::type_theory::grammars::traits::{
     AlphaEquiv, LocallyNameless, Reduction, ReductionEq, SyntacticalEq,
 };
 use crate::type_theory::interface::{
-    Interactive, Kernel, Reducer, Stm, TypeTheory,
+    Interactive, Kernel, Reducer, Refiner, Stm, TypeTheory,
 };
 use tracing::debug;
 
 pub static FIRST_INDEX: i32 = 0;
 pub static GLOBAL_INDEX: i32 = -1;
 pub static PLACEHOLDER_DBI: i32 = -2;
+/// index of the metavariable standing for a hole left by the user (`?`):
+/// it carries no identity, the refiner replaces every occurrence with a fresh
+/// metavariable (whose indices are never negative)
+pub const HOLE_INDEX: i32 = -1;
+
 
 #[derive(PartialEq, Clone)]
 pub enum NameKind {
@@ -296,6 +302,23 @@ impl Kernel for Cic {
             // }
             _ => Err(LofError::unsupported_construct("CIC", stm)),
         }
+    }
+}
+
+impl Refiner for Cic {
+    fn refine_expression(
+        exp: &CicTerm,
+        environment: &mut Environment<Cic>,
+    ) -> Result<CicTerm, LofError> {
+        refine_expression(environment, exp)
+    }
+
+    fn refine_stm(
+        stm: &Stm<Cic>,
+        environment: &mut Environment<Cic>,
+    ) -> Result<Stm<Cic>, LofError> {
+        debug!("Refining statement: {:?}", stm);
+        refine_statement(environment, stm)
     }
 }
 
