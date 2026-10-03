@@ -753,4 +753,37 @@ mod fun_stm {
             "Fun type checker accpets normal function definition with recursive call"
         );
     }
+
+    #[test]
+    fn test_fun_type_check_ill_typed_signature() {
+        let nat = Predicate("Nat".to_string(), vec![]);
+        let mut test_env: Environment<Fol> =
+            Environment::with_defaults(vec![], vec![], vec![("Nat", &vec![])]);
+        test_env.add_to_context("zero", &nat);
+
+        // the body doesnt use the argument, so it type checks on its own:
+        // only checking the signature can reject the definition
+        assert!(
+            Fol::type_check_stm(
+                &Fun(
+                    "f".to_string(),
+                    vec![(
+                        "n".to_string(),
+                        Predicate("StupidUnboundName".to_string(), vec![])
+                    )],
+                    Box::new(nat.clone()),
+                    Box::new(Variable("zero".to_string())),
+                    false
+                ),
+                &mut test_env,
+            )
+            .is_err(),
+            "Fun type checker accepts function definition with an argument of unbound type"
+        );
+        assert_eq!(
+            test_env.get_variable_type("f"),
+            None,
+            "Ill typed functions must not be added to the context"
+        );
+    }
 }

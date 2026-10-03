@@ -4,7 +4,7 @@ use crate::{
         cic::cic::{
             Cic,
             CicTerm::{Sort, Variable},
-            NameKind, GLOBAL_INDEX,
+            NameKind,
         },
         commons::type_check::u_type_check_theorem,
         interface::TypeTheory,

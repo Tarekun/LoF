@@ -313,7 +313,7 @@ pub fn type_check_function<
     eta_wrap: E,
 ) -> Result<T::Type, LofError> {
     let fun_type = constructor(args.to_owned(), out_type.to_owned());
-    let _ = T::type_check_type(&fun_type, environment);
+    let _ = T::type_check_type(&fun_type, environment)?;
     let mut assumptions = args.to_owned();
     if *is_rec {
         assumptions.push((fun_name.to_string(), fun_type.clone()));
@@ -372,7 +372,7 @@ pub fn i_type_check_function<
     eta_wrap: E,
 ) -> Result<T::Type, LofError> {
     let fun_type = constructor(args.to_owned(), out_type.to_owned());
-    let _ = T::type_check_type(&fun_type, environment);
+    let _ = T::type_check_type(&fun_type, environment)?;
 
     // args contains a bunch of bound args that need to be opened both in subsequent args
     // and in the body and return type of the function
