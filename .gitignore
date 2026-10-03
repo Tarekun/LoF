@@ -12,3 +12,6 @@ vscode_extension/out/
 .aider*
 out
 docs/.obsidian
+
+# downloaded test data, eg the TPTP library
+test_artifacts/tmp/

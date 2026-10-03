@@ -9,10 +9,12 @@ mod unit_tests {
 % English  : If (F,*) and (H,+) are two semigroups, phi is a surjective
 %            homomorphism from F to H, and id is a left zero for F,
 %            then phi(id) is a left zero for H.
+
 % Status   : Theorem
 % Syntax   : Number of formulae    :    8 (   2 unt;   0 def)
 %            Number of atoms       :   21 (   4 equ)
 % SPC      : FOF_THM_RFO_SEQ
+
 % Comments :
 %------------------------------------------------------------------------------
 fof(a, axiom, p).

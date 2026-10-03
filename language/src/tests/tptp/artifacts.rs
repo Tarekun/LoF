@@ -158,6 +158,25 @@ mod end_to_end {
     }
 
     #[test]
+    #[ignore]
+    /// Solves the problem at `$TPTP_PROBLEM`, printing the outcome as an SZS
+    /// status line. Driven by `scripts/tptp_library.py`
+    fn test_tptp_library_problem() {
+        let Ok(path) = std::env::var("TPTP_PROBLEM") else {
+            return println!("Set TPTP_PROBLEM to the problem to solve");
+        };
+        let status = match load_tptp_file(&path) {
+            Err(err) => format!("InputError {}", err),
+            Ok(problem) => match &problem.body {
+                TptpBody::Propositional(_) => decide_propositional(&problem),
+                TptpBody::Clausal(_) => decide_clausal(&problem),
+            }
+            .map_or_else(|err| format!("Error {}", err), |s| format!("{:?}", s)),
+        };
+        println!("% SZS status {}", status.replace('\n', " "));
+    }
+
+    #[test]
     fn test_propositional_artifact_parsing() {
         let path = format!(
             "{}/../test_artifacts/tptp/prp/modus_ponens.p",
