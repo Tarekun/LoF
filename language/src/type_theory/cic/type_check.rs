@@ -11,7 +11,7 @@ use crate::{
                 index_variables, is_instance_of, make_multiarg_fun_type,
                 substitute,
             }, evaluation::evaluate_inductive, unification::cic_so_unification,
-        }, commons::type_check::type_check_variable, environment::Environment, interface::{Kernel, Refiner},
+        }, commons::type_check::type_check_variable, environment::Environment, grammars::traits::LocallyNameless, interface::{Kernel, Refiner},
     },
 };
 use tracing::error;
@@ -247,7 +247,7 @@ pub fn type_check_match(
                     .iter()
                     .rev()
                     .fold(assumption_type.to_owned(), |opened, binder_name| {
-                        Cic::type_open(&opened, binder_name)
+                        opened.open(binder_name)
                     });
                 (assumption_name.to_owned(), opened_type)
             })
@@ -256,7 +256,7 @@ pub fn type_check_match(
             .iter()
             .rev()
             .fold(body.to_owned(), |opened, binder_name| {
-                Cic::term_open(&opened, binder_name)
+                opened.open(binder_name)
             });
         let body_type = environment
             .with_local_assumptions(&opened_assumptions, |local_env| {
@@ -527,7 +527,7 @@ pub fn type_check_inductive(
             .iter()
             .rev()
             .fold(param_type.clone(), |opened, (earlier_param, _)| {
-                Cic::type_open(&opened, earlier_param)
+                opened.open(earlier_param)
             });
         opened_params.push((param_name.to_owned(), opened_type));
     }
@@ -536,7 +536,7 @@ pub fn type_check_inductive(
             .iter()
             .rev()
             .fold(typee.to_owned(), |opened, (param_name, _)| {
-                Cic::type_open(&opened, param_name)
+                opened.open(param_name)
             })
     };
 

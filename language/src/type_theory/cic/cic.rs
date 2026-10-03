@@ -29,7 +29,7 @@ use crate::type_theory::commons::type_check::{
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::Environment;
 use crate::type_theory::grammars::traits::{
-    AlphaEquiv, Reduction, ReductionEq, SyntacticalEq,
+    AlphaEquiv, LocallyNameless, Reduction, ReductionEq, SyntacticalEq,
 };
 use crate::type_theory::interface::{
     Interactive, Kernel, Reducer, Refiner, Stm, TypeInference, TypeTheory,
@@ -88,6 +88,14 @@ impl SyntacticalEq for CicTerm {
 impl AlphaEquiv for CicTerm {
     fn alpha_equivalent(&self, other: &Self) -> bool {
         alpha_equivalent(self, other)
+    }
+}
+impl LocallyNameless for CicTerm {
+    fn open(&self, name: &str) -> Self {
+        open_term(self, name)
+    }
+    fn close(&self, name: &str) -> Self {
+        close_term(self, name)
     }
 }
 impl ReductionEq<Cic> for CicTerm {
@@ -382,19 +390,6 @@ impl Refiner for Cic {
             environment,
         )?;
         Ok(())
-    }
-
-    fn term_open(term: &CicTerm, name: &str) -> CicTerm {
-        open_term(term, name)
-    }
-    fn term_close(term: &CicTerm, name: &str) -> CicTerm {
-        close_term(term, name)
-    }
-    fn type_open(typee: &CicTerm, name: &str) -> CicTerm {
-        open_term(typee, name)
-    }
-    fn type_close(typee: &CicTerm, name: &str) -> CicTerm {
-        close_term(typee, name)
     }
 }
 

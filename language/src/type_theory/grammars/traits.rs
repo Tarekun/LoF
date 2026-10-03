@@ -83,6 +83,18 @@ pub trait ReductionEq<T: TypeTheory>: Reduction<T> + SyntacticalEq {
     }
 }
 
+/// Locally nameless representation of binders: bound variables are De
+/// Bruijn indices while free ones are names
+pub trait LocallyNameless {
+    /// Opens instances of `name` within `self`, marking them as (locally)
+    /// free variables instead of bounded with a De Bruijn index
+    fn open(&self, name: &str) -> Self;
+
+    /// Rebuilds a binder around `self`, turning the locally free `name` back
+    /// into a bound variant and updating De Bruijn indeces. Inverse of `open`
+    fn close(&self, name: &str) -> Self;
+}
+
 pub trait ToCnfTerm {
     fn to_cnf(&self) -> CnfTerm;
 }

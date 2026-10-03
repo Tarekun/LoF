@@ -7,6 +7,7 @@ use crate::{
             evaluate_axiom, evaluate_fun, evaluate_global, evaluate_theorem,
         },
         environment::Environment,
+        grammars::traits::LocallyNameless,
         interface::{Interactive, Kernel, Refiner, TypeTheory},
     },
 };
@@ -63,10 +64,14 @@ pub fn i_type_check_abstraction<
     var_type: &T::Type,
     body: &T::Term,
     constructor: C,
-) -> Result<T::Type, LofError> {
+) -> Result<T::Type, LofError>
+where
+    T::Term: LocallyNameless,
+    T::Type: LocallyNameless,
+{
     let _ = T::type_check_type(var_type, environment)?;
     // opening var_name to a free variable inside body
-    let opened_body = T::term_open(body, var_name);
+    let opened_body = body.open(var_name);
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_term(&opened_body, local_env)?;
         let type_cons = T::type_collect_unifications(var_type, local_env)?;
@@ -80,7 +85,7 @@ pub fn i_type_check_abstraction<
         Ok(constructor(
             var_name.to_string(),
             var_type,
-            T::type_close(&body_type, var_name),
+            body_type.close(var_name),
         ))
     })
 }
@@ -94,10 +99,13 @@ pub fn i_type_check_fo_universal<T: TypeTheory + Kernel + Refiner>(
     var_name: &str,
     var_type: &T::Type,
     predicate: &T::Type,
-) -> Result<T::Type, LofError> {
+) -> Result<T::Type, LofError>
+where
+    T::Type: LocallyNameless,
+{
     let _ = T::type_check_type(var_type, environment)?;
     // opening var_name to a free variable inside predicate
-    let opened_predicate = T::type_open(predicate, var_name);
+    let opened_predicate = predicate.open(var_name);
     environment.with_local_assumption(var_name, var_type, |local_env| {
         T::type_check_type(&opened_predicate, local_env)
     })
@@ -241,7 +249,10 @@ pub fn i_type_check_let<T: TypeTheory + Kernel + Refiner>(
     var_type: &Option<T::Type>,
     body: &T::Term,
     scope: &T::Term,
-) -> Result<T::Type, LofError> {
+) -> Result<T::Type, LofError>
+where
+    T::Term: LocallyNameless,
+{
     let body_type = T::type_check_term(body, environment)?;
     let var_type = if var_type.is_none() {
         body_type.to_owned()
@@ -251,7 +262,7 @@ pub fn i_type_check_let<T: TypeTheory + Kernel + Refiner>(
 
     if T::type_judgemental_equality(environment, &var_type, &body_type).is_ok()
     {
-        let opened_scope = T::term_open(scope, var_name);
+        let opened_scope = scope.open(var_name);
         Ok(environment.with_local_substitution(
             var_name,
             body,
@@ -370,7 +381,11 @@ pub fn i_type_check_function<
     is_rec: &bool,
     constructor: C,
     eta_wrap: E,
-) -> Result<T::Type, LofError> {
+) -> Result<T::Type, LofError>
+where
+    T::Term: LocallyNameless,
+    T::Type: LocallyNameless,
+{
     let fun_type = constructor(args.to_owned(), out_type.to_owned());
     let _ = T::type_check_type(&fun_type, environment)?;
 
@@ -382,7 +397,7 @@ pub fn i_type_check_function<
             .iter()
             .rev()
             .fold(arg_type.to_owned(), |opened, (earlier_arg, _)| {
-                T::type_open(&opened, earlier_arg)
+                opened.open(earlier_arg)
             });
         assumptions.push((arg_name.to_owned(), opened_type));
     }
@@ -390,13 +405,13 @@ pub fn i_type_check_function<
         .iter()
         .rev()
         .fold(out_type.to_owned(), |opened, (arg_name, _)| {
-            T::type_open(&opened, arg_name)
+            opened.open(arg_name)
         });
     let opened_body = args
         .iter()
         .rev()
         .fold(body.to_owned(), |opened, (arg_name, _)| {
-            T::term_open(&opened, arg_name)
+            opened.open(arg_name)
         });
 
     if *is_rec {
