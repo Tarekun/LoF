@@ -6,7 +6,7 @@ use crate::parser::api::{Expression, LofAst, Tactic};
 use crate::runtime::program::Schedule;
 use crate::runtime::program::{Program, ProgramNode};
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::{Kernel, Reducer, TypeTheory};
+use crate::type_theory::interface::{Kernel, Reducer, Refiner, TypeTheory};
 use std::io::{self, Write};
 use tracing::debug;
 
@@ -46,34 +46,50 @@ pub fn parse_and_elaborate<T: TypeTheory + Kernel>(
     Ok(schedule)
 }
 
-pub fn type_check<T: TypeTheory + Kernel + Reducer>(
+/// Type checks the program at `workspace` following the standard pipeline:
+/// every node is first refined (holes are solved, tactic proofs are turned
+/// into proof terms) and then checked by the kernel.
+/// Returns the schedule of the refined program
+pub fn type_check<T: TypeTheory + Refiner + Kernel + Reducer>(
     config: &Config,
     workspace: &str,
 ) -> Result<Schedule<T>, LofError> {
     let schedule = parse_and_elaborate::<T>(config, workspace)?;
     debug!("Type checking of the program...");
     let mut environment: Environment<T> = T::default_environment();
+    let mut refined_schedule = Schedule::new();
     let mut errors = vec![];
 
     for node in schedule.iter() {
         match node {
             ProgramNode::OfExp(exp) => {
-                match T::type_check_expression(exp, &mut environment) {
+                let checked = T::refine_expression(exp, &mut environment)
+                    .and_then(|exp| {
+                        T::type_check_expression(&exp, &mut environment)
+                            .map(|_| exp)
+                    });
+                match checked {
                     Err(message) => {
                         errors.push(message);
                     }
-                    Ok(_) => {
+                    Ok(exp) => {
                         debug!("type checked expression: {:?}", exp);
+                        refined_schedule.add_expression(&exp);
                     }
                 }
             }
             ProgramNode::OfStm(stm) => {
-                match T::type_check_stm(stm, &mut environment) {
+                let checked = T::refine_stm(stm, &mut environment)
+                    .and_then(|stm| {
+                        T::type_check_stm(&stm, &mut environment).map(|_| stm)
+                    });
+                match checked {
                     Err(message) => {
                         errors.push(message);
                     }
-                    Ok(_) => {
+                    Ok(stm) => {
                         debug!("type checked statement: {:?}", stm);
+                        refined_schedule.add_statement(&stm);
                     }
                 }
             }
@@ -82,13 +98,13 @@ pub fn type_check<T: TypeTheory + Kernel + Reducer>(
     debug!("Type checking done.");
 
     if errors.is_empty() {
-        Ok(schedule)
+        Ok(refined_schedule)
     } else {
         Err(LofError::aggregate(errors))
     }
 }
 
-pub fn execute<T: TypeTheory + Kernel + Reducer>(
+pub fn execute<T: TypeTheory + Refiner + Kernel + Reducer>(
     config: &Config,
     workspace: &str,
 ) -> Result<(), LofError> {
@@ -117,7 +133,7 @@ pub fn read_input() -> Result<String, LofError> {
     Ok(buffer)
 }
 
-pub fn interactive<T: TypeTheory + Kernel + Reducer>(
+pub fn interactive<T: TypeTheory + Refiner + Kernel + Reducer>(
     config: &Config,
     _workspace: &str,
 ) -> Result<(), LofError> {
@@ -139,6 +155,13 @@ pub fn interactive<T: TypeTheory + Kernel + Reducer>(
         };
         match T::elaborate_node(&node)? {
             L(exp) => {
+                let exp = match T::refine_expression(&exp, &mut program.environment) {
+                    Err(message) => {
+                        println!("Refinement error: {}", message);
+                        continue;
+                    }
+                    Ok(exp) => exp,
+                };
                 match T::type_check_expression(&exp, &mut program.environment) {
                     Err(message) => {
                         println!("Type checking error: {}", message);
@@ -151,6 +174,13 @@ pub fn interactive<T: TypeTheory + Kernel + Reducer>(
                 println!("{:?}", result);
             }
             R(stm) => {
+                let stm = match T::refine_stm(&stm, &mut program.environment) {
+                    Err(message) => {
+                        println!("Refinement error: {}", message);
+                        continue;
+                    }
+                    Ok(stm) => stm,
+                };
                 match T::type_check_stm(&stm, &mut program.environment) {
                     Err(message) => {
                         println!("Type checking error: {}", message);
@@ -310,7 +340,7 @@ mod unit_tests {
         type_theory::{
             cic::cic::Cic,
             fol::fol::Fol,
-            interface::{Kernel, Reducer},
+            interface::{Kernel, Reducer, Refiner},
         },
     };
 
@@ -386,7 +416,7 @@ mod unit_tests {
     #[test]
     fn test_dedicated_scripts() {
         /// directory navigation & script execution function
-        fn test_scripts_run<T: Kernel + Reducer>(
+        fn test_scripts_run<T: Refiner + Kernel + Reducer>(
             base_dir: &str,
             config: Config,
             error_prefix: &str,

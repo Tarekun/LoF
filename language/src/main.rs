@@ -42,6 +42,9 @@ pub mod type_theory {
         mod cic_utils;
         pub mod elaboration;
         mod evaluation;
+        mod metavariables;
+        mod patterns;
+        mod refiner;
         mod tactics;
         mod type_check;
         mod unification;
@@ -104,7 +107,7 @@ use tracing::{debug, error};
 use type_theory::{
     cic::cic::Cic,
     fol::fol::Fol,
-    interface::{Kernel, Reducer, TypeTheory},
+    interface::{Kernel, Reducer, Refiner, TypeTheory},
 };
 
 fn determine_entrypoint(args: &[String]) -> EntryPoint {
@@ -123,7 +126,7 @@ fn determine_entrypoint(args: &[String]) -> EntryPoint {
     }
 }
 
-fn run_with_theory<T: TypeTheory + Kernel + Reducer>(
+fn run_with_theory<T: TypeTheory + Refiner + Kernel + Reducer>(
     config: Config,
     filepath: &str,
     entrypoint: EntryPoint,

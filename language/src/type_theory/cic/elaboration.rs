@@ -1,7 +1,8 @@
 use super::cic::{
     CicTerm,
     CicTerm::{
-        Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+        Abstraction, Application, Let, Match, Meta, Product, Sort,
+        Variable,
     },
 };
 use crate::error::LofError;
@@ -10,7 +11,7 @@ use crate::misc::Union;
 use crate::misc::Union::{L, R};
 use crate::parser::api::{Expression, LofAst, LofStatement, Statement, Tactic};
 use crate::runtime::program::Schedule;
-use crate::type_theory::cic::cic::{Cic, NameKind};
+use crate::type_theory::cic::cic::{Cic, NameKind, HOLE_INDEX};
 use crate::type_theory::cic::cic_utils::application_args;
 // use crate::type_theory::cic::cic_utils::index_variables_in_store;
 use crate::type_theory::commons::elaboration::{
@@ -158,7 +159,7 @@ fn elaborate_expression_rec(ast: &Expression, store: &ElabStore) -> CicTerm {
         Expression::Arrow(domain, codomain) => {
             elaborate_arrow(domain, codomain, store)
         }
-        Expression::Inferator() => elaborate_meta(),
+        Expression::Inferator() => Meta(HOLE_INDEX),
         _ => panic!("Expression primitive {:?} is not supported in CIC", ast),
     };
 
@@ -167,18 +168,6 @@ fn elaborate_expression_rec(ast: &Expression, store: &ElabStore) -> CicTerm {
 }
 //
 //
-#[allow(non_upper_case_globals)]
-static mut next_index: i32 = 0;
-fn elaborate_meta() -> CicTerm {
-    //TODO well... this causes issues with tests
-    //'twas unsafe indeed...
-    //unsafe my ass stupid crab
-    unsafe {
-        let index = next_index;
-        next_index += 1;
-        return Meta(index);
-    }
-}
 //
 fn is_sort(var_name: &str) -> bool {
     //TODO this should probably be at the parser level

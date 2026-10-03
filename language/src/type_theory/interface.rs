@@ -47,7 +47,10 @@ pub trait TypeTheory {
 
     /// Computes default system equality. Returns Ok(()) if the check is
     /// successfull, an error message otherwise.
-    /// This is the equality checked used by the commons library for consistency
+    /// This is the equality checked used by the commons library for consistency.
+    /// For systems with subtyping (eg sort cumulativity) the check is
+    /// directional: `type1` is the expected type and `type2` the actual one,
+    /// ie it checks that a `type2` can be used where a `type1` is required
     fn type_judgemental_equality(
         env: &Environment<Self>,
         type1: &Self::Type,
@@ -109,7 +112,13 @@ pub trait TypeTheory {
     }
 }
 
-/// Kernel module, implements the type checking algorithms
+/// Kernel module, implements the type checking algorithms.
+///
+/// The kernel is the trusted core of the system: it only accepts fully
+/// elaborated expressions (ie without holes/metavariables, those are the
+/// `Refiner`'s job) and it never performs inference or unification. Every
+/// equality it needs is checked through `TypeTheory::type_judgemental_equality`
+/// (definitional equality).
 pub trait Kernel: TypeTheory {
     /// Type checks the term and returns its type.
     fn type_check_term(
@@ -144,76 +153,40 @@ pub trait Kernel: TypeTheory {
         Self: Sized;
 }
 
-pub trait TypeInference: TypeTheory {
-    fn type_unify(
-        type1: &Self::Type,
-        type2: &Self::Type,
-    ) -> Result<Substitution<Self::Type>, LofError>;
-
-    fn apply_so_substitution(
-        typ: &Self::Type,
-        mgu: &Substitution<Self::Type>,
-    ) -> Self::Type;
-}
-
-/// Refiner module, implements unification
+/// Refiner module: the untrusted elaboration layer sitting between the
+/// elaborator and the `Kernel`.
+///
+/// It takes expressions/statements that may contain holes (metavariables)
+/// and returns equivalent ones where every hole has been resolved, typically
+/// by walking the expression like the `Kernel` would, turning holes into
+/// metavariables and unifying wherever the `Kernel` checks an equality.
+///
+/// Its output is always re-checked by the `Kernel`, so bugs in here can
+/// only make the system reject programs, never accept ill typed ones.
+/// Systems without holes can use the default identity implementation.
 pub trait Refiner: TypeTheory {
-    /// Collects unification constraints necessary for `term`
-    fn term_collect_unifications(
-        term: &Self::Term,
-        environment: &mut Environment<Self>,
-    ) -> Result<Vec<(Self::Exp, Self::Exp)>, LofError>
+    /// Resolves all the holes in `exp`
+    fn refine_expression(
+        exp: &Self::Exp,
+        _environment: &mut Environment<Self>,
+    ) -> Result<Self::Exp, LofError>
     where
-        Self: Sized;
+        Self: Sized,
+    {
+        Ok(exp.to_owned())
+    }
 
-    /// Collects unification constraints necessary for `typee`
-    fn type_collect_unifications(
-        typee: &Self::Type,
-        environment: &mut Environment<Self>,
-    ) -> Result<Vec<(Self::Exp, Self::Exp)>, LofError>
+    /// Resolves all the holes in `stm`, including running tactic proofs
+    /// into proof terms
+    fn refine_stm(
+        stm: &Stm<Self>,
+        _environment: &mut Environment<Self>,
+    ) -> Result<Stm<Self>, LofError>
     where
-        Self: Sized;
-
-    /// Algorithm to compute the MCU given a set of constraints.
-    /// Returns a substitution for all solvable meta variables or an error
-    fn solve_unifications(
-        constraints: Vec<(Self::Exp, Self::Exp)>,
-        environment: &mut Environment<Self>,
-    ) -> Result<Substitution<Self::Exp>, LofError>
-    where
-        Self: Sized;
-
-    /// Applies a given Substitution to `term`
-    fn term_apply_unifier(
-        term: &Self::Term,
-        substitution: &Substitution<Self::Exp>,
-    ) -> Self::Term;
-
-    /// Applies a given Substitution to `typee`
-    fn type_apply_unifier(
-        typee: &Self::Type,
-        substitution: &Substitution<Self::Exp>,
-    ) -> Self::Type;
-
-    /// Check if the two terms provided unify with one another
-    /// ie they are structurally equal, given a unifier for metavariables
-    fn terms_unify(
-        environment: &mut Environment<Self>,
-        term1: &Self::Term,
-        term2: &Self::Term,
-    ) -> Result<(), LofError>
-    where
-        Self: Sized;
-
-    /// Check if the two types provided unify with one another
-    /// ie they are structurally equal, given a unifier for metavariables
-    fn types_unify(
-        environment: &mut Environment<Self>,
-        type1: &Self::Type,
-        type2: &Self::Type,
-    ) -> Result<(), LofError>
-    where
-        Self: Sized;
+        Self: Sized,
+    {
+        Ok(stm.to_owned())
+    }
 }
 
 /// Reducer module, implements the execution of programs
@@ -251,21 +224,18 @@ pub trait Reducer: TypeTheory {
         Self: Sized;
 }
 
-/// Interactive module, implements tactic checking for interactive theorem proving
+/// Interactive module, implements the tactic engine for interactive theorem
+/// proving. Tactics are part of the untrusted layer: they build a proof term
+/// that is then checked by the `Kernel` like any other proof
 pub trait Interactive: TypeTheory {
-    /// Canonical proof hole term for partial proofs
-    fn proof_hole() -> Self::Term;
-    /// Canonical empty  target signaling the completeness of the proof
-    fn empty_target() -> Self::Type;
-
-    /// Proof checking for the current `tactic` given a `target` and a `partial_proof`.
-    /// Returns an updated (proof_term, subgoals) pair
-    fn type_check_tactic(
+    /// Runs the `tactics` against the goal `formula` and returns the
+    /// constructed proof term. Fails if the tactics dont apply or if goals
+    /// are left unproven
+    fn run_tactics(
         environment: &mut Environment<Self>,
-        tactic: &Tactic<Self::Term, Self::Type>,
-        target: &Self::Type,
-        partial_proof: &Self::Term,
-    ) -> Result<(Self::Term, Vec<Self::Type>), LofError>
+        formula: &Self::Type,
+        tactics: &[Tactic<Self::Term, Self::Type>],
+    ) -> Result<Self::Term, LofError>
     where
         Self: Sized;
 }

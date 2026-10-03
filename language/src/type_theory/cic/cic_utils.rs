@@ -3,11 +3,12 @@ use super::cic::CicTerm::{
 };
 use super::cic::{Cic, CicTerm};
 use crate::misc::simple_map;
-use crate::type_theory::cic::cic::{NameKind, PLACEHOLDER_DBI};
+use crate::type_theory::cic::cic::{NameKind, HOLE_INDEX, PLACEHOLDER_DBI};
 use crate::type_theory::cic::elaboration::index_variables_in_store;
 use crate::type_theory::commons::utils::{
     generic_multiarg_fun_type, ElabStore,
 };
+use std::collections::HashSet;
 use std::fmt;
 
 fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -47,6 +48,7 @@ fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Let(var_name, _, body, scope) => {
             write!(f, "let {} := {} in\n{}", var_name, body, scope)
         }
+        Meta(index) if *index == HOLE_INDEX => write!(f, "?"),
         Meta(index) => write!(f, "?[{}]", index),
     }
 }
@@ -127,24 +129,6 @@ pub fn clone_product_with_different_result(
     }
 }
 
-/// Clones the given `proof_term`, swapping the hole with the given `new_body`
-pub fn swap_proof_hole(proof_term: &CicTerm, new_body: &CicTerm) -> CicTerm {
-    match proof_term {
-        Abstraction(var_name, var_type, body) => {
-            let new_body = swap_proof_hole(body, new_body);
-            Abstraction(
-                var_name.to_owned(),
-                var_type.clone(),
-                Box::new(new_body),
-            )
-        }
-        Sort(_) => new_body.to_owned(),
-        Variable(_, _) => new_body.to_owned(),
-        Application(_, _) => new_body.to_owned(),
-        _ => panic!("TODO: handle better"),
-    }
-}
-
 /// Returns the innermost body term of a serie of concatenated Products
 /// (ie the return type of a function)
 pub fn get_prod_innermost(term: &CicTerm) -> &CicTerm {
@@ -186,14 +170,6 @@ pub fn is_instance_of(term: &CicTerm, name: &str) -> bool {
     }
 }
 
-/// Returns `true` if `term` corresponds to a constant symbol, `false` otherwise
-pub fn is_constant(term: &CicTerm) -> bool {
-    match term {
-        Variable(_, NameKind::Const()) => true,
-        _ => false,
-    }
-}
-
 /// Given a `term` returns `true` if it contains a reference to the variable `name`
 pub fn references(term: &CicTerm, name: &str) -> bool {
     match term {
@@ -223,59 +199,6 @@ pub fn check_positivity(function_type: &CicTerm, name: &str) -> bool {
     }
 
     true
-}
-
-/// Returns `term` where each instance of the meta variable `target` is swapped with `arg`
-pub fn substitute_meta(term: &CicTerm, target: &i32, arg: &CicTerm) -> CicTerm {
-    match term {
-        Meta(index) => {
-            if index == target {
-                arg.clone()
-            } else {
-                term.clone()
-            }
-        }
-        Sort(_) => term.clone(),
-        Variable(_, _) => term.clone(),
-        Application(left, right) => Application(
-            Box::new(substitute_meta(left, target, arg)),
-            Box::new(substitute_meta(right, target, arg)),
-        ),
-        Abstraction(var_name, domain, codomain) => Abstraction(
-            var_name.to_string(),
-            Box::new(substitute_meta(domain, target, arg)),
-            Box::new(substitute_meta(codomain, target, arg)),
-        ),
-        Product(var_name, domain, codomain) => Product(
-            var_name.to_string(),
-            Box::new(substitute_meta(domain, target, arg)),
-            Box::new(substitute_meta(codomain, target, arg)),
-        ),
-        Let(var_name, var_type, body, scope) => Let(
-            var_name.to_string(),
-            Box::new(if var_type.is_some() {
-                Some(substitute_meta(
-                    (**var_type).as_ref().unwrap(),
-                    target,
-                    arg,
-                ))
-            } else {
-                None
-            }),
-            Box::new(substitute_meta(body, target, arg)),
-            Box::new(substitute_meta(scope, target, arg)),
-        ),
-        Match(matched_term, branches) => Match(
-            Box::new(substitute_meta(matched_term, target, arg)),
-            //TODO i dont want to clone branches here tbh
-            simple_map(branches.clone(), |(pattern, body)| {
-                (
-                    substitute_meta(&pattern, target, arg),
-                    substitute_meta(&body, target, arg),
-                )
-            }),
-        ),
-    }
 }
 
 /// The binder names a match pattern introduces, depth first left to right:
@@ -368,61 +291,83 @@ pub fn open_term(body: &CicTerm, name: &str) -> CicTerm {
 /// Inverse of `open_term`: turns the locally free `name` back into the De
 /// Bruijn index of the binder being rebuilt around `body`.
 pub fn close_term(body: &CicTerm, name: &str) -> CicTerm {
-    fn solver(term: &CicTerm, name: &str, depth: i32) -> CicTerm {
+    close_term_as(body, name, name)
+}
+
+/// `close_term` that also renames the binder being rebuilt from `name` to
+/// `new_name`: the closed references, and any reference already bound to a
+/// binder called `name`, are renamed accordingly. Used to get rid of the
+/// unique names the refiner opens binders with
+pub fn close_term_as(body: &CicTerm, name: &str, new_name: &str) -> CicTerm {
+    fn solver(
+        term: &CicTerm,
+        name: &str,
+        new_name: &str,
+        depth: i32,
+    ) -> CicTerm {
+        let rename = |var_name: &str| {
+            if var_name == name {
+                new_name.to_string()
+            } else {
+                var_name.to_string()
+            }
+        };
         match term {
             Sort(_) | Meta(_) => term.clone(),
             Variable(_, NameKind::Const()) => term.clone(),
             Variable(var_name, NameKind::Bound(dbi)) => {
                 if *dbi >= depth {
                     // a binder is being put back in front of it
-                    Variable(var_name.to_string(), NameKind::Bound(dbi + 1))
+                    Variable(rename(var_name), NameKind::Bound(dbi + 1))
                 } else {
-                    term.clone()
+                    Variable(rename(var_name), NameKind::Bound(*dbi))
                 }
             }
             Variable(var_name, NameKind::Local()) => {
                 if var_name == name {
-                    Variable(var_name.to_string(), NameKind::Bound(depth))
+                    Variable(new_name.to_string(), NameKind::Bound(depth))
                 } else {
                     term.clone()
                 }
             }
             Application(left, right) => Application(
-                Box::new(solver(left, name, depth)),
-                Box::new(solver(right, name, depth)),
+                Box::new(solver(left, name, new_name, depth)),
+                Box::new(solver(right, name, new_name, depth)),
             ),
             Abstraction(var_name, domain, codomain) => Abstraction(
-                var_name.to_string(),
-                Box::new(solver(domain, name, depth)),
-                Box::new(solver(codomain, name, depth + 1)),
+                rename(var_name),
+                Box::new(solver(domain, name, new_name, depth)),
+                Box::new(solver(codomain, name, new_name, depth + 1)),
             ),
             Product(var_name, domain, codomain) => Product(
-                var_name.to_string(),
-                Box::new(solver(domain, name, depth)),
-                Box::new(solver(codomain, name, depth + 1)),
+                rename(var_name),
+                Box::new(solver(domain, name, new_name, depth)),
+                Box::new(solver(codomain, name, new_name, depth + 1)),
             ),
             Let(var_name, var_type, definition, scope) => Let(
-                var_name.to_string(),
+                rename(var_name),
                 Box::new(
-                    (**var_type).as_ref().map(|t| solver(t, name, depth + 1)),
+                    (**var_type)
+                        .as_ref()
+                        .map(|t| solver(t, name, new_name, depth + 1)),
                 ),
-                Box::new(solver(definition, name, depth)),
-                Box::new(solver(scope, name, depth + 1)),
+                Box::new(solver(definition, name, new_name, depth)),
+                Box::new(solver(scope, name, new_name, depth + 1)),
             ),
             Match(matched_term, branches) => Match(
-                Box::new(solver(matched_term, name, depth)),
+                Box::new(solver(matched_term, name, new_name, depth)),
                 simple_map(branches.clone(), |(pattern, branch_body)| {
                     let inner = depth + pattern_binder_count(&pattern);
                     (
-                        solver(&pattern, name, inner),
-                        solver(&branch_body, name, inner),
+                        solver(&pattern, name, new_name, inner),
+                        solver(&branch_body, name, new_name, inner),
                     )
                 }),
             ),
         }
     }
 
-    solver(body, name, 0)
+    solver(body, name, new_name, 0)
 }
 
 /// Given a `term` and a variable, returns a term where each instance of
@@ -615,19 +560,32 @@ pub fn index_variables(term: &CicTerm) -> CicTerm {
     index_variables_in_store(term, &ElabStore::empty())
 }
 
-/// Returns `term` where every occurance of `var_name` as a variable
-/// is replaced as a constant
-pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
-    substitute(
-        &term,
-        var_name,
-        &Variable(var_name.to_string(), NameKind::Const()),
-    )
+//########################### LOCALLY NAMELESS UTILITIES
+/// Separator between the user facing name of a binder and the unique suffix
+/// the refiner appends when opening it (see `NameGenerator`)
+pub const UNIQUE_NAME_SEPARATOR: char = '#';
+/// Returns the user facing part of a (possibly) unique name
+pub fn strip_unique_name(name: &str) -> &str {
+    match name.rsplit_once(UNIQUE_NAME_SEPARATOR) {
+        Some((base, _)) => base,
+        None => name,
+    }
 }
 
-pub fn alpha_equivalent(actual: &CicTerm, expected: &CicTerm) -> bool {
+/// Returns `true` iff `name` was generated by a `NameGenerator`
+pub fn is_unique_name(name: &str) -> bool {
+    name.contains(UNIQUE_NAME_SEPARATOR)
+}
+
+pub fn alpha_equivalent(
+    actual: &CicTerm,
+    expected: &CicTerm,
+    with_cumulativity: bool,
+) -> bool {
     match (actual, expected) {
-        (Sort(s1), Sort(s2)) => s1 == s2,
+        (Sort(s1), Sort(s2)) => {
+            s1 == s2 || (with_cumulativity && s1 == "PROP" && s2 == "TYPE")
+        }
         (Meta(i1), Meta(i2)) => i1 == i2,
         (
             Variable(_, NameKind::Bound(i1)),
@@ -637,29 +595,218 @@ pub fn alpha_equivalent(actual: &CicTerm, expected: &CicTerm) -> bool {
         | (_, Variable(_, NameKind::Bound(_))) => false,
         (Variable(n1, _), Variable(n2, _)) => n1 == n2,
         (Abstraction(_, d1, b1), Abstraction(_, d2, b2)) => {
-            alpha_equivalent(d1, d2) && alpha_equivalent(b1, b2)
+            alpha_equivalent(d1, d2, with_cumulativity)
+                && alpha_equivalent(b1, b2, with_cumulativity)
         }
         (Product(_, d1, c1), Product(_, d2, c2)) => {
-            alpha_equivalent(d1, d2) && alpha_equivalent(c1, c2)
+            alpha_equivalent(d1, d2, with_cumulativity)
+                && alpha_equivalent(c1, c2, with_cumulativity)
         }
         (Application(f1, a1), Application(f2, a2)) => {
-            alpha_equivalent(f1, f2) && alpha_equivalent(a1, a2)
+            alpha_equivalent(f1, f2, with_cumulativity)
+                && alpha_equivalent(a1, a2, with_cumulativity)
         }
         (Let(_, _, v1, s1), Let(_, _, v2, s2)) => {
-            alpha_equivalent(v1, v2) && alpha_equivalent(s1, s2)
+            alpha_equivalent(v1, v2, with_cumulativity)
+                && alpha_equivalent(s1, s2, with_cumulativity)
         }
         (Match(m1, branches1), Match(m2, branches2)) => {
-            alpha_equivalent(m1, m2)
+            alpha_equivalent(m1, m2, with_cumulativity)
                 && branches1.len() == branches2.len()
                 && branches1.iter().zip(branches2.iter()).all(
                     |((p1, b1), (p2, b2))| {
-                        alpha_equivalent(p1, p2) && alpha_equivalent(b1, b2)
+                        alpha_equivalent(p1, p2, with_cumulativity)
+                            && alpha_equivalent(b1, b2, with_cumulativity)
                     },
                 )
         }
         _ => false,
     }
 }
+
+/// Returns the names of all the locally free variables occurring in `term`
+pub fn free_locals(term: &CicTerm) -> HashSet<String> {
+    fn solver(term: &CicTerm, acc: &mut HashSet<String>) {
+        match term {
+            Variable(name, NameKind::Local()) => {
+                acc.insert(name.to_string());
+            }
+            Sort(_) | Meta(_) | Variable(_, _) => {}
+            Abstraction(_, l, r) | Product(_, l, r) | Application(l, r) => {
+                solver(l, acc);
+                solver(r, acc);
+            }
+            Let(_, var_type, body, scope) => {
+                if let Some(typee) = var_type.as_ref() {
+                    solver(typee, acc);
+                }
+                solver(body, acc);
+                solver(scope, acc);
+            }
+            Match(matched_term, branches) => {
+                solver(matched_term, acc);
+                for (pattern, body) in branches {
+                    solver(pattern, acc);
+                    solver(body, acc);
+                }
+            }
+        }
+    }
+
+    let mut acc = HashSet::new();
+    solver(term, &mut acc);
+    acc
+}
+
+/// Returns `true` iff the metavariable `index` occurs in `term`
+pub fn meta_occurs(index: i32, term: &CicTerm) -> bool {
+    match term {
+        Meta(other) => *other == index,
+        Sort(_) | Variable(_, _) => false,
+        Abstraction(_, l, r) | Product(_, l, r) | Application(l, r) => {
+            meta_occurs(index, l) || meta_occurs(index, r)
+        }
+        Let(_, var_type, body, scope) => {
+            var_type
+                .as_ref()
+                .as_ref()
+                .map_or(false, |t| meta_occurs(index, t))
+                || meta_occurs(index, body)
+                || meta_occurs(index, scope)
+        }
+        Match(matched_term, branches) => {
+            meta_occurs(index, matched_term)
+                || branches.iter().any(|(pattern, body)| {
+                    meta_occurs(index, pattern) || meta_occurs(index, body)
+                })
+        }
+    }
+}
+
+/// Replaces the locally free variable `name` with `value` inside `term`
+pub fn substitute_local(
+    term: &CicTerm,
+    name: &str,
+    value: &CicTerm,
+) -> CicTerm {
+    substitute_and_lift(&close_term(term, name), name, value)
+}
+
+/// Rebuilds every binder of `term` that was opened with a unique name (see
+/// `NameGenerator`): the locals still referring to it are turned back
+/// into De Bruijn indices and the binder gets its user facing name back.
+/// Needed by the tactic engine, where `intro` builds a binder whose body is a
+/// goal solved only later, with terms mentioning the introduced local
+pub fn reclose_unique_binders(term: &CicTerm) -> CicTerm {
+    fn close_binder(body: &CicTerm, name: &str) -> (String, CicTerm) {
+        let body = reclose_unique_binders(body);
+        if is_unique_name(name) {
+            let base = strip_unique_name(name).to_string();
+            let closed = close_term_as(&open_term(&body, name), name, &base);
+            (base, closed)
+        } else {
+            (name.to_string(), body)
+        }
+    }
+
+    match term {
+        Sort(_) | Meta(_) | Variable(_, _) => term.clone(),
+        Application(left, right) => Application(
+            Box::new(reclose_unique_binders(left)),
+            Box::new(reclose_unique_binders(right)),
+        ),
+        Abstraction(var_name, domain, body) => {
+            let (name, body) = close_binder(body, var_name);
+            Abstraction(
+                name,
+                Box::new(reclose_unique_binders(domain)),
+                Box::new(body),
+            )
+        }
+        Product(var_name, domain, codomain) => {
+            let (name, codomain) = close_binder(codomain, var_name);
+            Product(
+                name,
+                Box::new(reclose_unique_binders(domain)),
+                Box::new(codomain),
+            )
+        }
+        Let(var_name, var_type, definition, scope) => {
+            let (name, scope) = close_binder(scope, var_name);
+            Let(
+                name,
+                Box::new((**var_type).as_ref().map(reclose_unique_binders)),
+                Box::new(reclose_unique_binders(definition)),
+                Box::new(scope),
+            )
+        }
+        Match(matched_term, branches) => Match(
+            Box::new(reclose_unique_binders(matched_term)),
+            simple_map(branches.clone(), |(pattern, body)| {
+                let binders = pattern_binder_names(&pattern);
+                let mut pattern = reclose_unique_binders(&pattern);
+                let mut body = reclose_unique_binders(&body);
+                // reopen the whole telescope (innermost first), then close it
+                // back (outermost first) renaming every unique binder
+                for binder in binders.iter().rev() {
+                    pattern = open_term(&pattern, binder);
+                    body = open_term(&body, binder);
+                }
+                for binder in binders.iter() {
+                    let base = strip_unique_name(binder);
+                    pattern = close_term_as(&pattern, binder, base);
+                    body = close_term_as(&body, binder, base);
+                }
+                (pattern, body)
+            }),
+        ),
+    }
+}
+
+/// Resolves the free constants of `term` that are actually local
+/// assumptions: `locals` maps user facing names to the local names in scope,
+/// the last one winning in case of shadowing. Needed for terms elaborated
+/// outside of the scope they're used in, eg tactic arguments
+pub fn localize(term: &CicTerm, locals: &[(String, String)]) -> CicTerm {
+    match term {
+        Variable(name, NameKind::Const()) => {
+            match locals.iter().rev().find(|(base, _)| base == name) {
+                Some((_, local)) => {
+                    Variable(local.to_string(), NameKind::Local())
+                }
+                None => term.clone(),
+            }
+        }
+        Sort(_) | Meta(_) | Variable(_, _) => term.clone(),
+        Application(l, r) => Application(
+            Box::new(localize(l, locals)),
+            Box::new(localize(r, locals)),
+        ),
+        Abstraction(n, d, b) => Abstraction(
+            n.to_string(),
+            Box::new(localize(d, locals)),
+            Box::new(localize(b, locals)),
+        ),
+        Product(n, d, b) => Product(
+            n.to_string(),
+            Box::new(localize(d, locals)),
+            Box::new(localize(b, locals)),
+        ),
+        Let(n, t, v, s) => Let(
+            n.to_string(),
+            Box::new((**t).as_ref().map(|t| localize(t, locals))),
+            Box::new(localize(v, locals)),
+            Box::new(localize(s, locals)),
+        ),
+        Match(m, branches) => Match(
+            Box::new(localize(m, locals)),
+            simple_map(branches.clone(), |(pattern, body)| {
+                (pattern, localize(&body, locals))
+            }),
+        ),
+    }
+}
+//########################### LOCALLY NAMELESS UTILITIES
 
 /// Given an inductive type (family) name, return the name
 /// of the respective eliminator
@@ -675,7 +822,7 @@ mod unit_tests {
             CicTerm::{Abstraction, Application, Match, Sort, Variable},
             NameKind, PLACEHOLDER_DBI,
         },
-        cic_utils::{index_variables, swap_proof_hole},
+        cic_utils::index_variables,
     };
 
     fn placeholder(name: &str) -> crate::type_theory::cic::cic::CicTerm {
@@ -741,53 +888,6 @@ mod unit_tests {
             close_term(&close_term(&opened, "T"), "P"),
             body,
             "close must be the inverse of open"
-        );
-    }
-
-    #[test]
-    fn test_swap_proof_hole_preserves_abstraction_shape() {
-        let nat = Variable("Nat".to_string(), NameKind::Const());
-        let hole = Sort("THIS_IS_A_PARTIAL_PROOF_HOLE".to_string());
-        let outer_abstraction = Abstraction(
-            "n".to_string(),
-            Box::new(nat.clone()),
-            Box::new(hole.clone()),
-        );
-
-        assert_eq!(
-            swap_proof_hole(&outer_abstraction, &nat),
-            Abstraction(
-                "n".to_string(),
-                Box::new(nat.clone()),
-                Box::new(nat.clone())
-            ),
-            "swap_proof_hole must rebuild a single Abstraction as an Abstraction"
-        );
-
-        // nested case, as produced by two successive `intro` calls
-        let inner_abstraction = Abstraction(
-            "m".to_string(),
-            Box::new(nat.clone()),
-            Box::new(hole.clone()),
-        );
-        let nested = Abstraction(
-            "n".to_string(),
-            Box::new(nat.clone()),
-            Box::new(inner_abstraction.clone()),
-        );
-
-        assert_eq!(
-            swap_proof_hole(&nested, &nat),
-            Abstraction(
-                "n".to_string(),
-                Box::new(nat.clone()),
-                Box::new(Abstraction(
-                    "m".to_string(),
-                    Box::new(nat.clone()),
-                    Box::new(nat.clone()),
-                )),
-            ),
-            "swap_proof_hole must preserve Abstraction shape through nested expressions"
         );
     }
 
