@@ -8,6 +8,7 @@ use crate::type_theory::cic::elaboration::index_variables_in_store;
 use crate::type_theory::commons::utils::{
     generic_multiarg_fun_type, ElabStore,
 };
+use std::collections::HashSet;
 use std::fmt;
 
 fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -625,9 +626,15 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
     )
 }
 
-pub fn alpha_equivalent(actual: &CicTerm, expected: &CicTerm) -> bool {
+pub fn alpha_equivalent(
+    actual: &CicTerm,
+    expected: &CicTerm,
+    with_cumulativity: bool,
+) -> bool {
     match (actual, expected) {
-        (Sort(s1), Sort(s2)) => s1 == s2,
+        (Sort(s1), Sort(s2)) => {
+            s1 == s2 || (with_cumulativity && s1 == "PROP" && s2 == "TYPE")
+        }
         (Meta(i1), Meta(i2)) => i1 == i2,
         (
             Variable(_, NameKind::Bound(i1)),
@@ -637,28 +644,76 @@ pub fn alpha_equivalent(actual: &CicTerm, expected: &CicTerm) -> bool {
         | (_, Variable(_, NameKind::Bound(_))) => false,
         (Variable(n1, _), Variable(n2, _)) => n1 == n2,
         (Abstraction(_, d1, b1), Abstraction(_, d2, b2)) => {
-            alpha_equivalent(d1, d2) && alpha_equivalent(b1, b2)
+            alpha_equivalent(d1, d2, with_cumulativity)
+                && alpha_equivalent(b1, b2, with_cumulativity)
         }
         (Product(_, d1, c1), Product(_, d2, c2)) => {
-            alpha_equivalent(d1, d2) && alpha_equivalent(c1, c2)
+            alpha_equivalent(d1, d2, with_cumulativity)
+                && alpha_equivalent(c1, c2, with_cumulativity)
         }
         (Application(f1, a1), Application(f2, a2)) => {
-            alpha_equivalent(f1, f2) && alpha_equivalent(a1, a2)
+            alpha_equivalent(f1, f2, with_cumulativity)
+                && alpha_equivalent(a1, a2, with_cumulativity)
         }
         (Let(_, _, v1, s1), Let(_, _, v2, s2)) => {
-            alpha_equivalent(v1, v2) && alpha_equivalent(s1, s2)
+            alpha_equivalent(v1, v2, with_cumulativity)
+                && alpha_equivalent(s1, s2, with_cumulativity)
         }
         (Match(m1, branches1), Match(m2, branches2)) => {
-            alpha_equivalent(m1, m2)
+            alpha_equivalent(m1, m2, with_cumulativity)
                 && branches1.len() == branches2.len()
                 && branches1.iter().zip(branches2.iter()).all(
                     |((p1, b1), (p2, b2))| {
-                        alpha_equivalent(p1, p2) && alpha_equivalent(b1, b2)
+                        alpha_equivalent(p1, p2, with_cumulativity)
+                            && alpha_equivalent(b1, b2, with_cumulativity)
                     },
                 )
         }
         _ => false,
     }
+}
+
+/// Returns the names of all the locally free variables occurring in `term`
+pub fn free_locals(term: &CicTerm) -> HashSet<String> {
+    fn solver(term: &CicTerm, acc: &mut HashSet<String>) {
+        match term {
+            Variable(name, NameKind::Local()) => {
+                acc.insert(name.to_string());
+            }
+            Sort(_) | Meta(_) | Variable(_, _) => {}
+            Abstraction(_, l, r) | Product(_, l, r) | Application(l, r) => {
+                solver(l, acc);
+                solver(r, acc);
+            }
+            Let(_, var_type, body, scope) => {
+                if let Some(typee) = var_type.as_ref() {
+                    solver(typee, acc);
+                }
+                solver(body, acc);
+                solver(scope, acc);
+            }
+            Match(matched_term, branches) => {
+                solver(matched_term, acc);
+                for (pattern, body) in branches {
+                    solver(pattern, acc);
+                    solver(body, acc);
+                }
+            }
+        }
+    }
+
+    let mut acc = HashSet::new();
+    solver(term, &mut acc);
+    acc
+}
+
+/// Replaces the locally free variable `name` with `value` inside `term`
+pub fn substitute_local(
+    term: &CicTerm,
+    name: &str,
+    value: &CicTerm,
+) -> CicTerm {
+    substitute_and_lift(&close_term(term, name), name, value)
 }
 
 /// Given an inductive type (family) name, return the name

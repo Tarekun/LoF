@@ -8,9 +8,10 @@ use crate::type_theory::cic::cic_utils::{
     get_arg_types, get_prod_innermost, mark_as_constant,
 };
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::{
-    Interactive, Kernel, Reducer, Refiner, TypeInference,
+use crate::type_theory::cic::unification::{
+    cic_so_unification, cic_solve_unifications,
 };
+use crate::type_theory::interface::{Interactive, Kernel, Reducer};
 
 pub fn type_check_tactic(
     environment: &mut Environment<Cic>,
@@ -49,7 +50,12 @@ fn type_check_intro(
 ) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
     match target {
         Product(_, domain, codomain) => {
-            if Cic::types_unify(environment, ass_type, domain).is_ok() {
+            if cic_solve_unifications(
+                vec![(ass_type.to_owned(), (**domain).to_owned())],
+                environment,
+            )
+            .is_ok()
+            {
                 // make the introduced assumption available to later tactic steps
                 environment.add_to_context(ass_name, ass_type);
                 let partial_proof = swap_proof_hole(partial_proof, &Abstraction(
@@ -95,7 +101,10 @@ fn type_check_exact(
     let proof_type_reduced = Cic::normalize_term(environment, &proof_type);
     let target_reduced = Cic::normalize_term(environment, target);
 
-    Cic::types_unify(environment, &proof_type_reduced, &target_reduced)?;
+    cic_solve_unifications(
+        vec![(proof_type_reduced, target_reduced)],
+        environment,
+    )?;
     Ok((swap_proof_hole(partial_proof, proof_term), vec![]))
 }
 //
@@ -109,7 +118,7 @@ fn type_check_apply(
     let lemma_type = Cic::type_check_term(lemma, environment)?;
     // TODO see if i should be able to use a bigger term than the innermost as conclusion to unify
     let conclusion = get_prod_innermost(&lemma_type);
-    if Cic::type_unify(target, conclusion).is_ok() {
+    if cic_so_unification(target, conclusion).is_ok() {
         let premises = get_arg_types(&lemma_type);
         let new_proof = swap_proof_hole(
             partial_proof,

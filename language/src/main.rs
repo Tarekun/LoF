@@ -43,6 +43,7 @@ pub mod type_theory {
         mod cic_utils;
         pub mod elaboration;
         mod evaluation;
+        mod patterns;
         mod tactics;
         mod type_check;
         mod unification;
