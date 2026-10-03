@@ -10,6 +10,7 @@ use crate::type_theory::{
     },
 };
 use std::cmp::Ordering::{self, Equal, Greater, Less};
+use std::collections::HashMap;
 
 /// Returns the ordered vector of formal argument types of nested universal quantification
 pub fn get_arg_types(forall: &CnfFormula) -> Vec<CnfFormula> {
@@ -33,40 +34,65 @@ pub fn get_forall_innermost(forall: &CnfFormula) -> CnfFormula {
 }
 
 /// Implements standard Knuth-Bendix ordering of terms. Ordering ties are not
-/// broken using the internal names, so ex. `Variable`s are all isomorphic
+/// broken using the internal names, so ex. `Variable`s are all isomorphic.
+/// Terms that can't be ordered return `Equal`
 pub fn kbo_terms(term1: &CnfTerm, term2: &CnfTerm) -> Ordering {
-    fn weight(term: &CnfTerm) -> i32 {
+    fn weight(term: &CnfTerm) -> usize {
         match term {
             Variable(_) => 1,
-            Application(_, args) => 1 + (args.len() as i32),
+            Application(_, args) => 1 + args.iter().map(weight).sum::<usize>(),
         }
     }
-
-    let w1 = weight(term1);
-    let w2 = weight(term2);
-    if w1 != w2 {
-        return w1.cmp(&w2);
-    }
-
-    // in case terms have the same weight
-    match (term1, term2) {
-        (Variable(_), Variable(_)) => Equal,
-        (Variable(_), Application(_, _)) => Less,
-        (Application(_, _), Variable(_)) => Greater,
-        (Application(_, args1), Application(_, args2)) => {
-            match args1.len().cmp(&args2.len()) {
-                Ordering::Equal => {
-                    for (argl, argr) in args1.iter().zip(args2.iter()) {
-                        match kbo_terms(argl, argr) {
-                            Ordering::Equal => continue,
-                            non_eq => return non_eq,
-                        }
-                    }
-                    Equal
-                }
-                non_eq => non_eq,
+    fn count_vars(term: &CnfTerm, counts: &mut HashMap<String, usize>) {
+        match term {
+            Variable(var) => *counts.entry(var.clone()).or_default() += 1,
+            Application(_, args) => {
+                args.iter().for_each(|arg| count_vars(arg, counts))
             }
         }
+    }
+    /// Variable condition: a term can only be greater than another if each
+    /// variable occurs in it at least as many times. Otherwise substituting a
+    /// large enough term for a variable could reverse the ordering, eg
+    /// f(X, a, a) is heavier than g(X, X) but f(h(h(a)), a, a) isnt heavier
+    /// than g(h(h(a)), h(h(a)))
+    fn dominates(
+        counts: &HashMap<String, usize>,
+        other: &HashMap<String, usize>,
+    ) -> bool {
+        other
+            .iter()
+            .all(|(var, n)| counts.get(var).is_some_and(|m| m >= n))
+    }
+
+    let (mut vars1, mut vars2) = (HashMap::new(), HashMap::new());
+    count_vars(term1, &mut vars1);
+    count_vars(term2, &mut vars2);
+
+    let ordering = match weight(term1).cmp(&weight(term2)) {
+        Equal => match (term1, term2) {
+            // in case terms have the same weight
+            (Variable(_), Variable(_)) => Equal,
+            (Variable(_), Application(_, _)) => Less,
+            (Application(_, _), Variable(_)) => Greater,
+            (Application(_, args1), Application(_, args2)) => {
+                match args1.len().cmp(&args2.len()) {
+                    Equal => args1
+                        .iter()
+                        .zip(args2)
+                        .map(|(argl, argr)| kbo_terms(argl, argr))
+                        .find(|ordering| *ordering != Equal)
+                        .unwrap_or(Equal),
+                    non_eq => non_eq,
+                }
+            }
+        },
+        non_eq => non_eq,
+    };
+    match ordering {
+        Greater if dominates(&vars1, &vars2) => Greater,
+        Less if dominates(&vars2, &vars1) => Less,
+        _ => Equal,
     }
 }
 pub fn kbo_types(φ1: &CnfFormula, φ2: &CnfFormula) -> Ordering {
@@ -115,16 +141,54 @@ pub fn kbo_types(φ1: &CnfFormula, φ2: &CnfFormula) -> Ordering {
             kbo_types(body1, body2)
         }
 
-        // order formulas by constructor kind if they are different
+        // order formulas by constructor kind if they are different. negative
+        // literals are greater than positive ones, as in the SUP literal
+        // ordering ¬(s = t) is the multiset {s, s, t, t} while s = t is {s, t}
         (Atom(_, _), _) => Ordering::Less,
         (_, Atom(_, _)) => Ordering::Greater,
-        (Not(_), _) => Ordering::Less,
-        (_, Not(_)) => Ordering::Greater,
         (Equality(_, _), _) => Ordering::Less,
         (_, Equality(_, _)) => Ordering::Greater,
+        (Not(_), _) => Ordering::Less,
+        (_, Not(_)) => Ordering::Greater,
         (Clause(_), _) => Ordering::Less,
         (_, Clause(_)) => Ordering::Greater,
     }
+}
+
+/// One way matching: returns the substitution σ of the variables of `pattern`
+/// such that `pattern`σ = `term`, if any. The variables of `term` are left
+/// untouched, as if they were constants
+pub fn match_term(
+    pattern: &CnfTerm,
+    term: &CnfTerm,
+) -> Option<Substitution<CnfTerm>> {
+    fn solver(
+        pattern: &CnfTerm,
+        term: &CnfTerm,
+        bindings: &mut HashMap<String, CnfTerm>,
+    ) -> bool {
+        match (pattern, term) {
+            (Variable(var), _) => match bindings.get(var) {
+                Some(bound) => bound == term,
+                None => {
+                    bindings.insert(var.clone(), term.clone());
+                    true
+                }
+            },
+            (Application(f, f_args), Application(g, g_args)) => {
+                f == g
+                    && f_args.len() == g_args.len()
+                    && f_args
+                        .iter()
+                        .zip(g_args)
+                        .all(|(p, t)| solver(p, t, bindings))
+            }
+            _ => false,
+        }
+    }
+
+    let mut bindings = HashMap::new();
+    solver(pattern, term, &mut bindings).then(|| Substitution::from(bindings))
 }
 
 /// Returns a clone of the first subterm of `term` that can be unified with `target`.
@@ -289,11 +353,13 @@ pub fn extract_answer(
 mod tests {
     use crate::type_theory::commons::unification::Substitution;
     use crate::type_theory::grammars::cnf::{
-        CnfFormula::{Atom, Clause, Not},
+        CnfFormula::{Atom, Clause, Equality, Not},
         CnfTerm::{self, Application, Variable},
     };
+    use crate::type_theory::grammars::traits::Unification;
+    use crate::type_theory::sup::freedom::drop_maximal_literals;
     use crate::type_theory::sup::sup_utils::{
-        extract_answer, kbo_terms, kbo_types, with_answer_literal,
+        extract_answer, kbo_terms, kbo_types, match_term, with_answer_literal,
     };
     use std::cmp::Ordering::{Equal, Greater, Less};
 
@@ -362,6 +428,28 @@ mod tests {
     }
 
     #[test]
+    fn test_match_term() {
+        let var = |name: &str| Variable(name.to_string());
+        let f =
+            |l: CnfTerm, r: CnfTerm| Application("f".to_string(), vec![l, r]);
+        let a = Application("a".to_string(), vec![]);
+
+        let σ = match_term(&f(var("X"), var("X")), &f(a.clone(), a.clone()))
+            .expect("A pattern doesnt match its instance");
+        assert_eq!(σ.get("X"), Some(&a));
+        assert!(
+            match_term(&f(var("X"), var("X")), &f(a.clone(), var("Y")))
+                .is_none(),
+            "A pattern matches binding one variable to two different terms"
+        );
+        assert!(
+            match_term(&f(a.clone(), var("X")), &f(var("Y"), a.clone()))
+                .is_none(),
+            "Matching binds variables of the matched term"
+        );
+    }
+
+    #[test]
     fn test_kbo_term() {
         let anon = Variable("_".to_string());
         let arg = Variable("arg".to_string());
@@ -373,14 +461,83 @@ mod tests {
         );
 
         assert_eq!(
-            kbo_terms(&anon, &Application("f".to_string(), vec![arg.clone()])),
+            kbo_terms(&anon, &Application("f".to_string(), vec![anon.clone()])),
             Less,
             "simple variable isnt strictly less than function application"
         );
         assert_eq!(
-            kbo_terms(&Application("f".to_string(), vec![arg.clone()]), &anon),
+            kbo_terms(&Application("f".to_string(), vec![anon.clone()]), &anon),
             Greater,
             "simple variable isnt strictly less than function application"
+        );
+        assert_eq!(
+            kbo_terms(&anon, &Application("f".to_string(), vec![arg.clone()])),
+            Equal,
+            "variable is ordered against a term it doesnt occur in"
+        );
+    }
+
+    #[test]
+    fn test_kbo_term_stable_under_substitution() {
+        let x = Variable("X".to_string());
+        let a = Application("a".to_string(), vec![]);
+        let h = |t: CnfTerm| Application("h".to_string(), vec![t]);
+        let f = |args: Vec<CnfTerm>| Application("f".to_string(), args);
+        let g = |args: Vec<CnfTerm>| Application("g".to_string(), args);
+        let σ = Substitution::from([("X".to_string(), h(h(a.clone())))]);
+
+        // f(X, a, a) is heavier than g(X, X), but X occurs more in g
+        let left = f(vec![x.clone(), a.clone(), a.clone()]);
+        let right = g(vec![x.clone(), x.clone()]);
+        assert_eq!(
+            kbo_terms(
+                &left.apply_substitution(&σ),
+                &right.apply_substitution(&σ)
+            ),
+            Less,
+            "f(h(h(a)), a, a) isnt less than g(h(h(a)), h(h(a)))"
+        );
+        assert_eq!(
+            kbo_terms(&left, &right),
+            Equal,
+            "terms are ordered although an instance reverses their ordering"
+        );
+        assert_eq!(
+            kbo_terms(&right, &left),
+            Equal,
+            "terms are ordered although an instance reverses their ordering"
+        );
+
+        // f(X, X) is heavier than g(X) and stays so in every instance
+        assert_eq!(
+            kbo_terms(&f(vec![x.clone(), x.clone()]), &g(vec![x.clone()])),
+            Greater,
+            "terms satisfying the variable condition arent ordered by weight"
+        );
+    }
+
+    #[test]
+    fn test_kbo_term_weights_whole_terms() {
+        let zero = Application("0".to_string(), vec![]);
+        let s = |t: CnfTerm| Application("s".to_string(), vec![t]);
+        let add =
+            |l: CnfTerm, r: CnfTerm| Application("+".to_string(), vec![l, r]);
+        let small =
+            add(s(Variable("n".to_string())), Variable("m".to_string()));
+        let big = add(zero.clone(), small.clone());
+
+        // with weights counting only direct arguments both weigh 3, and the
+        // tie is broken by s(n) > 0, letting demodulation by 0 + x = x
+        // rewrite +(s(n), m) to the larger +(0, +(s(n), m)) forever
+        assert_eq!(
+            kbo_terms(&small, &big),
+            Less,
+            "A term isnt less than a term containing it"
+        );
+        assert_eq!(
+            kbo_terms(&big, &small),
+            Greater,
+            "A term isnt greater than its proper subterms"
         );
     }
 
@@ -407,6 +564,40 @@ mod tests {
             kbo_types(&p, &q),
             Equal,
             "Clause with less literals isnt strictly less than one with more"
+        );
+    }
+
+    #[test]
+    fn test_negative_literals_exceed_equalities() {
+        let (x, y) = (Variable("X".to_string()), Variable("Y".to_string()));
+        let f = |t: &CnfTerm| Application("f".to_string(), vec![t.clone()]);
+        let equality = Equality(x.clone(), y.clone());
+        let negated_equality = Not(Box::new(Equality(f(&x), f(&y))));
+        let negated_atom =
+            Not(Box::new(Atom("P".to_string(), vec![x.clone(), y.clone()])));
+
+        assert_eq!(
+            kbo_types(&negated_equality, &equality),
+            Greater,
+            "Negated equalities arent greater than equalities"
+        );
+        assert_eq!(
+            kbo_types(&equality, &negated_atom),
+            Less,
+            "Equalities arent less than negated atoms"
+        );
+
+        // X = Y ∨ ¬P(X, Y) ∨ f(X) ≠ f(Y): selecting the non orientable X = Y
+        // lets it superpose into every term
+        let mut clause = vec![
+            equality.clone(),
+            negated_atom.clone(),
+            negated_equality.clone(),
+        ];
+        let selected = drop_maximal_literals(&mut clause);
+        assert!(
+            !selected.contains(&equality),
+            "Maximal literal selection picks a positive equality over negative literals"
         );
     }
 }

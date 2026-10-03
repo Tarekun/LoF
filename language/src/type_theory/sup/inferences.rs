@@ -1,30 +1,87 @@
 use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::grammars::cnf::{
-    CnfFormula::{self, Atom, Clause, Equality, Not},
-    CnfTerm::{self, Variable},
+    CnfFormula::{self, Atom, Clause, Equality, ForAll, Not},
+    CnfTerm::{self, Application, Variable},
 };
 use crate::type_theory::grammars::traits::Unification;
 use crate::type_theory::interface::Automatic;
 use crate::type_theory::sup::freedom::SelectionFunctionSignature;
 use crate::type_theory::sup::sup::Sup;
-use crate::type_theory::sup::sup_utils::find_unifiable_formula;
-use std::cmp::{max_by, min_by, Ordering::Less};
+use crate::type_theory::sup::sup_utils::{find_unifiable_formula, match_term};
+use std::cmp::{
+    max_by, min_by,
+    Ordering::{Greater, Less},
+};
 
 //########################### SIMPLIFICATION INFERENCES
+/// Rewrites every subterm of `term` that is an instance `from`σ of `from` to
+/// `to`σ, as long as `to`σ is smaller. Subterms are rewritten before the
+/// terms containing them
+fn rewrite_term(term: &CnfTerm, from: &CnfTerm, to: &CnfTerm) -> CnfTerm {
+    fn is_bound(term: &CnfTerm, σ: &Substitution<CnfTerm>) -> bool {
+        match term {
+            Variable(var) => σ.get(var).is_some(),
+            Application(_, args) => args.iter().all(|arg| is_bound(arg, σ)),
+        }
+    }
+
+    let term = match term {
+        Application(fun, args) => Application(
+            fun.to_string(),
+            args.iter().map(|arg| rewrite_term(arg, from, to)).collect(),
+        ),
+        Variable(_) => term.clone(),
+    };
+    match match_term(from, &term) {
+        // every variable of `to` must be bound, or the rewrite would
+        // introduce new variables
+        Some(σ) if is_bound(to, &σ) => {
+            let rewritten = to.apply_substitution(&σ);
+            if Sup::compare_terms(&term, &rewritten) == Greater {
+                rewritten
+            } else {
+                term
+            }
+        }
+        _ => term,
+    }
+}
+
+fn rewrite_formula(
+    φ: &CnfFormula, from: &CnfTerm, to: &CnfTerm
+) -> CnfFormula {
+    let rewrite = |term: &CnfTerm| rewrite_term(term, from, to);
+    match φ {
+        Atom(pred, args) => {
+            Atom(pred.to_string(), args.iter().map(rewrite).collect())
+        }
+        Equality(l, r) => Equality(rewrite(l), rewrite(r)),
+        Not(ψ) => Not(Box::new(rewrite_formula(ψ, from, to))),
+        Clause(literals) => Clause(
+            literals
+                .iter()
+                .map(|literal| rewrite_formula(literal, from, to))
+                .collect(),
+        ),
+        ForAll(var, var_type, body) => ForAll(
+            var.to_string(),
+            Box::new(rewrite_formula(var_type, from, to)),
+            Box::new(rewrite_formula(body, from, to)),
+        ),
+    }
+}
+
 #[allow(non_snake_case)]
 /// Applies a demodulation simplification rule to C,D, special case of superposition
-/// inference where one of the clauses is a single equality and we rewrite by the smaller term.
+/// inference where `D` is a unit equality `l = r`: every instance of either side
+/// in `C` is rewritten to the matching instance of the other side, when smaller.
 /// only the first argument `C` will be simplified
 pub fn demodulate_first(C: &CnfFormula, D: &CnfFormula) -> CnfFormula {
     if let Equality(l, r) = D {
-        // TODO check l/r arent isomorphic
-        let min = min_by(l, r, |l, r| Sup::compare_terms(l, r));
-        let max = max_by(l, r, |l, r| Sup::compare_terms(l, r));
-
-        // TODO also support mgu
         // TODO also return mgu
         // TODO verify this is correct. the paper references the requirement of (l=r) > C
-        C.substitute_formula(max, min)
+        let C = rewrite_formula(C, l, r);
+        rewrite_formula(&C, r, l)
     } else {
         C.to_owned()
     }
@@ -331,7 +388,7 @@ mod unit_tests {
     use crate::config::SelectionFunction;
     use crate::type_theory::grammars::cnf::{
         CnfFormula::{Atom, Clause, Equality, Not},
-        CnfTerm::{Application, Variable},
+        CnfTerm::{self, Application, Variable},
     };
     use crate::type_theory::sup::freedom::get_selection_fn;
     use crate::type_theory::sup::inferences::{
@@ -359,6 +416,32 @@ mod unit_tests {
             demodulate_first(&clause, &Equality(left.clone(), right.clone())),
             Clause(vec![Atom("P".to_string(), vec![right.clone()])]),
             "Demodulation didnt simplify function argument using the provided equality"
+        );
+    }
+
+    #[test]
+    fn test_demodulation_by_matching() {
+        let var = |name: &str| Variable(name.to_string());
+        let a = Application("a".to_string(), vec![]);
+        let f = |t: CnfTerm| Application("f".to_string(), vec![t]);
+        let g = |t: CnfTerm| Application("g".to_string(), vec![t]);
+        let p = |t: CnfTerm| Atom("P".to_string(), vec![t]);
+        let clause = Clause(vec![p(f(g(a.clone())))]);
+
+        assert_eq!(
+            demodulate_first(&clause, &Equality(f(g(var("X"))), var("X"))),
+            Clause(vec![p(a.clone())]),
+            "Demodulation doesnt rewrite instances of the greater side"
+        );
+        assert_eq!(
+            demodulate_first(&clause, &Equality(var("X"), f(g(var("X"))))),
+            Clause(vec![p(a.clone())]),
+            "Demodulation doesnt rewrite by equalities whose greater side is on the right"
+        );
+        assert_eq!(
+            demodulate_first(&clause, &Equality(f(var("X")), var("Y"))),
+            clause,
+            "Demodulation rewrites to a term with variables the match doesnt bind"
         );
     }
 
@@ -609,7 +692,7 @@ mod unit_tests {
         );
         // terms are constructed to enforce t < s and t' < t
         let t = Application("t".to_string(), vec![Variable("x".to_string())]);
-        let t_prime = Variable("t_prime".to_string());
+        let t_prime = Application("t_prime".to_string(), vec![]);
         let rest = Atom("P".to_string(), vec![]);
 
         // s(x,y)=t(x) ; s(x,y)=t' ⊦ s(x,y)=t(x) ; t(x)≠t'
@@ -741,7 +824,7 @@ mod unit_tests {
         // terms are constructed to enforce t < s and t' < t
         let tx = Application("t".to_string(), vec![Variable("x".to_string())]);
         let tk = Application("t".to_string(), vec![k.clone()]);
-        let t_prime = Variable("t_prime".to_string());
+        let t_prime = Application("t_prime".to_string(), vec![]);
 
         let (derived, _) = eq_factoring(
             &mut Clause(vec![
@@ -763,9 +846,13 @@ mod unit_tests {
     #[test]
     fn test_eq_factoring_keeps_unselected() {
         let selection_fn = get_selection_fn(SelectionFunction::All);
-        let s = Application("s".to_string(), vec![Variable("x".to_string())]);
-        let t = Application("t".to_string(), vec![]);
-        let t_prime = Variable("t_prime".to_string());
+        // terms are constructed to enforce t < s and t' < t
+        let s = Application(
+            "s".to_string(),
+            vec![Variable("x".to_string()), Variable("y".to_string())],
+        );
+        let t_prime = Application("t_prime".to_string(), vec![]);
+        let t = Application("t".to_string(), vec![t_prime.clone()]);
         // the answer literal is never selected, so it must be carried over as unselected
         let clause = with_answer_literal(&Clause(vec![
             Equality(s.clone(), t.clone()),
@@ -796,7 +883,7 @@ mod unit_tests {
             Application("l".to_string(), vec![Variable("x".to_string())]);
         // terms are constructed to enforce r < l and t' < t[s]
         let r = Application("r".to_string(), vec![]);
-        let t_prime = Variable("t'".to_string());
+        let t_prime = Application("t'".to_string(), vec![]);
         let t = Application("t".to_string(), vec![unifiable.clone()]);
         let t_subst = Application("t".to_string(), vec![r.clone()]);
         let p = Atom("L".to_string(), vec![unifiable.clone()]);
