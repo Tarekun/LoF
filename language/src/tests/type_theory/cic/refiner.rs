@@ -1,5 +1,6 @@
 use crate::{
     config::Config,
+    misc::Union::L,
     parser::api::{LofParser, Statement},
     runtime::program::ProgramNode,
     type_theory::{
@@ -292,6 +293,27 @@ fn test_refine_statements() {
     assert!(
         refine_statement(&mut env, &unsolvable).is_err(),
         "holes in signatures that nothing determines must be rejected"
+    );
+
+    let theorem = parse_stm(
+        "theorem t : ∀n:Nat. Nat :=\n  begin\n  intro m : Nat\n  exact s(m)\n  qed.",
+    );
+    let refined = refine_statement(&mut env, &theorem).expect("theorem refinement failed");
+    match &refined {
+        Statement::Theorem(_, _, L(proof)) => assert_eq!(
+            proof,
+            &Abstraction(
+                "m".to_string(),
+                Box::new(constant("Nat")),
+                Box::new(app(constant("s"), vec![bound("m", 0)])),
+            ),
+            "tactics must be run into a proof term"
+        ),
+        other => panic!("unexpected refined statement {:?}", other),
+    }
+    assert!(
+        Cic::type_check_stm(&refined, &mut env).is_ok(),
+        "the kernel must accept the proof built by tactics"
     );
 }
 

@@ -1,6 +1,6 @@
 use super::evaluation::{evaluate_statement, one_step_reduction};
 use super::refiner::{refine_expression, refine_statement};
-use super::tactics::type_check_tactic;
+use super::tactics::run_tactics;
 use super::type_check::{cic_convertible, type_check_sort};
 use crate::error::LofError;
 use crate::parser::api::{Expression, LofStatement, Statement, Tactic};
@@ -39,7 +39,6 @@ pub static PLACEHOLDER_DBI: i32 = -2;
 /// it carries no identity, the refiner replaces every occurrence with a fresh
 /// metavariable (whose indices are never negative)
 pub const HOLE_INDEX: i32 = -1;
-
 
 #[derive(PartialEq, Clone)]
 pub enum NameKind {
@@ -361,19 +360,11 @@ impl Reducer for Cic {
 }
 
 impl Interactive for Cic {
-    fn proof_hole() -> CicTerm {
-        CicTerm::Sort("THIS_IS_A_PARTIAL_PROOF_HOLE".to_string())
-    }
-    fn empty_target() -> CicTerm {
-        CicTerm::Sort("THIS_IS_AN_EMPTY_TERMINATION_PROOF_TARGET".to_string())
-    }
-
-    fn type_check_tactic(
+    fn run_tactics(
         environment: &mut Environment<Cic>,
-        tactic: &Tactic<CicTerm, CicTerm>,
-        target: &CicTerm,
-        partial_proof: &CicTerm,
-    ) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
-        type_check_tactic(environment, tactic, target, partial_proof)
+        formula: &CicTerm,
+        tactics: &[Tactic<CicTerm, CicTerm>],
+    ) -> Result<CicTerm, LofError> {
+        run_tactics(environment, formula, tactics)
     }
 }

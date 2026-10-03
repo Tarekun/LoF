@@ -178,14 +178,12 @@ impl Kernel for Fol {
                 body,
                 is_rec,
             ),
-            Theorem(theorem_name, formula, proof) => {
-                type_check_theorem::<Fol>(
-                    environment,
-                    theorem_name,
-                    formula,
-                    proof,
-                )
-            }
+            Theorem(theorem_name, formula, proof) => type_check_theorem::<Fol>(
+                environment,
+                theorem_name,
+                formula,
+                proof,
+            ),
             Auto(formula) => type_check_auto::<Fol>(environment, formula),
             Solve(goals) => {
                 for goal in goals {
@@ -239,22 +237,11 @@ impl Reducer for Fol {
 }
 
 impl Interactive for Fol {
-    fn proof_hole() -> Self::Term {
-        Variable("THIS_IS_A_PARTIAL_PROOF_HOLE".to_string())
-    }
-    fn empty_target() -> Self::Type {
-        Predicate(
-            "THIS_IS_AN_EMPTY_TERMINATION_PROOF_TARGET".to_string(),
-            vec![],
-        )
-    }
-
-    fn type_check_tactic(
-        environment: &mut Environment<Fol>,
-        tactic: &Tactic<Self::Term, Self::Type>,
-        target: &Self::Type,
-        partial_proof: &Self::Term,
-    ) -> Result<(Self::Term, Vec<Self::Type>), LofError> {
+    fn run_tactics(
+        _environment: &mut Environment<Fol>,
+        _formula: &Self::Type,
+        _tactics: &[Tactic<Self::Term, Self::Type>],
+    ) -> Result<Self::Term, LofError> {
         Err(LofError::unsupported(
             "FOL tactic checking is not implemented",
         ))

@@ -29,7 +29,7 @@ use crate::error::LofError;
 use crate::misc::Union::{L, R};
 use crate::parser::api::Statement;
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::{Reducer, Stm};
+use crate::type_theory::interface::{Interactive, Reducer, Stm};
 
 /// State of a refinement
 #[derive(Debug, Clone, Default)]
@@ -586,7 +586,8 @@ fn refine_fun(
     ))
 }
 
-/// Refines a statement: resolves all its holes
+/// Refines a statement: resolves all its holes and turns tactic proofs into
+/// proof terms
 pub fn refine_statement(
     environment: &mut Environment<Cic>,
     stm: &Stm<Cic>,
@@ -637,7 +638,7 @@ pub fn refine_statement(
         }
         Statement::Theorem(theorem_name, formula, proof) => {
             let formula = refine_closed_type(environment, formula)?;
-            let proof = match proof {
+            let proof_term = match proof {
                 L(proof_term) => {
                     let mut state = RefinerState::new();
                     let proof_term = check(
@@ -647,12 +648,17 @@ pub fn refine_statement(
                         &formula,
                         &format!("proof of theorem `{}`", theorem_name),
                     )?;
-                    L(state.finalize(&proof_term)?)
+                    state.finalize(&proof_term)?
                 }
-                // tactic proofs are run by the kernel
-                R(tactics) => R(tactics.to_owned()),
+                R(tactics) => Cic::run_tactics(environment, &formula, tactics)
+                    .map_err(|error| {
+                        LofError::custom(format!(
+                            "Tactic proof of theorem `{}` failed: {}",
+                            theorem_name, error
+                        ))
+                    })?,
             };
-            Ok(Statement::Theorem(theorem_name.to_owned(), formula, proof))
+            Ok(Statement::Theorem(theorem_name.to_owned(), formula, L(proof_term)))
         }
         _ => Ok(stm.to_owned()),
     }
