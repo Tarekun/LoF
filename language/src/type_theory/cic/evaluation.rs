@@ -23,6 +23,9 @@ pub fn one_step_reduction(
     term: &CicTerm,
 ) -> CicTerm {
     match term {
+        // bound variables are placeholders for the argument of their binder,
+        // so only free names should be δ-reduced
+        Variable(_, NameKind::Bound(_)) => term.clone(),
         Variable(var_name, _) => {
             reduce_variable::<Cic>(environment, var_name, term)
         }
@@ -251,12 +254,7 @@ pub fn evaluate_statement(
             )
         }
         Theorem(theorem_name, formula, proof) => {
-            evaluate_theorem::<Cic>(
-                environment,
-                theorem_name,
-                formula,
-                proof,
-            )
+            evaluate_theorem::<Cic>(environment, theorem_name, formula, proof)
         }
         Inductive(type_name, params, ariety, constructors) => {
             evaluate_inductive(
