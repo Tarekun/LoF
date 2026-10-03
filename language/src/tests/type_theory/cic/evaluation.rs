@@ -199,7 +199,7 @@ fn test_match_reduction() {
     assert_eq!(
         reduce_match(
             &mut test_env,
-            &Variable("x".to_string(), NameKind::Bound(0)),
+            &Variable("x".to_string(), NameKind::Local()),
             &vec![
                 (zero.clone(), true_term.clone()),
                 (succ_pattern.clone(), false_term.clone())
