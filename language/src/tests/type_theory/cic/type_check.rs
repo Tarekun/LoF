@@ -2168,4 +2168,50 @@ mod judgemental_equality {
             "Judgemental equality refuses λx.f(x) ≡ f"
         );
     }
+
+    #[test]
+    fn test_beta_equivalence_of_eta_expansion() {
+        let nat = Variable("nat".to_string(), NameKind::Const());
+        let mut test_env = Cic::default_environment();
+        test_env.add_to_context("nat", &Sort("TYPE".to_string()));
+        // unary function over nat
+        test_env.add_to_context(
+            "f",
+            &Product(
+                "n".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone()),
+            ),
+        );
+        // compatible argument for f
+        test_env.add_to_context("y", &nat);
+
+        let f = Variable("f".to_string(), NameKind::Const());
+        let y = Variable("y".to_string(), NameKind::Const());
+        // f(y)
+        let f_y = Application(Box::new(f.clone()), Box::new(y.clone()));
+        // (λx:nat. f(x))(y)
+        let eta_expanded_f_y = Application(
+            Box::new(Abstraction(
+                "x".to_string(),
+                Box::new(nat.clone()),
+                Box::new(Application(
+                    Box::new(f.clone()),
+                    Box::new(Variable("x".to_string(), NameKind::Bound(0))),
+                )),
+            )),
+            Box::new(y.clone()),
+        );
+
+        assert!(
+            Cic::term_judgemental_equality(&test_env, &f_y, &eta_expanded_f_y)
+                .is_ok(),
+            "Judgemental equality refuses f(y) ≡ (λx.f(x))(y)"
+        );
+        assert!(
+            Cic::term_judgemental_equality(&test_env, &eta_expanded_f_y, &f_y)
+                .is_ok(),
+            "Judgemental equality refuses (λx.f(x))(y) ≡ f(y)"
+        );
+    }
 }
