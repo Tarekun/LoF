@@ -2127,3 +2127,45 @@ mod fun_stm {
         );
     }
 }
+
+mod judgemental_equality {
+    use super::*;
+
+    #[test]
+    fn test_eta_equivalence() {
+        let nat = Variable("nat".to_string(), NameKind::Const());
+        let mut test_env = Cic::default_environment();
+        test_env.add_to_context("nat", &Sort("TYPE".to_string()));
+        // unary function over nat
+        test_env.add_to_context(
+            "f",
+            &Product(
+                "n".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone()),
+            ),
+        );
+
+        let f = Variable("f".to_string(), NameKind::Const());
+        // λx:nat. f(x)
+        let eta_expanded_f = Abstraction(
+            "x".to_string(),
+            Box::new(nat.clone()),
+            Box::new(Application(
+                Box::new(f.clone()),
+                Box::new(Variable("x".to_string(), NameKind::Bound(0))),
+            )),
+        );
+
+        assert!(
+            Cic::term_judgemental_equality(&test_env, &f, &eta_expanded_f)
+                .is_ok(),
+            "Judgemental equality refuses f ≡ λx.f(x)"
+        );
+        assert!(
+            Cic::term_judgemental_equality(&test_env, &eta_expanded_f, &f)
+                .is_ok(),
+            "Judgemental equality refuses λx.f(x) ≡ f"
+        );
+    }
+}
