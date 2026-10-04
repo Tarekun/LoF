@@ -21,6 +21,7 @@ pub mod tptp {
     pub mod problem;
     pub mod prp;
     pub mod syntax;
+    pub mod thf;
 }
 pub mod type_theory {
     // pub mod commons;
@@ -87,6 +88,7 @@ mod tests {
         mod problem;
         mod prp;
         mod syntax;
+        mod thf;
     }
     mod type_theory {
         mod fol {

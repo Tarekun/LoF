@@ -53,6 +53,11 @@ pub fn upper_word(input: &str) -> PResult<'_, &str> {
     word(|c| c.is_ascii_uppercase())(input)
 }
 
+/// `<dollar_word> ::= $<alpha_numeric>*`, eg `$i`, `$o`, `$true`
+pub fn dollar_word(input: &str) -> PResult<'_, &str> {
+    word(|c| c == '$')(input)
+}
+
 /// `<single_quoted>`: returns the content without quotes, resolving the `\'`
 /// and `\\` escapes
 pub fn single_quoted(input: &str) -> PResult<'_, String> {

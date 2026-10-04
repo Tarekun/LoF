@@ -30,7 +30,7 @@ mod end_to_end {
 
     /// Returns the paths of every `.p` problem directly under
     /// `test_artifacts/tptp/<directory>`
-    fn artifacts(directory: &str) -> Vec<String> {
+    pub(super) fn artifacts(directory: &str) -> Vec<String> {
         let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../test_artifacts/tptp")
             .join(directory);
@@ -170,8 +170,14 @@ mod end_to_end {
             Ok(problem) => match &problem.body {
                 TptpBody::Propositional(_) => decide_propositional(&problem),
                 TptpBody::Clausal(_) => decide_clausal(&problem),
+                TptpBody::HigherOrder(_) => Err(LofError::unsupported(
+                    "No automated reasoning for higher order problems",
+                )),
             }
-            .map_or_else(|err| format!("Error {}", err), |s| format!("{:?}", s)),
+            .map_or_else(
+                |err| format!("Error {}", err),
+                |s| format!("{:?}", s),
+            ),
         };
         println!("% SZS status {}", status.replace('\n', " "));
     }
@@ -392,6 +398,125 @@ mod clausal {
                 ),
             ],
             "group_problem.p doesnt resolve its selective include"
+        );
+    }
+}
+#[cfg(test)]
+mod higher_order {
+    use super::end_to_end::artifacts;
+    use crate::{
+        tptp::{
+            problem::{load_tptp_file, TptpBody},
+            syntax::Role,
+            thf::ThfInput,
+        },
+        type_theory::cic::cic::{
+            CicTerm::{
+                self, Abstraction, Application, Meta, Product, Variable,
+            },
+            NameKind, HOLE_INDEX,
+        },
+    };
+
+    /// Whether every variable of `term` is bound by one of its binders
+    fn is_closed(term: &CicTerm) -> bool {
+        match term {
+            Variable(_, kind) => *kind != NameKind::Local(),
+            Application(left, right)
+            | Abstraction(_, left, right)
+            | Product(_, left, right) => is_closed(left) && is_closed(right),
+            _ => true,
+        }
+    }
+
+    #[test]
+    fn test_higher_order_artifacts() {
+        for path in artifacts("thf") {
+            let problem = load_tptp_file(&path)
+                .unwrap_or_else(|err| panic!("Cannot load {}: {}", path, err));
+            let TptpBody::HigherOrder(inputs) = problem.body else {
+                panic!("{} isnt parsed as a higher order problem", path)
+            };
+            for input in inputs {
+                let (ThfInput::Declaration(_, term) | ThfInput::Formula(term)) =
+                    &input.formula;
+                assert!(
+                    is_closed(term),
+                    "{}: {} has unbound variables: {:?}",
+                    path,
+                    input.name,
+                    term
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_higher_order_artifact_parsing() {
+        let path = format!(
+            "{}/../test_artifacts/tptp/thf/leibniz.p",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let TptpBody::HigherOrder(inputs) = load_tptp_file(&path).unwrap().body
+        else {
+            panic!("leibniz.p isnt parsed as a higher order problem")
+        };
+        let c = |name: &str| Variable(name.to_string(), NameKind::Const());
+        let app = |fun: CicTerm, args: Vec<CicTerm>| {
+            args.into_iter()
+                .fold(fun, |fun, arg| Application(Box::new(fun), Box::new(arg)))
+        };
+        let predicate =
+            Product("_".to_string(), Box::new(c("$i")), Box::new(c("$o")));
+        let p = || Variable("P".to_string(), NameKind::Bound(0));
+        let summary: Vec<_> = inputs
+            .into_iter()
+            .map(|input| (input.name, input.role, input.formula))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                (
+                    "a_decl".to_string(),
+                    Role::Other("type".to_string()),
+                    ThfInput::Declaration("a".to_string(), c("$i"))
+                ),
+                (
+                    "b_decl".to_string(),
+                    Role::Other("type".to_string()),
+                    ThfInput::Declaration("b".to_string(), c("$i"))
+                ),
+                (
+                    "a_is_b".to_string(),
+                    Role::Axiom,
+                    ThfInput::Formula(app(
+                        c("="),
+                        vec![Meta(HOLE_INDEX), c("a"), c("b")]
+                    ))
+                ),
+                (
+                    "leibniz".to_string(),
+                    Role::Conjecture,
+                    ThfInput::Formula(app(
+                        c("!!"),
+                        vec![
+                            predicate.clone(),
+                            Abstraction(
+                                "P".to_string(),
+                                Box::new(predicate),
+                                Box::new(app(
+                                    c("=>"),
+                                    vec![
+                                        app(p(), vec![c("a")]),
+                                        app(p(), vec![c("b")]),
+                                    ]
+                                ))
+                            ),
+                        ]
+                    ))
+                ),
+            ],
+            "leibniz.p isnt parsed to the expected CIC terms"
         );
     }
 }

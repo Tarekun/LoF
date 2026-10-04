@@ -3,6 +3,7 @@ use super::{
     header::{parse_header, Form, Order, TptpHeader},
     prp::prp_formula,
     syntax::{name, role, single_quoted, skip_annotations, sym, ws0, Role},
+    thf::{thf_input, ThfInput},
 };
 use crate::{
     error::LofError,
@@ -35,6 +36,8 @@ pub enum TptpBody {
     Propositional(Vec<TptpInput<PropFormula>>),
     /// Clausal problems (SPC `CNF_*`), written with `cnf`
     Clausal(Vec<TptpInput<CnfFormula>>),
+    /// Higher order problems (SPC `TH0_*`, `TH1_*`), written with `thf`
+    HigherOrder(Vec<TptpInput<ThfInput>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -137,21 +140,23 @@ fn inputs<F>(
 /// into
 fn parse(source: &str, dir: &Path) -> Result<TptpProblem, LofError> {
     let header = parse_header(source)?;
-    let body =
-        match (header.form, header.order) {
-            (Form::Fof, Some(Order::Propositional)) => TptpBody::Propositional(
-                inputs(source, dir, "fof", prp_formula)?,
-            ),
-            // TODO propositional CNF problems are parsed to first order clauses
-            // over nullary atoms, rather than to `PropFormula`
-            (Form::Cnf, Some(_)) => {
-                TptpBody::Clausal(inputs(source, dir, "cnf", cnf_formula)?)
-            }
-            _ => return Err(LofError::unsupported(
-                "Only propositional FOF (FOF_*_PRP) and CNF TPTP problems are \
-                 supported",
-            )),
-        };
+    let body = match (header.form, header.order) {
+        (Form::Fof, Some(Order::Propositional)) => {
+            TptpBody::Propositional(inputs(source, dir, "fof", prp_formula)?)
+        }
+        // TODO propositional CNF problems are parsed to first order clauses
+        // over nullary atoms, rather than to `PropFormula`
+        (Form::Cnf, Some(_)) => {
+            TptpBody::Clausal(inputs(source, dir, "cnf", cnf_formula)?)
+        }
+        (Form::Th0 | Form::Th1, _) => {
+            TptpBody::HigherOrder(inputs(source, dir, "thf", thf_input)?)
+        }
+        _ => return Err(LofError::unsupported(
+            "Only propositional FOF (FOF_*_PRP), CNF and THF TPTP problems \
+                 are supported",
+        )),
+    };
     Ok(TptpProblem { header, body })
 }
 

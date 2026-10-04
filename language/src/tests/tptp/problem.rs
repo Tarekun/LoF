@@ -5,6 +5,7 @@ mod unit_tests {
             header::{Form, Order, Status},
             problem::{parse_tptp, TptpBody, TptpInput},
             syntax::Role,
+            thf::ThfInput,
         },
         type_theory::grammars::{
             cnf::{CnfFormula, CnfTerm},
@@ -91,6 +92,38 @@ mod unit_tests {
             ))
             .is_err(),
             "`fof` formulas are accepted in a CNF problem"
+        );
+    }
+
+    #[test]
+    fn test_higher_order_problem() {
+        let higher_order = parse_tptp(&problem(
+            "Theorem",
+            "TH0_THM_NEQ_NAR",
+            "thf(p_decl, type, p: $o).
+            thf(excluded_middle, conjecture, p | ~ p).",
+        ))
+        .unwrap();
+        let TptpBody::HigherOrder(inputs) = higher_order.body else {
+            panic!("TH0 problems arent parsed as higher order ones")
+        };
+        assert_eq!(
+            inputs.iter().map(|input| &input.name).collect::<Vec<_>>(),
+            vec!["p_decl", "excluded_middle"]
+        );
+        assert!(
+            matches!(inputs[0].formula, ThfInput::Declaration(..))
+                && matches!(inputs[1].formula, ThfInput::Formula(..)),
+            "THF type declarations and formulas arent told apart"
+        );
+        assert!(
+            parse_tptp(&problem(
+                "Theorem",
+                "TH1_THM_NEQ_NAR",
+                "fof(a, conjecture, p)."
+            ))
+            .is_err(),
+            "`fof` formulas are accepted in a THF problem"
         );
     }
 
