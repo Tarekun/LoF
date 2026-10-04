@@ -41,6 +41,7 @@ The form and the order alone decide how the formulas are parsed. Each variant of
 |---|---|---|---|
 | `FOF_*_PRP` | Propositional | `fof` | `Propositional(Vec<TptpInput<PropFormula>>)` |
 | `CNF_*_PRP`, `CNF_*_EPR`, `CNF_*_RFO` | Clauses | `cnf` | `Clausal(Vec<TptpInput<CnfFormula>>)` |
+| `TH0_*`, `TH1_*` | Higher order | `thf` | `HigherOrder(Vec<TptpInput<ThfInput>>)` |
 
 Any other class is rejected with an `Unsupported` error. Propositional CNF problems are parsed as clauses over atoms without arguments (a TODO tracks parsing them to `PropFormula` instead).
 
@@ -80,3 +81,38 @@ Each `cnf` formula is a disjunction of literals, optionally wrapped in parenthes
 Defined words (`$true`, `$false`), numbers and distinct objects (`"…"`) aren't supported yet.
 
 The problems in `test_artifacts/tptp/cnf/` are compared clause by clause, `group_problem.p` with a selective include of `Axioms/groups.ax`, and `socrates.p` is refuted with SUP saturation.
+
+## Higher order problems
+
+THF formulas and types share one grammar, as types and terms do in CIC, and map onto `CicTerm`. A `thf` input is either a declaration `symbol: type` or a formula (`ThfInput::Declaration` / `ThfInput::Formula`), kept in file order.
+
+Formulas are terms of type `$o`, the standard encoding of higher order logic. `$o` is an opaque type rather than CIC's `PROP`, so CIC's own logic doesn't mix with HOL's classical, extensional one. Logical symbols are constants (`Variable(name, Const())`) that a prelude environment will have to declare:
+
+| Constant | Type |
+|---|---|
+| `~` | `$o → $o` |
+| `&`, `\|`, `=>`, `<=>` | `$o → $o → $o` |
+| `=` | `Π A:TYPE. A → A → $o` |
+| `!!`, `??` | `Π A:TYPE. (A → $o) → $o` |
+
+| TPTP | CicTerm |
+|---|---|
+| `$tType` | `Sort("TYPE")` |
+| `$i`, `$o`, `$true`, `c` | `Variable(name, Const())` |
+| `X` bound by a binder | `Variable(X, Bound(i))`, the binders are closed (locally nameless) |
+| `f @ a @ b` | `Application(Application(f, a), b)` |
+| `A > B > C` | `Product(_, A, Product(_, B, C))` |
+| `A & B & C`, `A \| B \| C` | left nested `& (& A B) C` |
+| `A => B` / `A <= B` | `=> A B` / `=> B A` |
+| `A <~> B`, `A ~\| B`, `A ~& B` | `~` of `<=>`, `\|`, `&` |
+| `s = t` / `s != t` | `= ? s t` / `~ (= ? s t)`, the type argument is a hole (`Meta(HOLE_INDEX)`) for the refiner |
+| `!!`, `??` as terms | `!! ?`, `?? ?` |
+| `![X: τ]: φ` / `?[X: τ]: φ` | `!! τ (λX:τ. φ)` / `?? τ (λX:τ. φ)` |
+| `^[X: τ]: t` | `λX:τ. t` |
+| TH1 `!>[A: $tType]: φ` | `ΠA:TYPE. φ` |
+
+TH1 type constructors (`list: $tType > $tType`) are terms of type `TYPE → TYPE`, and polymorphic symbols take their type arguments explicitly with `@`. A formula quantified over types with `!>` becomes a product, which a TODO notes is only a term of type `$o` if `$o` were read as `PROP`.
+
+Not supported: choice and description (`@+`, `@-`), `?*`, connectives used as terms (`(&)`), and product and sum types (`*`, `+`).
+
+There is no automated reasoning over `CicTerm` yet, so the problems in `test_artifacts/tptp/thf/` are only checked to parse into closed terms, and `leibniz.p` term by term.
