@@ -13,7 +13,7 @@
 //! The output of the refiner is always re-checked by the kernel, which makes
 //! no use of any of this machinery.
 use super::cic::CicTerm::{
-    Abstraction, Application, Let, Match, Meta, Product, Sort, Variable,
+    Abstraction, Application, Let, Match, Meta, Product, Proj, Sort, Variable,
 };
 use super::cic::{Cic, CicTerm, NameKind, HOLE_INDEX};
 use super::cic_utils::{
@@ -174,6 +174,13 @@ pub fn infer(
                 .ok_or_else(|| LofError::unbound_variable(var_name))?;
             Ok((term.to_owned(), var_type))
         }
+        // `Proj` has no surface syntax: it is produced only by the
+        // kernel's own η-expansion, on terms that have already been
+        // refined, so a pre-term can never contain one
+        Proj(type_name, field_index, _) => Err(LofError::custom(format!(
+            "Refiner met the kernel-internal projection .{}[{}]",
+            type_name, field_index
+        ))),
         // a hole of unknown type: both the hole and its type are unknown
         Meta(HOLE_INDEX) => {
             let meta_type = state.fresh_type_meta();

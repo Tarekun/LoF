@@ -88,6 +88,17 @@ fn unify_step(
             ((**v1).to_owned(), (**v2).to_owned()),
             ((**s1).to_owned(), (**s2).to_owned()),
         ])),
+        // the same field of the same type: rigid, so only the targets are
+        // left to unify
+        (Proj(type1, field1, target1), Proj(type2, field2, target2)) => {
+            if type1 != type2 || field1 != field2 {
+                return Err(mismatch());
+            }
+            Ok(Step::Split(vec![(
+                (**target1).to_owned(),
+                (**target2).to_owned(),
+            )]))
+        }
         (Match(m1, branches1), Match(m2, branches2)) => {
             if branches1.len() != branches2.len()
                 || branches1

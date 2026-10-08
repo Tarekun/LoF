@@ -411,7 +411,7 @@ pub fn close_term_as(body: &CicTerm, name: &str, new_name: &str) -> CicTerm {
             Proj(type_name, field_index, target) => Proj(
                 type_name.to_string(),
                 *field_index,
-                Box::new(solver(target, name, depth)),
+                Box::new(solver(target, name, new_name, depth)),
             ),
             Variable(_, NameKind::Const()) => term.clone(),
             Variable(var_name, NameKind::Bound(dbi)) => {
@@ -724,6 +724,11 @@ pub fn alpha_equivalent(
                     },
                 )
         }
+        (Proj(type1, field1, target1), Proj(type2, field2, target2)) => {
+            type1 == type2
+                && field1 == field2
+                && alpha_equivalent(target1, target2, with_cumulativity)
+        }
         _ => false,
     }
 }
@@ -741,6 +746,7 @@ pub fn subterms(term: &CicTerm) -> Vec<&CicTerm> {
         Match(matched_term, branches) => std::iter::once(&**matched_term)
             .chain(branches.iter().flat_map(|(pattern, body)| [pattern, body]))
             .collect(),
+        Proj(_, _, target) => vec![target],
     }
 }
 
@@ -768,6 +774,9 @@ pub fn map_subterms<F: Fn(&CicTerm) -> CicTerm>(
             Box::new(f(m)),
             branches.iter().map(|(p, b)| (f(p), f(b))).collect(),
         ),
+        Proj(type_name, field_index, target) => {
+            Proj(type_name.to_string(), *field_index, Box::new(f(target)))
+        }
     }
 }
 

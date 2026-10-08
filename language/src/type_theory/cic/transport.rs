@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use crate::type_theory::commons::transport::EquivConfig;
 use crate::type_theory::commons::utils::eta_expand;
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::{Kernel, Reducer, Refiner};
+use crate::type_theory::interface::{Kernel, Reducer, TypeTheory};
 
 /// Mechanically transports a proof or function body about `config.type_a`
 /// into the corresponding term about `config.type_b`, following Ringer,
@@ -426,7 +426,7 @@ fn repair_body(
         // failure path report it rather than guessing at a rewrite
         return Ok(body.to_owned());
     };
-    if Cic::types_unify(environment, &actual, goal).is_ok() {
+    if Cic::type_judgemental_equality(environment, &actual, goal).is_ok() {
         return Ok(body.to_owned());
     }
 

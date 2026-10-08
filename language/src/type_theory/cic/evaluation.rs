@@ -19,7 +19,7 @@ use crate::type_theory::commons::evaluation::{
     reduce_application, reduce_let, reduce_variable,
 };
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::{Kernel, Refiner, Stm};
+use crate::type_theory::interface::{Kernel, Stm, TypeTheory};
 use std::collections::HashMap;
 
 //########################### TERM βδ-REDUCTION
@@ -648,7 +648,7 @@ pub fn evaluate_transport(
     let transported = index_variables(&transported);
 
     let transported_type = Cic::type_check_term(&transported, environment)?;
-    Cic::types_unify(environment, &transported_type, new_type)?;
+    Cic::type_judgemental_equality(environment, &transported_type, new_type)?;
 
     let target_sort = Cic::type_check_term(new_type, environment)?;
     let is_theorem = matches!(target_sort, Sort(ref s) if s == "PROP");
