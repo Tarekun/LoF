@@ -47,7 +47,6 @@ pub trait TypeTheory {
 
     /// Computes default system equality. Returns Ok(()) if the check is
     /// successfull, an error message otherwise.
-    /// This is the equality checked used by the commons library for consistency
     fn type_judgemental_equality(
         env: &Environment<Self>,
         type1: &Self::Type,
@@ -206,19 +205,14 @@ pub trait Reducer: TypeTheory {
 
 /// Interactive module, implements tactic checking for interactive theorem proving
 pub trait Interactive: TypeTheory {
-    /// Canonical proof hole term for partial proofs
-    fn proof_hole() -> Self::Term;
-    /// Canonical empty  target signaling the completeness of the proof
-    fn empty_target() -> Self::Type;
-
-    /// Proof checking for the current `tactic` given a `target` and a `partial_proof`.
-    /// Returns an updated (proof_term, subgoals) pair
-    fn type_check_tactic(
+    /// Runs the `tactics` against the goal `formula` and returns the
+    /// constructed proof term. Fails if the tactics dont apply or if goals
+    /// are left unproven
+    fn run_tactics(
         environment: &mut Environment<Self>,
-        tactic: &Tactic<Self::Term, Self::Type>,
-        target: &Self::Type,
-        partial_proof: &Self::Term,
-    ) -> Result<(Self::Term, Vec<Self::Type>), LofError>
+        formula: &Self::Type,
+        tactics: &[Tactic<Self::Term, Self::Type>],
+    ) -> Result<Self::Term, LofError>
     where
         Self: Sized;
 }

@@ -56,6 +56,12 @@ impl MetaContext {
         self.decls.get(index)
     }
 
+    pub fn is_assigned(&self, index: &i32) -> bool {
+        self.decls
+            .get(index)
+            .map_or(false, |decl| decl.assignment.is_some())
+    }
+
     pub fn meta_type(&self, index: &i32) -> Option<CicTerm> {
         self.decls
             .get(index)

@@ -1,307 +1,388 @@
+//! CIC tactic engine. Tactics are part of the untrusted refinement layer:
+//! every goal is a metavariable `Γ ⊢ ?g : T` of the refinement's
+//! `MetaContext`, and each tactic solves the focused goal by assigning it a
+//! piece of proof, possibly mentioning new goals (ie new metavariables).
+//! Once all goals are solved, the proof term is the instantiation of the
+//! root goal, which is then checked by the kernel like any other proof.
 use super::cic::CicTerm;
-use super::cic::CicTerm::{Abstraction, Application, Product};
-use super::cic_utils::swap_proof_hole;
+use super::cic::CicTerm::{Abstraction, Meta, Product};
+use super::cic_utils::{
+    apply_arguments, localize, open_term, reclose_unique_binders, strip_unique_name,
+    substitute_and_lift,
+};
+use super::type_check::LocalEntry::Assume;
+use super::refiner::{check, infer, refine_type, with_entries, RefinerState};
 use crate::error::LofError;
-use crate::parser::api::Tactic::{self, Apply, Exact, Intro};
+use crate::parser::api::Tactic::{self, Apply, Begin, Exact, Intro, Qed};
 use crate::type_theory::cic::cic::Cic;
-use crate::type_theory::cic::cic_utils::{
-    get_arg_types, get_prod_innermost, mark_as_constant,
-};
 use crate::type_theory::environment::Environment;
-use crate::type_theory::cic::unification::{
-    cic_so_unification, cic_solve_unifications,
-};
-use crate::type_theory::interface::{Interactive, Kernel, Reducer};
+use crate::type_theory::interface::Reducer;
+use std::collections::VecDeque;
 
-pub fn type_check_tactic(
+/// The goal being worked on by a tactic
+struct Goal {
+    /// index of the goal metavariable
+    id: i32,
+    /// its local context (local name, type), outermost first
+    context: Vec<(String, CicTerm)>,
+    /// its type, in normal form
+    target: CicTerm,
+}
+
+impl Goal {
+    /// Pairs of (user facing, local) names of the goal assumptions, used to
+    /// resolve the names of terms elaborated outside of this context
+    fn names(&self) -> Vec<(String, String)> {
+        self.context
+            .iter()
+            .map(|(local, _)| (strip_unique_name(local).to_string(), local.to_owned()))
+            .collect()
+    }
+}
+
+/// Pops the first goal that is still open: goals might have been solved by
+/// unification while working on some other goal
+fn focus(state: &RefinerState, goals: &mut VecDeque<i32>) -> Option<i32> {
+    while let Some(goal) = goals.pop_front() {
+        if !state.metas.is_assigned(&goal) {
+            return Some(goal);
+        }
+    }
+    None
+}
+
+/// Runs the `tactics` proving `formula`, returning the constructed proof term
+pub fn run_tactics(
     environment: &mut Environment<Cic>,
+    formula: &CicTerm,
+    tactics: &[Tactic<CicTerm, CicTerm>],
+) -> Result<CicTerm, LofError> {
+    let mut state = RefinerState::default();
+    let root = state.fresh_meta(formula.to_owned());
+    let mut goals = VecDeque::from(goal_ids(&state, &[root.clone()]));
+
+    for tactic in tactics {
+        if let Begin() | Qed() = tactic {
+            continue;
+        }
+        let id = focus(&state, &mut goals).ok_or_else(|| {
+            LofError::custom(format!("No goals left to apply tactic {:?} to", tactic))
+        })?;
+        let context = state.metas.decl(&id).unwrap().context.clone();
+        let assumptions: Vec<_> = context
+            .iter()
+            .map(|(name, typee)| Assume(name.to_owned(), typee.to_owned()))
+            .collect();
+
+        // the goal context is only in scope while working on this goal
+        let new_goals =
+            with_entries(environment, &mut state, &assumptions, |env, st| {
+                let target = st.metas.meta_type(&id).unwrap();
+                let target = Cic::normalize_term(env, &target);
+                let goal = Goal { id, context, target };
+                run_tactic(env, st, &goal, tactic)
+            })?;
+
+        for new_goal in new_goals.into_iter().rev() {
+            goals.push_front(new_goal);
+        }
+    }
+
+    if let Some(id) = focus(&state, &mut goals) {
+        return Err(LofError::custom(format!(
+            "Proof is incomplete: goal {:?} is left unproven",
+            state.metas.meta_type(&id).unwrap()
+        )));
+    }
+
+    // the bodies of the abstractions built by `intro` are only known now
+    let proof = state.finalize(&root)?;
+    Ok(reclose_unique_binders(&proof))
+}
+
+/// Runs `tactic` on the focused `goal` (whose context is already in the
+/// `environment` and in the `state` scope), returning the goals it opens
+fn run_tactic(
+    environment: &mut Environment<Cic>,
+    state: &mut RefinerState,
+    goal: &Goal,
     tactic: &Tactic<CicTerm, CicTerm>,
-    target: &CicTerm,
-    partial_proof: &CicTerm,
-) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
+) -> Result<Vec<i32>, LofError> {
     match tactic {
-        Intro(ass_name, ass_type) => type_check_intro(
-            environment,
-            target,
-            partial_proof,
-            ass_name,
-            ass_type,
-        ),
-        Exact(proof_term) => {
-            type_check_exact(environment, target, partial_proof, proof_term)
-        }
-        Apply(lemma) => {
-            type_check_apply(environment, target, partial_proof, lemma)
-        }
+        Intro(ass_name, ass_type) => run_intro(environment, state, goal, ass_name, ass_type),
+        Exact(proof_term) => run_exact(environment, state, goal, proof_term),
+        Apply(lemma) => run_apply(environment, state, goal, lemma),
         _ => Err(LofError::custom(format!(
-            "Tactic {:?} currently not type-checkable in CIC",
+            "Tactic {:?} currently not supported in CIC",
             tactic
         ))),
     }
 }
-//
-//
-fn type_check_intro(
+
+/// `intro x : A` on a goal `Γ ⊢ ?g : Πy:A'.B` checks that A ≡ A' and assigns
+/// `?g := λx:A'. ?h` with the new goal `Γ, x:A' ⊢ ?h : B`
+fn run_intro(
     environment: &mut Environment<Cic>,
-    target: &CicTerm,
-    partial_proof: &CicTerm,
+    state: &mut RefinerState,
+    goal: &Goal,
     ass_name: &str,
     ass_type: &CicTerm,
-) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
-    match target {
-        Product(_, domain, codomain) => {
-            if cic_solve_unifications(
-                vec![(ass_type.to_owned(), (**domain).to_owned())],
-                environment,
-            )
-            .is_ok()
-            {
-                // make the introduced assumption available to later tactic steps
-                environment.add_to_context(ass_name, ass_type);
-                let partial_proof = swap_proof_hole(partial_proof, &Abstraction(
-                    ass_name.to_string(),
-                    Box::new(ass_type.to_owned()),
-                    Box::new(Cic::proof_hole())
-                ));
-                // from here onwards ass_name is fixed and not a variable to be solved
-                // this forces it to be a constant not unifiable with other expressions
-                // TODO: see issue #286
-                let codomain = mark_as_constant(
-                    (**codomain).to_owned(),
-                    ass_name,
-                );
-
-                Ok((partial_proof, vec![codomain]))
-            } else {
-                Err(LofError::type_mismatch(
-                    format!("assumption `{}`", ass_name),
-                    domain,
-                    ass_type,
-                ))
-            }
-        },
-        _ => {
-            Err(LofError::custom(format!(
+) -> Result<Vec<i32>, LofError> {
+    let (domain, codomain) = match &goal.target {
+        Product(_, domain, codomain) => (domain, codomain),
+        target => {
+            return Err(LofError::custom(format!(
                 "Intro tactic not allowed: current proof target {:?} is not a dependent product",
                 target
             )))
         }
-    }
-}
-//
-//
-fn type_check_exact(
-    environment: &mut Environment<Cic>,
-    target: &CicTerm,
-    partial_proof: &CicTerm,
-    proof_term: &CicTerm,
-) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
-    // TODO reevaluate if normalization is needed here: normal forms are already computed by CIC unification
-    let proof_type = Cic::type_check_term(proof_term, environment)?;
-    let proof_type_reduced = Cic::normalize_term(environment, &proof_type);
-    let target_reduced = Cic::normalize_term(environment, target);
+    };
 
-    cic_solve_unifications(
-        vec![(proof_type_reduced, target_reduced)],
+    let ass_type = localize(ass_type, &goal.names());
+    let ass_type = refine_type(environment, state, &ass_type)?;
+    state.unify(
         environment,
+        domain,
+        &ass_type,
+        &format!("assumption `{}`", ass_name),
     )?;
-    Ok((swap_proof_hole(partial_proof, proof_term), vec![]))
-}
-//
-//
-fn type_check_apply(
-    environment: &mut Environment<Cic>,
-    target: &CicTerm,
-    partial_proof: &CicTerm,
-    lemma: &CicTerm,
-) -> Result<(CicTerm, Vec<CicTerm>), LofError> {
-    let lemma_type = Cic::type_check_term(lemma, environment)?;
-    // TODO see if i should be able to use a bigger term than the innermost as conclusion to unify
-    let conclusion = get_prod_innermost(&lemma_type);
-    if cic_so_unification(target, conclusion).is_ok() {
-        let premises = get_arg_types(&lemma_type);
-        let new_proof = swap_proof_hole(
-            partial_proof,
-            &Application(
-                Box::new(lemma.to_owned()),
-                Box::new(Cic::proof_hole()),
-            ),
-        );
 
-        Ok((new_proof, premises))
-    } else {
-        Err(LofError::unification_failure(target, &lemma_type))
+    let local = state.names.fresh_local_name(ass_name);
+    let mut context = goal.context.clone();
+    context.push((local.clone(), (**domain).to_owned()));
+    let new_goal = state.metas.fresh_meta(context, open_term(codomain, &local));
+
+    // the body of the abstraction refers to the introduced variable through
+    // the local `local`, turned into a De Bruijn index once the proof term
+    // is finalized (see `reclose_unique_binders`)
+    state.metas.assign(
+        goal.id,
+        &Abstraction(local, domain.clone(), Box::new(new_goal.clone())),
+    )?;
+    Ok(goal_ids(state, &[new_goal]))
+}
+
+/// `exact t` assigns `?g := t`, if the type of t matches the target
+fn run_exact(
+    environment: &mut Environment<Cic>,
+    state: &mut RefinerState,
+    goal: &Goal,
+    proof_term: &CicTerm,
+) -> Result<Vec<i32>, LofError> {
+    let proof_term = localize(proof_term, &goal.names());
+    let proof_term = check(environment, state, &proof_term, &goal.target, "exact tactic")?;
+    state.metas.assign(goal.id, &proof_term)?;
+
+    Ok(vec![])
+}
+
+/// `apply l` with `l : Πx1:A1...Πxn:An. C` unifies C with the target,
+/// assigning `?g := l ?x1 ... ?xn`: every premise not determined by
+/// unification becomes a new goal. It uses the least number of premises
+/// needed for the conclusion to match the target
+fn run_apply(
+    environment: &mut Environment<Cic>,
+    state: &mut RefinerState,
+    goal: &Goal,
+    lemma: &CicTerm,
+) -> Result<Vec<i32>, LofError> {
+    let lemma = localize(lemma, &goal.names());
+    let (lemma, lemma_type) = infer(environment, state, &lemma)?;
+
+    let mut conclusion =
+        Cic::normalize_term(environment, &state.metas.instantiate(&lemma_type));
+    let mut premises: Vec<CicTerm> = vec![];
+    let mut last_error: LofError;
+    loop {
+        // try to close the goal using the premises collected so far
+        let mut attempt = state.clone();
+        match attempt.unify(environment, &goal.target, &conclusion, "apply tactic") {
+            Ok(()) => {
+                *state = attempt;
+                break;
+            }
+            Err(error) => last_error = error,
+        }
+
+        // otherwise take one more premise
+        match conclusion {
+            Product(var_name, domain, codomain) => {
+                let premise = state.fresh_meta(*domain);
+                conclusion = Cic::normalize_term(
+                    environment,
+                    &substitute_and_lift(&codomain, &var_name, &premise),
+                );
+                premises.push(premise);
+            }
+            _ => {
+                return Err(LofError::custom(format!(
+                    "Cannot apply {:?} of type {:?} to target {:?}: {}",
+                    lemma, lemma_type, goal.target, last_error
+                )))
+            }
+        }
     }
+
+    state
+        .metas
+        .assign(goal.id, &apply_arguments(&lemma, premises.clone()))?;
+    // the premises not determined by unification are the new goals
+    Ok(goal_ids(state, &premises))
+}
+
+/// Indices of the `metas` that are still unsolved, ie the open goals
+fn goal_ids(state: &RefinerState, metas: &[CicTerm]) -> Vec<i32> {
+    metas
+        .iter()
+        .filter_map(|meta| match meta {
+            Meta(id) if !state.metas.is_assigned(id) => Some(*id),
+            _ => None,
+        })
+        .collect()
 }
 
 //########################### UNIT TESTS
 #[cfg(test)]
 mod unit_tests {
     use crate::{
-        parser::api::Tactic::{Apply, Intro},
+        parser::api::Tactic::{Apply, Exact, Intro},
         type_theory::{
             cic::{
                 cic::{
                     Cic,
-                    CicTerm::{
-                        Abstraction, Application, Meta, Product, Sort, Variable,
-                    },
-                    NameKind,
+                    CicTerm::{Abstraction, Application, Meta, Product, Sort, Variable},
+                    NameKind, HOLE_INDEX,
                 },
-                tactics::{
-                    type_check_exact, type_check_intro, type_check_tactic,
-                },
+                tactics::run_tactics,
             },
-            interface::{Interactive, TypeTheory},
+            interface::{Kernel, TypeTheory},
         },
     };
 
+    fn constant(name: &str) -> crate::type_theory::cic::cic::CicTerm {
+        Variable(name.to_string(), NameKind::Const())
+    }
+
     #[test]
     fn test_intro() {
-        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let nat = constant("Nat");
         let mut test_env = Cic::default_environment();
+        test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
+        test_env.add_to_context("z", &nat);
+        let nat_to_nat = Product(
+            "n".to_string(),
+            Box::new(nat.clone()),
+            Box::new(nat.clone()),
+        );
 
+        let proof = run_tactics(
+            &mut test_env,
+            &nat_to_nat,
+            &[Intro("n".to_string(), nat.clone()), Exact(constant("z"))],
+        );
         assert_eq!(
-            type_check_intro(
-                &mut test_env,
-                &Product(
-                    "n".to_string(),
-                    Box::new(nat.clone()),
-                    Box::new(nat.clone()),
-                ),
-                &Cic::proof_hole(),
-                "n",
-                &nat.clone(),
-            ),
-            Ok((
-                Abstraction(
-                    "n".to_string(),
-                    Box::new(nat.clone()),
-                    Box::new(Cic::proof_hole()),
-                ),
-                vec![nat.clone()]
+            proof,
+            Ok(Abstraction(
+                "n".to_string(),
+                Box::new(nat.clone()),
+                Box::new(constant("z")),
             )),
-            "Intro tactic checking isnt working as expected"
-        );
-        assert!(
-            type_check_intro(
-                &mut test_env,
-                &Product(
-                    "n".to_string(),
-                    Box::new(nat.clone()),
-                    Box::new(nat.clone()),
-                ),
-                &Cic::proof_hole(),
-                "ass",
-                &nat.clone(),
-            ).is_ok(),
-            "Intro tactic checking isnt working with missmatched variable names"
+            "Intro tactic doesnt build an abstraction"
         );
 
         assert!(
-            type_check_intro(
+            run_tactics(
                 &mut test_env,
-                &Product(
-                    "n".to_string(),
-                    Box::new(nat.clone()),
-                    Box::new(nat.clone()),
-                ),
-                &Cic::proof_hole(),
-                "ass",
-                &Meta(0),
-            ).is_ok(),
-            "Intro tactic checking isnt working with unspecified assumption type"
-        );
-
-        assert!(
-            type_check_tactic(
-                &mut test_env,
-                &Intro("ass".to_string(), nat.clone()),
-                &Product(
-                    "n".to_string(),
-                    Box::new(nat.clone()),
-                    Box::new(nat.clone()),
-                ),
-                &Cic::proof_hole()
+                &nat_to_nat,
+                &[Intro("ass".to_string(), Meta(HOLE_INDEX)), Exact(constant("z"))],
             )
             .is_ok(),
-            "Top-level tactic checker doesnt support intro"
+            "Intro tactic isnt working with unspecified assumption type"
         );
 
         assert!(
-            type_check_intro(
+            run_tactics(
                 &mut test_env,
-                &nat,
-                &Cic::proof_hole(),
-                "ass",
-                &nat.clone(),
+                &nat_to_nat,
+                &[Intro("ass".to_string(), Sort("TYPE".to_string()))],
             )
             .is_err(),
-            "Intro tactic checking accepts tactic with unassumable target"
+            "Intro tactic accepts an assumption of the wrong type"
+        );
+
+        assert!(
+            run_tactics(
+                &mut test_env,
+                &nat,
+                &[Intro("ass".to_string(), nat.clone())],
+            )
+            .is_err(),
+            "Intro tactic accepts tactic with unassumable target"
+        );
+
+        assert!(
+            run_tactics(
+                &mut test_env,
+                &nat_to_nat,
+                &[Intro("n".to_string(), nat.clone())],
+            )
+            .is_err(),
+            "Incomplete proofs are accepted"
         );
     }
 
     #[test]
-    fn test_intro_exposes_variable_to_environment_and_reindexes_codomain() {
-        let nat = Variable("Nat".to_string(), NameKind::Const());
+    fn test_intro_exposes_variable_to_later_tactics() {
+        let nat = constant("Nat");
         let mut test_env = Cic::default_environment();
         test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
 
+        // Πn:Nat. Nat proven by λn:Nat. n
         let target = Product(
             "n".to_string(),
             Box::new(nat.clone()),
-            Box::new(Variable("n".to_string(), NameKind::Bound(0))),
+            Box::new(nat.clone()),
         );
-
-        let (_, subgoals) = type_check_intro(
+        let proof = run_tactics(
             &mut test_env,
             &target,
-            &Cic::proof_hole(),
-            "n",
-            &nat.clone(),
+            &[Intro("n".to_string(), nat.clone()), Exact(constant("n"))],
         )
         .unwrap();
 
         assert_eq!(
-            test_env.get_variable_type("n"),
-            Some(nat.clone()),
-            "intro doesnt add the introduced variable to the environment"
+            proof,
+            Abstraction(
+                "n".to_string(),
+                Box::new(nat.clone()),
+                Box::new(Variable("n".to_string(), NameKind::Bound(0))),
+            ),
+            "the introduced variable must be bound by the constructed abstraction"
         );
         assert_eq!(
-            subgoals,
-            vec![Variable("n".to_string(), NameKind::Const())],
-            "intro doesnt mark introduced name as a constant"
+            test_env.get_variable_type("n"),
+            None,
+            "tactics must not leak assumptions into the environment"
         );
+        assert_eq!(Cic::type_check_term(&proof, &mut test_env), Ok(target));
     }
 
     #[test]
     fn test_exact() {
-        let nat = Variable("Nat".to_string(), NameKind::Const());
-        let boolean = Variable("Bool".to_string(), NameKind::Const());
+        let nat = constant("Nat");
         let mut test_env = Cic::default_environment();
         test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
         test_env.add_to_context("Bool", &Sort("TYPE".to_string()));
         test_env.add_to_context("n", &nat);
 
-        let proof_term = Variable("n".to_string(), NameKind::Const());
         assert_eq!(
-            type_check_exact(
-                &mut test_env,
-                &nat,
-                &Cic::proof_hole(),
-                &proof_term
-            ),
-            Ok((proof_term.clone(), vec![])),
+            run_tactics(&mut test_env, &nat, &[Exact(constant("n"))]),
+            Ok(constant("n")),
             "Exact tactic checking doesnt accept simple type inhabiting"
         );
         assert!(
-            type_check_exact(
-                &mut test_env,
-                &boolean,
-                &Cic::proof_hole(),
-                &proof_term
-            )
-            .is_err(),
+            run_tactics(&mut test_env, &constant("Bool"), &[Exact(constant("n"))])
+                .is_err(),
             "Exact tactic checking accepts term with wrong type"
         );
     }
@@ -309,12 +390,14 @@ mod unit_tests {
     #[test]
     fn test_apply() {
         let mut test_env = Cic::default_environment();
-        let premise1 = Variable("Premise1".to_string(), NameKind::Const());
-        let premise2 = Variable("Premise2".to_string(), NameKind::Const());
-        let conclusion = Variable("Conclusion".to_string(), NameKind::Const());
+        let premise1 = constant("Premise1");
+        let premise2 = constant("Premise2");
+        let conclusion = constant("Conclusion");
         test_env.add_to_context("Premise1", &Sort("PROP".to_string()));
         test_env.add_to_context("Premise2", &Sort("PROP".to_string()));
         test_env.add_to_context("Conclusion", &Sort("PROP".to_string()));
+        test_env.add_to_context("p1", &premise1);
+        test_env.add_to_context("p2", &premise2);
 
         let simple_implication = Product(
             "_".to_string(),
@@ -322,23 +405,18 @@ mod unit_tests {
             Box::new(conclusion.clone()),
         );
         test_env.add_to_context("simple_lemma", &simple_implication);
-        let simple_lemma =
-            Variable("simple_lemma".to_string(), NameKind::Const());
-        let hole = Cic::proof_hole();
-
-        let (proof, subgoals) = Cic::type_check_tactic(
-            &mut test_env,
-            &Apply(simple_lemma.clone()),
-            &conclusion,
-            &hole,
-        )
-        .unwrap();
         assert_eq!(
-            proof,
-            Application(Box::new(simple_lemma), Box::new(hole.clone())),
-            "The constructed partial proof is not the expected one"
+            run_tactics(
+                &mut test_env,
+                &conclusion,
+                &[Apply(constant("simple_lemma")), Exact(constant("p1"))],
+            ),
+            Ok(Application(
+                Box::new(constant("simple_lemma")),
+                Box::new(constant("p1"))
+            )),
+            "The constructed proof is not the expected one"
         );
-        assert_eq!(subgoals, vec![premise1.clone()], "The returned subgoals dont match the premises of the applied implication");
 
         let double_implication = Product(
             "_".to_string(),
@@ -350,19 +428,52 @@ mod unit_tests {
             )),
         );
         test_env.add_to_context("double_lemma", &double_implication);
-        let double_lemma =
-            Variable("double_lemma".to_string(), NameKind::Const());
-        let (_, subgoals) = Cic::type_check_tactic(
+        let proof = run_tactics(
             &mut test_env,
-            &Apply(double_lemma),
             &conclusion,
-            &hole,
-        )
-        .unwrap();
+            &[
+                Apply(constant("double_lemma")),
+                Exact(constant("p1")),
+                Exact(constant("p2")),
+            ],
+        );
         assert_eq!(
-            subgoals,
-            vec![premise1, premise2],
-            "Apply tactic doesnt track all premises of the applied lemma"
+            proof,
+            Ok(Application(
+                Box::new(Application(
+                    Box::new(constant("double_lemma")),
+                    Box::new(constant("p1"))
+                )),
+                Box::new(constant("p2"))
+            )),
+            "Apply tactic doesnt track all premises of the applied lemma, in order"
+        );
+        assert_eq!(
+            Cic::type_check_term(&proof.unwrap(), &mut test_env),
+            Ok(conclusion.clone())
+        );
+
+        assert!(
+            run_tactics(
+                &mut test_env,
+                &conclusion,
+                &[Apply(constant("double_lemma")), Exact(constant("p1"))],
+            )
+            .is_err(),
+            "Apply tactic loses premises"
+        );
+        assert!(
+            run_tactics(
+                &mut test_env,
+                &conclusion,
+                &[
+                    Apply(constant("double_lemma")),
+                    Exact(constant("p2")),
+                    Exact(constant("p1"))
+                ],
+            )
+            .is_err(),
+            "Apply tactic premises are not proven in order"
         );
     }
 }

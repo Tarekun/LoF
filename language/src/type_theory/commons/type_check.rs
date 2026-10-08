@@ -8,7 +8,7 @@ use crate::{
         },
         environment::Environment,
         grammars::traits::LocallyNameless,
-        interface::{Interactive, Kernel, TypeTheory},
+        interface::{Kernel, TypeTheory},
     },
 };
 
@@ -466,7 +466,7 @@ pub fn type_check_axiom<T: TypeTheory + Kernel>(
 /// Generic theorem type checking, supporting both term-based and
 /// tactic-based proofs.
 /// Includes `theorem_name` in the context for future usage
-pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
+pub fn type_check_theorem<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
@@ -486,29 +486,14 @@ pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
                 ));
             }
         }
-        R(interactive_proof) => {
-            let proof = type_check_interactive_proof::<T>(
-                environment,
-                interactive_proof,
-                formula,
-            )?;
-            // check that the proof proves the statement
-            let proof_type = T::type_check_term(&proof, environment)?;
-            if T::type_judgemental_equality(environment, formula, &proof_type)
-                .is_err()
-            {
-                // TODO figure out what to do in this branch:
-                // this is a pratial proof are we sure we should fail if the goal isnt matched?
-
-                // return Err(format!(
-                //         "Theorem checking failed. Proof has type {:?} while stated type is {:?}",
-                //         proof_type, formula
-                //     ));
-            }
+        R(_) => {
+            return Err(LofError::custom(format!(
+                "Theorem `{}` reached the kernel with an unrefined tactic proof: tactics have to be run by the refiner into a proof term first",
+                theorem_name
+            )));
         }
     }
-    // include theorem_name into the context for following script, for both
-    // term-mode and tactic-mode proofs
+    // include theorem_name into the context for following script
     let _ = evaluate_theorem::<T>(environment, theorem_name, formula, proof);
 
     Ok(formula.to_owned())
@@ -523,49 +508,6 @@ pub fn type_check_auto<T: TypeTheory + Kernel>(
     Ok(formula.to_owned())
 }
 
-fn type_check_interactive_proof<T: TypeTheory + Interactive>(
-    environment: &mut Environment<T>,
-    interactive_proof: &[Tactic<T::Term, T::Type>],
-    target: &T::Type,
-) -> Result<T::Term, LofError> {
-    fn solver<T: TypeTheory + Interactive>(
-        environment: &mut Environment<T>,
-        interactive_proof: &[Tactic<T::Term, T::Type>],
-        mut subgoals: Vec<T::Type>,
-        partial_proof: T::Term,
-    ) -> Result<T::Term, LofError> {
-        // TODO: make sure the proof closes with a qed.
-        if subgoals.is_empty() {
-            return Ok(partial_proof.to_owned());
-        }
-
-        match interactive_proof {
-            [] => Ok(partial_proof.to_owned()),
-            [proof_step, rest @ ..] => {
-                let target = subgoals.pop().unwrap();
-                let (new_proof, new_subgoals) = T::type_check_tactic(
-                    environment,
-                    proof_step,
-                    &target,
-                    &partial_proof,
-                )?;
-                subgoals.extend(new_subgoals);
-
-                solver::<T>(environment, rest, subgoals, new_proof)
-            }
-        }
-    }
-
-    // rollback to avoid env contamination with changes possibly made by tactics
-    environment.with_rollback(|local_env| {
-        solver(
-            local_env,
-            interactive_proof,
-            vec![target.to_owned()],
-            T::proof_hole(),
-        )
-    })
-}
 //########################### STATEMENTS TYPE CHECKING
 
 #[cfg(test)]
