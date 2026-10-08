@@ -1,0 +1,44 @@
+# Regression test: a definition may be written with the auto-generated
+# eliminator, not only with a `match`, and it has to *compute*.
+#
+# `double` below is well typed: the motive is the constant family
+# `\k:Nat. Nat`, so `e_Nat`'s result type is `(\k:Nat. Nat) n`, which is
+# `Nat` after one beta step. Checking a definition compares the declared
+# type against the inferred one, so that comparison has to be up to
+# conversion rather than syntactic - which is what
+# `Cic::type_judgemental_equality` gives it.
+#
+# The two `refl` theorems then pin that these definitions reduce, which is
+# the whole point of the eliminator having a computation rule
+# (`try_iota_reduction`); `eliminator_smoke.lof` covers the same for
+# eliminators used inside a proof rather than a definition.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+global double : Nat -> Nat :=
+  (\lambda n:Nat.
+    e_Nat(
+      (\lambda k:Nat. Nat),
+      z,
+      (\lambda kk:Nat. \lambda ih:Nat. s(s(ih))),
+      n));
+
+fun double_fun (n: Nat) : Nat {
+  e_Nat(
+    (\lambda k:Nat. Nat),
+    z,
+    (\lambda kk:Nat. \lambda ih:Nat. s(s(ih))),
+    n)
+}
+
+theorem double_two_is_four : Eq(Nat, double(s(s(z))), s(s(s(s(z))))) :=
+  (refl(Nat, s(s(s(s(z))))))
+
+theorem double_fun_two_is_four : Eq(Nat, double_fun(s(s(z))), s(s(s(s(z))))) :=
+  (refl(Nat, s(s(s(s(z))))))

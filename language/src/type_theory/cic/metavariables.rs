@@ -27,6 +27,9 @@ pub struct MetaDecl {
 pub struct MetaContext {
     decls: BTreeMap<i32, MetaDecl>,
     next_index: i32,
+    /// constraints `expected ≐ actual` with a flexible head (eg `?f x`),
+    /// waiting for their metavariables to be solved
+    pub postponed: Vec<(CicTerm, CicTerm)>,
 }
 
 impl MetaContext {
@@ -49,10 +52,8 @@ impl MetaContext {
         Meta(index)
     }
 
-    pub fn is_assigned(&self, index: &i32) -> bool {
-        self.decls
-            .get(index)
-            .map_or(false, |decl| decl.assignment.is_some())
+    pub fn decl(&self, index: &i32) -> Option<&MetaDecl> {
+        self.decls.get(index)
     }
 
     pub fn meta_type(&self, index: &i32) -> Option<CicTerm> {

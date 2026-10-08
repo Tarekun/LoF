@@ -4,9 +4,21 @@ use crate::{
             cic::{
                 Cic, CicTerm::{self, Application, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI,
             }, cic_utils::{
-                alpha_equivalent, application_args, apply_arguments, check_positivity, clone_product_with_different_result, get_applied_function, get_arg_types, get_prod_innermost, get_variables_as_terms, index_variables, is_instance_of, make_multiarg_fun_type, pattern_binder_names, substitute_and_lift,
-            }, evaluation::evaluate_inductive,
-        }, commons::type_check::type_check_variable, environment::Environment, grammars::traits::LocallyNameless, interface::{Kernel, Reducer},
+                alpha_equivalent, application_args, apply_arguments,
+                check_positivity, clone_product_with_different_result,
+                get_applied_function, get_arg_types, get_prod_innermost,
+                get_variables_as_terms, index_variables, is_instance_of,
+                make_multiarg_fun_type, pattern_binder_names, substitute,
+                substitute_and_lift,
+            },
+            evaluation::{
+                evaluate_equivalence, evaluate_inductive, evaluate_transport,
+            },
+        },
+        commons::type_check::type_check_variable,
+        environment::Environment,
+        grammars::traits::LocallyNameless,
+        interface::{Kernel, Reducer},
     },
 };
 use tracing::error;
@@ -41,6 +53,91 @@ pub fn type_check_sort(
     //TODO check that the type is a sort itself?
     type_check_variable::<Cic>(environment, sort_name)
 }
+//
+/// Types a projection `target.i` out of a single-constructor inductive.
+///
+/// Given `target : T(p_1..p_m)` and `T`'s only constructor
+/// `C : ∀p_1..p_m. ∀a_0:A_0. .. ∀a_{k-1}:A_{k-1}. T(p_1..p_m)`, the result
+/// is `A_i` with the type's parameters instantiated to `target`'s actual
+/// ones and every *earlier* field replaced by its own projection:
+///
+/// ```text
+/// A_i[p_j := actual_j][a_0 := target.0, .., a_{i-1} := target.{i-1}]
+/// ```
+///
+/// That second substitution is what makes a dependent field come out
+/// right: `PackedVec`'s second field has declared type `Vec(Tp, n)`, and
+/// projecting it yields `Vec(Tp, target.0)` rather than a term mentioning
+/// the constructor's own unbound `n`.
+pub fn type_check_proj(
+    environment: &mut Environment<Cic>,
+    type_name: &str,
+    field_index: usize,
+    target: &CicTerm,
+) -> Result<CicTerm, LofError> {
+    let target_type = Cic::type_check_term(target, environment)?;
+    if !is_instance_of(&target_type, type_name) {
+        return Err(LofError::custom(format!(
+            "projection .{} expects a '{}', got a '{}'",
+            field_index, type_name, target_type
+        )));
+    }
+
+    let constructors = environment
+        .get_constructor_signatures(type_name)
+        .ok_or_else(|| {
+            LofError::custom(format!("unknown inductive type '{}'", type_name))
+        })?;
+    if constructors.len() != 1 {
+        return Err(LofError::custom(format!(
+            "projection .{} needs a single-constructor type, but '{}' has {}",
+            field_index,
+            type_name,
+            constructors.len()
+        )));
+    }
+    let constructor_type = constructors[0].1.to_owned();
+    let param_count = environment
+        .get_inductive_param_count(type_name)
+        .unwrap_or(0);
+    let actual_params = application_args(&target_type);
+
+    // walk the constructor's Pi-chain, substituting the type's parameters
+    // and then each earlier field's projection as we pass it
+    let mut remaining = constructor_type;
+    for depth in 0..param_count + field_index {
+        let Product(binder, _, codomain) = remaining else {
+            return Err(LofError::custom(format!(
+                "'{}' has no field {}",
+                type_name, field_index
+            )));
+        };
+        let value = if depth < param_count {
+            actual_params.get(depth).cloned().ok_or_else(|| {
+                LofError::custom(format!(
+                    "'{}' applied to too few parameters",
+                    type_name
+                ))
+            })?
+        } else {
+            CicTerm::Proj(
+                type_name.to_string(),
+                depth - param_count,
+                Box::new(target.to_owned()),
+            )
+        };
+        remaining = substitute(&codomain, &binder, &value);
+    }
+
+    match remaining {
+        Product(_, domain, _) => Ok((*domain).to_owned()),
+        _ => Err(LofError::custom(format!(
+            "'{}' has no field {}",
+            type_name, field_index
+        ))),
+    }
+}
+//
 //
 /// Kernel type checking of (non dependent) pattern matching: every branch is
 /// checked under the entries its pattern introduces,
@@ -268,6 +365,29 @@ pub fn inductive_eliminator(
             .map(|(var_name, _)| Variable(var_name.to_owned(), NameKind::Bound(PLACEHOLDER_DBI)))
             .collect()
     }
+    /// The name each constructor argument gets in the generated
+    /// eliminator: its own, unless it is anonymous.
+    ///
+    /// `index_variables` resolves the eliminator's references by name at
+    /// the end, so a named argument has to keep its own name - renaming
+    /// `vcons`' `n` to `nr_0` while its later argument types still say `n`
+    /// strands those references. An anonymous one still needs *a* name,
+    /// since `index_variables` deliberately refuses to bind `_`.
+    fn binder_names(fun_type: &CicTerm, prefix: &str) -> Vec<String> {
+        let mut names = vec![];
+        let mut remaining = fun_type;
+        while let Product(binder, _, codomain) = remaining {
+            let index = names.len();
+            names.push(if binder == "_" {
+                format!("{}_{}", prefix, index)
+            } else {
+                binder.to_owned()
+            });
+            remaining = codomain;
+        }
+
+        names
+    }
     /// Creation of the first parameters ( a :: α\[A\] )
     fn make_right_param_vars(ariety: &CicTerm) -> Vec<CicTerm> {
         // anonymous binders have been named, see `name_anonymous_indices`
@@ -318,24 +438,24 @@ pub fn inductive_eliminator(
         type_name: String,
     ) -> Vec<CicTerm> {
         fn split_recursive_arguments(
-            arg_types: Vec<CicTerm>,
+            arg_types: Vec<(String, CicTerm)>,
             type_name: &str,
         ) -> (Vec<(String, CicTerm)>, Vec<(String, CicTerm)>) {
             let mut are_recursive = false;
             let mut recursive = vec![];
             let mut non_recursive = vec![];
 
-            for (index, arg_type) in arg_types.into_iter().enumerate() {
+            for (arg_name, arg_type) in arg_types {
                 //TODO: switch to reference check instead of instance
                 if is_instance_of(&arg_type, type_name) {
                     are_recursive = true;
-                    recursive.push(((format!("r_{}", index)), arg_type));
+                    recursive.push((arg_name, arg_type));
                 } else if are_recursive {
                     // TODO this could be an error case, should cover it?
                     error!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
                     error!("THE UNEXPECTED ERROR HAPPEND");
                 } else {
-                    non_recursive.push(((format!("nr_{}", index)), arg_type));
+                    non_recursive.push((arg_name, arg_type));
                 }
             }
 
@@ -373,8 +493,13 @@ pub fn inductive_eliminator(
             right_params.drain(0..left_params_len); // da crab a drainer frfr
             let result_with_rights = apply_arguments(&result_var, right_params);
 
-            // TODO might need to rename args, i think they're all anonymous
-            let arg_types = get_arg_types(&constr_type);
+            // an argument keeps its declared name where it has one, so a
+            // later argument's type (`Vec(T,n)` in `vcons`) still refers to it
+            let arg_names = binder_names(&constr_type, "a");
+            let arg_types: Vec<(String, CicTerm)> = arg_names
+                .into_iter()
+                .zip(get_arg_types(&constr_type))
+                .collect();
             // in the paper non_recursive are called b and recursive u
             let (non_recursive, recursive) =
                 split_recursive_arguments(arg_types, &type_name);
@@ -482,6 +607,101 @@ pub fn inductive_eliminator(
     full_parametrization =
         make_multiarg_fun_type(&params, &full_parametrization);
     index_variables(&full_parametrization)
+}
+
+/// Sanity-checks every component of an `equivalence` declaration (each
+/// must type-check on its own terms - the engine does not attempt to
+/// verify eg that `dep_elim` is genuinely shaped like `type_a`'s own
+/// recursor, only that it is a well-typed term), then registers the
+/// resulting `EquivConfig` via `evaluate_equivalence` so later statements
+/// in the same file (including further `transport` invocations) can see
+/// it - mirroring how `type_check_inductive` registers the inductive type
+/// itself via `evaluate_inductive`, rather than deferring registration to
+/// the later `execute` phase.
+#[allow(clippy::too_many_arguments)]
+pub fn type_check_equivalence(
+    environment: &mut Environment<Cic>,
+    name: &str,
+    type_a: &CicTerm,
+    type_b: &CicTerm,
+    forward: &CicTerm,
+    backward: &CicTerm,
+    section: &CicTerm,
+    retraction: &CicTerm,
+    dep_elim: &CicTerm,
+    eta: &Option<Box<CicTerm>>,
+    dep_constr: &Vec<(String, CicTerm)>,
+    iota: &Vec<(String, CicTerm)>,
+) -> Result<CicTerm, LofError> {
+    // Both sides must be well-formed, but not necessarily *types*: a
+    // parameterized inductive is referred to by its bare name, so `List`
+    // is a type former (`TYPE -> TYPE`) rather than a type. Require only
+    // that its type ends in a sort.
+    for (label, type_former) in [("type_a", type_a), ("type_b", type_b)] {
+        let former_type = Cic::type_check_term(type_former, environment)?;
+        if !matches!(get_prod_innermost(&former_type), Sort(_)) {
+            return Err(LofError::type_mismatch(
+                &format!("equivalence '{}' {}", name, label),
+                &"a type or type former",
+                type_former,
+            ));
+        }
+    }
+    let _ = Cic::type_check_term(forward, environment)?;
+    let _ = Cic::type_check_term(backward, environment)?;
+    let _ = Cic::type_check_term(section, environment)?;
+    let _ = Cic::type_check_term(retraction, environment)?;
+    let _ = Cic::type_check_term(dep_elim, environment)?;
+    if let Some(eta_term) = eta {
+        let _ = Cic::type_check_term(eta_term, environment)?;
+    }
+    for (_, term) in dep_constr {
+        let _ = Cic::type_check_term(term, environment)?;
+    }
+    for (_, term) in iota {
+        let _ = Cic::type_check_term(term, environment)?;
+    }
+
+    evaluate_equivalence(
+        environment,
+        name,
+        type_a,
+        type_b,
+        forward,
+        backward,
+        section,
+        retraction,
+        dep_elim,
+        eta,
+        dep_constr,
+        iota,
+    )?;
+
+    Ok(Variable("Unit".to_string(), NameKind::Const()))
+}
+
+/// Type-checks the declared target type/formula, then performs the actual
+/// transport (via `evaluate_transport`, which calls into
+/// `cic::transport::transport_term` and validates the result) - mirroring
+/// how `type_check_inductive` both checks and registers in one pass.
+pub fn type_check_transport(
+    environment: &mut Environment<Cic>,
+    new_name: &str,
+    new_type: &CicTerm,
+    old_name: &str,
+    equiv_name: &str,
+) -> Result<CicTerm, LofError> {
+    let _ = Cic::type_check_type(new_type, environment)?;
+
+    evaluate_transport(
+        environment,
+        new_name,
+        new_type,
+        old_name,
+        equiv_name,
+    )?;
+
+    Ok(new_type.to_owned())
 }
 
 pub fn type_check_inductive(
