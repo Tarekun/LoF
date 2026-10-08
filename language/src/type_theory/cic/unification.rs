@@ -216,7 +216,7 @@ pub fn cic_so_unification(
 
 pub fn cic_solve_unifications(
     constraints: Vec<(CicTerm, CicTerm)>,
-    environment: &mut Environment<Cic>,
+    environment: &Environment<Cic>,
 ) -> Result<Substitution<CicTerm>, LofError> {
     let mut reduced_constraints = VecDeque::new();
     for (left, right) in constraints {

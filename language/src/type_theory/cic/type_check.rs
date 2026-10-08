@@ -114,7 +114,7 @@ pub enum LocalEntry {
 }
 
 
-fn with_local_entries<F: FnOnce(&mut Environment<Cic>) -> R, R>(
+pub fn with_local_entries<F: FnOnce(&mut Environment<Cic>) -> R, R>(
     environment: &mut Environment<Cic>,
     entries: &[LocalEntry],
     callable: F,
@@ -138,7 +138,7 @@ fn with_local_entries<F: FnOnce(&mut Environment<Cic>) -> R, R>(
 /// Opens a match branch: every binder introduced by `pattern` is turned
 /// into a locally free variable named by `rename`, both in the pattern and
 /// in the `body`
-fn open_branch<F: FnMut(&str) -> String>(
+pub fn open_branch<F: FnMut(&str) -> String>(
     pattern: &CicTerm,
     body: &CicTerm,
     mut rename: F,
@@ -163,7 +163,7 @@ fn open_branch<F: FnMut(&str) -> String>(
 /// is a definition aliasing the actual parameter (and a `?` is ignored). The
 /// remaining arguments are assumptions typed by the constructor, instantiated
 /// with the arguments preceding them
-fn pattern_telescope(
+pub fn pattern_telescope(
     environment: &Environment<Cic>,
     pattern: &CicTerm,
     matching_type: &CicTerm,

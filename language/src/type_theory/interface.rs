@@ -144,6 +144,31 @@ pub trait Kernel: TypeTheory {
         Self: Sized;
 }
 
+/// Refiner module, untrusted elaborator of pre-terms
+pub trait Refiner: TypeTheory {
+    /// Resolves all the holes in `exp`
+    fn refine_expression(
+        exp: &Self::Exp,
+        _environment: &mut Environment<Self>,
+    ) -> Result<Self::Exp, LofError>
+    where
+        Self: Sized,
+    {
+        Ok(exp.to_owned())
+    }
+
+    /// Resolves all the holes in `stm`
+    fn refine_stm(
+        stm: &Stm<Self>,
+        _environment: &mut Environment<Self>,
+    ) -> Result<Stm<Self>, LofError>
+    where
+        Self: Sized,
+    {
+        Ok(stm.to_owned())
+    }
+}
+
 /// Reducer module, implements the execution of programs
 pub trait Reducer: TypeTheory {
     /// Given a `term`, a `var_name`, and a substitution `body`,

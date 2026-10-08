@@ -1,6 +1,6 @@
 use crate::{config::Config, parser::api::LofParser, runtime::program::ProgramNode, type_theory::{cic::{
     cic::{
-        Cic, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI
+        Cic, CicTerm::{self, Abstraction, Application, Let, Match, Meta, Product, Sort, Variable}, NameKind, HOLE_INDEX, PLACEHOLDER_DBI
     }, evaluation::evaluate_inductive, type_check::{inductive_eliminator, type_check_inductive}
 }, environment::Environment}};
 use crate::parser::api::Statement::{Fun, Inductive};
@@ -17,6 +17,10 @@ mod kernel {
         assert!(
             Cic::type_check_term(&Meta(0), &mut test_env).is_err(),
             "the kernel must not accept metavariables"
+        );
+        assert!(
+            Cic::type_check_term(&Meta(HOLE_INDEX), &mut test_env).is_err(),
+            "the kernel must not accept holes"
         );
         assert!(
             Cic::type_check_term(
