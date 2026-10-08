@@ -1,14 +1,14 @@
 use super::evaluation::{evaluate_statement, one_step_reduction};
+use super::refiner::{refine_expression, refine_statement};
 use super::tactics::type_check_tactic;
-use super::type_check::type_check_sort;
-use super::unification::cic_so_unification;
+use super::type_check::{cic_convertible, type_check_sort};
 use crate::error::LofError;
 use crate::parser::api::{Expression, LofStatement, Statement, Tactic};
 use crate::runtime::program::Schedule;
-use crate::type_theory::cic::cic::CicTerm::{Application, Product};
+use crate::type_theory::cic::cic::CicTerm::Product;
 use crate::type_theory::cic::cic_utils::{
     alpha_equivalent, close_term, make_multiarg_fun_type, open_term,
-    substitute_and_lift, substitute_meta,
+    substitute_and_lift, substitute_local,
 };
 use crate::type_theory::cic::elaboration::{
     elaborate_expression, elaborate_statement,
@@ -16,29 +16,30 @@ use crate::type_theory::cic::elaboration::{
 use crate::type_theory::cic::type_check::{
     type_check_inductive, type_check_match,
 };
-use crate::type_theory::cic::unification::{
-    cic_apply_unifier, cic_collect_unifications, cic_solve_unifications,
-};
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    i_type_check_abstraction, i_type_check_application,
-    i_type_check_fo_universal, i_type_check_function, i_type_check_let,
-    type_check_axiom, type_check_global, type_check_variable,
-    u_type_check_theorem,
+    ln_type_check_abstraction, ln_type_check_application,
+    ln_type_check_fo_universal, ln_type_check_function, ln_type_check_let,
+    type_check_axiom, type_check_global, type_check_theorem,
+    type_check_variable,
 };
-use crate::type_theory::commons::unification::Substitution;
 use crate::type_theory::environment::Environment;
 use crate::type_theory::grammars::traits::{
     AlphaEquiv, LocallyNameless, Reduction, ReductionEq, SyntacticalEq,
 };
 use crate::type_theory::interface::{
-    Interactive, Kernel, Reducer, Refiner, Stm, TypeInference, TypeTheory,
+    Interactive, Kernel, Reducer, Refiner, Stm, TypeTheory,
 };
 use tracing::debug;
 
 pub static FIRST_INDEX: i32 = 0;
 pub static GLOBAL_INDEX: i32 = -1;
 pub static PLACEHOLDER_DBI: i32 = -2;
+/// index of the metavariable standing for a hole left by the user (`?`):
+/// it carries no identity, the refiner replaces every occurrence with a fresh
+/// metavariable (whose indices are never negative)
+pub const HOLE_INDEX: i32 = -1;
+
 
 #[derive(PartialEq, Clone)]
 pub enum NameKind {
@@ -87,7 +88,7 @@ impl SyntacticalEq for CicTerm {
 }
 impl AlphaEquiv for CicTerm {
     fn alpha_equivalent(&self, other: &Self) -> bool {
-        alpha_equivalent(self, other)
+        alpha_equivalent(self, other, false)
     }
 }
 impl LocallyNameless for CicTerm {
@@ -112,6 +113,7 @@ impl ReductionEq<Cic> for CicTerm {
 }
 
 pub struct Cic;
+
 impl TypeTheory for Cic {
     type Term = CicTerm;
     type Type = CicTerm;
@@ -145,14 +147,7 @@ impl TypeTheory for Cic {
         type1: &CicTerm,
         type2: &CicTerm,
     ) -> Result<(), LofError> {
-        if type1.equal_up_to_reduction(type2, env) {
-            Ok(())
-        } else {
-            Err(LofError::custom(format!(
-                "{:?} and {:?} are not equal",
-                type1, type2
-            )))
-        }
+        cic_convertible(env, type2, type1)
     }
 
     fn elaborate_expression(exp: &Expression) -> Result<CicTerm, LofError> {
@@ -176,7 +171,7 @@ impl Kernel for Cic {
                 type_check_variable::<Cic>(environment, var_name)
             }
             CicTerm::Abstraction(var_name, var_type, body) => {
-                i_type_check_abstraction::<Cic, _>(
+                ln_type_check_abstraction::<Cic, _>(
                     environment,
                     var_name,
                     var_type,
@@ -191,14 +186,14 @@ impl Kernel for Cic {
                 )
             }
             CicTerm::Product(var_name, var_type, body) => {
-                i_type_check_fo_universal::<Cic>(
+                ln_type_check_fo_universal::<Cic>(
                     environment,
                     var_name,
                     var_type,
                     body,
                 )
             }
-            CicTerm::Application(left, right) => i_type_check_application(
+            CicTerm::Application(left, right) => ln_type_check_application(
                 environment,
                 left,
                 right,
@@ -210,22 +205,26 @@ impl Kernel for Cic {
                     )),
                     _ => None,
                 },
-                |l, r| {
-                    Application(Box::new(l.to_owned()), Box::new(r.to_owned()))
-                },
+                Cic::normalize_term,
                 Cic::substitute,
             ),
             CicTerm::Match(matched_term, branches) => {
                 type_check_match(environment, matched_term, branches)
             }
             CicTerm::Let(var_name, var_type, body, scope) => {
-                i_type_check_let(environment, var_name, var_type, body, scope)
+                ln_type_check_let(
+                    environment,
+                    var_name,
+                    var_type,
+                    body,
+                    scope,
+                    substitute_local,
+                )
             }
-            CicTerm::Meta(index) => {
-                //TODO handle this properly
-                // Err(format!("MetaVariables should never appear as type checkable terms. Received ?[{}]", index))
-                Ok(CicTerm::Sort("TYPE".to_string()))
-            }
+            CicTerm::Meta(index) => Err(LofError::custom(format!(
+                "Unresolved metavariable ?[{}] reached the kernel: holes have to be solved by the refiner",
+                index
+            ))),
         }
     }
 
@@ -273,7 +272,7 @@ impl Kernel for Cic {
                 )
             }
             Statement::Fun(fun_name, args, out_type, body, is_rec) => {
-                i_type_check_function::<Cic, _, _>(
+                ln_type_check_function::<Cic, _, _>(
                     environment,
                     fun_name,
                     args,
@@ -291,7 +290,7 @@ impl Kernel for Cic {
                 )
             }
             Statement::Theorem(theorem_name, formula, proof) => {
-                u_type_check_theorem::<Cic>(
+                type_check_theorem::<Cic>(
                     environment,
                     theorem_name,
                     formula,
@@ -306,90 +305,20 @@ impl Kernel for Cic {
     }
 }
 
-impl TypeInference for Cic {
-    fn type_unify(
-        type1: &CicTerm,
-        type2: &CicTerm,
-    ) -> Result<Substitution<CicTerm>, LofError> {
-        cic_so_unification(type1, type2)
-    }
-    fn apply_so_substitution(
-        typ: &CicTerm,
-        substitution: &Substitution<CicTerm>,
-    ) -> CicTerm {
-        let mut solved_exp = typ.to_owned();
-        for index in substitution.names() {
-            solved_exp = substitute_meta(
-                &solved_exp,
-                &index.parse().unwrap(),
-                substitution.get(index).unwrap(),
-            )
-        }
-        solved_exp
-    }
-}
-
 impl Refiner for Cic {
-    fn solve_unifications(
-        constraints: Vec<(CicTerm, CicTerm)>,
-        environment: &mut Environment<Cic>,
-    ) -> Result<Substitution<CicTerm>, LofError>
-    where
-        Self: Sized,
-    {
-        cic_solve_unifications(constraints, environment)
-    }
-
-    fn term_collect_unifications(
+    fn refine_expression(
         exp: &CicTerm,
         environment: &mut Environment<Cic>,
-    ) -> Result<Vec<(CicTerm, CicTerm)>, LofError> {
-        cic_collect_unifications(exp, environment)
+    ) -> Result<CicTerm, LofError> {
+        refine_expression(environment, exp)
     }
 
-    fn type_collect_unifications(
-        exp: &CicTerm,
+    fn refine_stm(
+        stm: &Stm<Cic>,
         environment: &mut Environment<Cic>,
-    ) -> Result<Vec<(CicTerm, CicTerm)>, LofError> {
-        cic_collect_unifications(exp, environment)
-    }
-
-    fn term_apply_unifier(
-        exp: &CicTerm,
-        substitution: &Substitution<CicTerm>,
-    ) -> CicTerm {
-        cic_apply_unifier(exp, substitution)
-    }
-
-    fn type_apply_unifier(
-        exp: &CicTerm,
-        substitution: &Substitution<CicTerm>,
-    ) -> CicTerm {
-        cic_apply_unifier(exp, substitution)
-    }
-
-    fn terms_unify(
-        environment: &mut Environment<Cic>,
-        term1: &CicTerm,
-        term2: &CicTerm,
-    ) -> Result<(), LofError> {
-        cic_solve_unifications(
-            vec![(term1.to_owned(), term2.to_owned())],
-            environment,
-        )?;
-        Ok(())
-    }
-
-    fn types_unify(
-        environment: &mut Environment<Cic>,
-        type1: &CicTerm,
-        type2: &CicTerm,
-    ) -> Result<(), LofError> {
-        cic_solve_unifications(
-            vec![(type1.to_owned(), type2.to_owned())],
-            environment,
-        )?;
-        Ok(())
+    ) -> Result<Stm<Cic>, LofError> {
+        debug!("Refining statement: {:?}", stm);
+        refine_statement(environment, stm)
     }
 }
 

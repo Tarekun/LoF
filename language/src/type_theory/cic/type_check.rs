@@ -2,19 +2,35 @@ use crate::{
     error::LofError, misc::{simple_map, simple_map_indexed}, type_theory::{
         cic::{
             cic::{
-                Cic, CicTerm::{self, Application, Meta, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI,
+                Cic, CicTerm::{self, Application, Product, Sort, Variable}, NameKind, PLACEHOLDER_DBI,
             }, cic_utils::{
-                application_args, apply_arguments, check_positivity,
-                clone_product_with_different_result, get_applied_function,
-                get_arg_types, get_prod_innermost, get_variables_as_terms,
-                pattern_binder_names,
-                index_variables, is_instance_of, make_multiarg_fun_type,
-                substitute,
-            }, evaluation::evaluate_inductive, unification::cic_so_unification,
-        }, commons::type_check::type_check_variable, environment::Environment, grammars::traits::LocallyNameless, interface::{Kernel, Refiner},
+                alpha_equivalent, application_args, apply_arguments, check_positivity, clone_product_with_different_result, get_applied_function, get_arg_types, get_prod_innermost, get_variables_as_terms, index_variables, is_instance_of, make_multiarg_fun_type, pattern_binder_names, substitute_and_lift,
+            }, evaluation::evaluate_inductive,
+        }, commons::type_check::type_check_variable, environment::Environment, grammars::traits::LocallyNameless, interface::{Kernel, Reducer},
     },
 };
 use tracing::error;
+
+//########################### JUDGEMENTAL EQUALITY
+/// CIC convertibility with universe cumulativity
+pub fn cic_convertible(
+    environment: &Environment<Cic>,
+    actual: &CicTerm,
+    expected: &CicTerm,
+) -> Result<(), LofError> {
+    let actual_normal = Cic::normalize_term(environment, actual);
+    let expected_normal = Cic::normalize_term(environment, expected);
+    if alpha_equivalent(&actual_normal, &expected_normal, true) {
+        Ok(())
+    } else {
+        Err(LofError::type_mismatch(
+            "judgemental equality",
+            &expected_normal,
+            &actual_normal,
+        ))
+    }
+}
+//########################### JUDGEMENTAL EQUALITY
 
 //########################### EXPRESSIONS TYPE CHECKING
 //
@@ -26,171 +42,16 @@ pub fn type_check_sort(
     type_check_variable::<Cic>(environment, sort_name)
 }
 //
-//########################### EXPRESSIONS TYPE CHECKING
-
-
-/// Returns the vector of type judgements for the variables provided if they match the constructor type
-pub(crate) fn type_constr_vars(
-    environment: &mut Environment<Cic>,
-    pattern: &CicTerm,
-    constr_type: &CicTerm,
-) -> Result<Vec<(String, CicTerm)>, LofError> {
-    fn solver(
-        environment: &mut Environment<Cic>,
-        constr_type: &CicTerm,
-        variables: Vec<CicTerm>,
-    ) -> Result<Vec<(String, CicTerm)>, LofError> {
-        match variables.len() {
-            0 => Ok(vec![]),
-            1.. => match constr_type {
-                Product(type_var, domain, codomain) => match &variables[0] {
-                    Variable(var_name, _) => {
-                        let reduced_codomain =
-                            substitute(&codomain, type_var, &variables[0]);
-                        let mut typed_vars = solver(
-                            environment,
-                            &reduced_codomain,
-                            variables[1..].to_vec(),
-                        )?;
-                        typed_vars
-                            .insert(0, (var_name.to_string(), *(domain.clone())));
-                        Ok(typed_vars)
-                    }
-                    Meta(_) => {
-                        // TODO im not sure this call will ever fail here, is this needed?
-                        let _ = cic_so_unification(domain, &variables[0])?;
-                        solver(
-                            environment,
-                            codomain,
-                            variables[1..].to_vec(),
-                        )
-                    }
-                    Application(_, _) => {
-                        let nested_constr = get_applied_function(&variables[0]);
-                        let nested_constr_type =
-                            Cic::type_check_term(&nested_constr, environment)?;
-                        // recursively solve for names in this nested pattern
-                        let mut nested_vars = solver(
-                            environment,
-                            &nested_constr_type,
-                            application_args(&variables[0]),
-                        )?;
-                        let reduced_codomain =
-                            substitute(&codomain, type_var, &variables[0]);
-                        let remaining_vars = solver(
-                            environment,
-                            &reduced_codomain,
-                            variables[1..].to_vec(),
-                        )?;
-                        nested_vars.extend(remaining_vars);
-                        Ok(nested_vars)
-                    }
-                    _ => Err(LofError::type_check_error(&variables[0])),
-                },
-                _ => Err(LofError::arity_mismatch(
-                    "constructor pattern",
-                    0,
-                    variables.len(),
-                )),
-            },
-        }
-    }
-
-    let variables = application_args(pattern);
-    solver(environment, constr_type, variables)
-}
-
-/// Type checks the provided terms with the constructor type and returns the actual instanciation
-/// type provided
-fn type_check_pattern(
-    environment: &mut Environment<Cic>,
-    pattern: &CicTerm,
-    constr_type: &CicTerm,
-) -> Result<CicTerm, LofError> {
-    fn solver(
-        constr_type: &CicTerm,
-        arguments: Vec<CicTerm>,
-        environment: &mut Environment<Cic>,
-    ) -> Result<CicTerm, LofError> {
-        match arguments.len() {
-            0 => Ok(constr_type.clone()),
-            1.. => match constr_type  {
-                Product(var_name, domain, codomain) => match arguments[0] {
-                    Variable(_, _) => {
-                        // TODO if the variable is an argument to the type it should be type checked
-                        // (if its constructor argument its simply a new binded variable)
-                        let reduced_codomain =
-                            substitute(&codomain, var_name, &arguments[0]);
-                        // doesnt need to update the context, here var_name is a type variable, not a term
-                        solver(
-                            &reduced_codomain,
-                            // TODO dont reclone this vector
-                            arguments[1..].to_vec(),
-                            environment,
-                        )
-                    }
-                    Meta(_) => {
-                        // make sure domain is a type to make sure a metavariable is allowed
-                        let _ = Cic::type_check_type(domain, environment);
-                        // make sure ? can be unified with domain (eg no occurs check failure)
-                        let _ = cic_so_unification(domain, &arguments[0])?;
-                        // let reduced_codomain = substitute_meta(&codomain, &idx, domain);
-                        solver(
-                            &codomain,
-                            // &reduced_codomain,
-                            // TODO dont reclone this vector
-                            arguments[1..].to_vec(),
-                            environment,
-                        )
-                    }
-                    Application(_, _) => {
-                        // recursivelye validate subpatter
-                        // NOTE: cant use type_check_term on arguments[0] here because it might contain
-                        // unbound pattern variable names
-                        let nested_constr = get_applied_function(&arguments[0]);
-                        let nested_constr_type =
-                            Cic::type_check_term(&nested_constr, environment)?;
-                        let nested_result_type = solver(
-                            &nested_constr_type,
-                            application_args(&arguments[0]),
-                            environment,
-                        )?;
-
-                        Cic::terms_unify(environment, &nested_result_type, domain)?;
-                        let reduced_codomain =
-                            substitute(&codomain, var_name, &arguments[0]);
-                        solver(
-                            &reduced_codomain,
-                            arguments[1..].to_vec(),
-                            environment,
-                        )
-                    }
-                    _ => Err(LofError::type_check_error(&arguments[0])),
-                },
-                _ => Err(LofError::arity_mismatch(
-                    "constructor pattern",
-                    0,
-                    arguments.len(),
-                )),
-            },
-        }
-    }
-
-    let arguments = application_args(pattern);
-    solver(constr_type, arguments, environment)
-}
-
-// TODO: a pattern is essentially an application containing unbound variables;
-// those variables are put into context for the branch body once their type has been solved with the constructor (ie function) type;
-// this boils down to type checking an application against a target type where all of its arguments' types are to be infered;
-// => i have a strong feeling type_constr_vars&type_check_pattern can be simplified using unification
-//    (every unbound variable gets a ?_i type, the overall application is unified against the target type)
+/// Kernel type checking of (non dependent) pattern matching: every branch is
+/// checked under the entries its pattern introduces,
+/// and all branches must have convertible types
 pub fn type_check_match(
     environment: &mut Environment<Cic>,
     matched_term: &CicTerm,
     branches: &Vec<(CicTerm, CicTerm)>,
 ) -> Result<CicTerm, LofError> {
     let matching_type = Cic::type_check_term(matched_term, environment)?;
+    let matching_type = Cic::normalize_term(environment, &matching_type);
     let mut return_type = None;
 
     let ind_type_constructor = get_applied_function(&matching_type);
@@ -214,62 +75,20 @@ pub fn type_check_match(
     };
 
     for (pattern, body) in branches {
-        //pattern type checking
-        let constructor = get_applied_function(pattern);
-        let (constr_type, constr_name) = if let Variable(constr_name, _) = &constructor {
-            (Cic::type_check_term(&constructor, environment)?, constr_name.to_string())
-        } else {
-            return Err(LofError::type_check_error(&format!(
-                "Pattern should start with constructor variable application, found {:?}",
-                constructor
-            )));
-        };
-        let result_type = type_check_pattern(
-            environment,
-            pattern,
-            &constr_type,
-        )?;
+        let (opened_pattern, opened_body, _) =
+            open_branch(pattern, body, |name| name.to_string());
+        let (constr_name, entries) =
+            pattern_telescope(environment, &opened_pattern, &matching_type)?;
+        expected_constrs.remove(&constr_name);
 
-        Cic::terms_unify(environment, &result_type, &matching_type)?;
-        if expected_constrs.contains(&constr_name) {
-            expected_constrs.remove(&constr_name);
-        }
-
-        //body type checking
-        let pattern_assumptions =
-            type_constr_vars(environment, pattern, &constr_type)?;
-        // fetch bound variables in the patter and open them
-        let branch_binders = pattern_binder_names(pattern);
-        let opened_assumptions: Vec<(String, CicTerm)> = pattern_assumptions
-            .iter()
-            .map(|(assumption_name, assumption_type)| {
-                let opened_type = branch_binders
-                    .iter()
-                    .rev()
-                    .fold(assumption_type.to_owned(), |opened, binder_name| {
-                        opened.open(binder_name)
-                    });
-                (assumption_name.to_owned(), opened_type)
-            })
-            .collect();
-        let opened_body = branch_binders
-            .iter()
-            .rev()
-            .fold(body.to_owned(), |opened, binder_name| {
-                opened.open(binder_name)
-            });
-        let body_type = environment
-            .with_local_assumptions(&opened_assumptions, |local_env| {
-                Cic::type_check_term(&opened_body, local_env)
-            })?;
-        if return_type.is_none() {
-            return_type = Some(body_type);
-        } else {
-            Cic::terms_unify(
-                environment,
-                &return_type.clone().unwrap(),
-                &body_type,
-            )?;
+        let body_type = with_local_entries(environment, &entries, |local_env| {
+            let body_type = Cic::type_check_term(&opened_body, local_env)?;
+            // aliases of the parameters are only defined in here
+            Ok::<_, LofError>(Cic::normalize_term(local_env, &body_type))
+        })?;
+        match &return_type {
+            None => return_type = Some(body_type),
+            Some(expected) => cic_convertible(environment, &body_type, expected)?,
         }
     }
 
@@ -284,6 +103,155 @@ pub fn type_check_match(
 
     Ok(return_type.unwrap())
 }
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LocalEntry {
+    /// local assumption: (name, type)
+    Assume(String, CicTerm),
+    /// local definition: (name, value, type)
+    Define(String, CicTerm, CicTerm),
+}
+
+
+pub fn with_local_entries<F: FnOnce(&mut Environment<Cic>) -> R, R>(
+    environment: &mut Environment<Cic>,
+    entries: &[LocalEntry],
+    callable: F,
+) -> R {
+    match entries.split_first() {
+        None => callable(environment),
+        Some((LocalEntry::Assume(name, typee), rest)) => environment
+            .with_local_assumption(name, typee, |local_env| {
+                with_local_entries(local_env, rest, callable)
+            }),
+        Some((LocalEntry::Define(name, value, typee), rest)) => environment
+            .with_local_substitution(
+                name,
+                value,
+                &Some(typee.to_owned()),
+                |local_env| with_local_entries(local_env, rest, callable),
+            ),
+    }
+}
+
+/// Opens a match branch: every binder introduced by `pattern` is turned
+/// into a locally free variable named by `rename`, both in the pattern and
+/// in the `body`
+pub fn open_branch<F: FnMut(&str) -> String>(
+    pattern: &CicTerm,
+    body: &CicTerm,
+    mut rename: F,
+) -> (CicTerm, CicTerm, Vec<String>) {
+    let locals: Vec<String> = pattern_binder_names(pattern)
+        .iter()
+        .map(|name| rename(name))
+        .collect();
+    // innermost binder (the last one) has index 0, so it's opened first
+    let (pattern, body) = locals.iter().rev().fold(
+        (pattern.to_owned(), body.to_owned()),
+        |(pattern, body), local| (pattern.open(local), body.open(local)),
+    );
+    (pattern, body, locals)
+}
+
+/// Computes the local entries an opened `pattern` introduces
+/// returning them in binding order along with the constructor name.
+///
+/// The first arguments of a constructor are the parameters of its inductive
+/// type: they're fixed by `matching_type`, so a variable in those positions
+/// is a definition aliasing the actual parameter (and a `?` is ignored). The
+/// remaining arguments are assumptions typed by the constructor, instantiated
+/// with the arguments preceding them
+pub fn pattern_telescope(
+    environment: &Environment<Cic>,
+    pattern: &CicTerm,
+    matching_type: &CicTerm,
+) -> Result<(String, Vec<LocalEntry>), LofError> {
+    let constr_name = match get_applied_function(pattern) {
+        Variable(name, _) => name,
+        other => {
+            return Err(LofError::type_check_error(&format!(
+                "Pattern should start with constructor variable application, found {:?}",
+                other
+            )))
+        }
+    };
+    let inductive_name = environment
+        .constructor_type_of(&constr_name)
+        .ok_or_else(|| LofError::unbound_variable(&constr_name))?;
+    let actual_left_params = application_args(matching_type);
+    let left_param_count = environment
+        .get_inductive_param_count(&inductive_name)
+        .unwrap_or(0);
+    // check that the inductive type constructed by this pattern matches matching_type
+    match get_applied_function(matching_type) {
+        Variable(name, _)
+            if name == inductive_name && actual_left_params.len() >= left_param_count => {}
+        _ => {
+            return Err(LofError::type_mismatch(
+                format!("pattern `{:?}`", pattern),
+                matching_type,
+                &inductive_name,
+            ))
+        }
+    }
+
+    let mut constr_type = environment
+        .get_variable_type(&constr_name)
+        .ok_or_else(|| LofError::unbound_variable(&constr_name))?;
+    let formal_arguments = application_args(pattern);
+    let mut entries = vec![];
+
+    // TODO id like this remade into a pretty recursive function instead of stinky for loop
+    for (position, argument) in formal_arguments.iter().enumerate() {
+        let Product(binder, domain, codomain) = constr_type else {
+            return Err(LofError::arity_mismatch(
+                "constructor pattern",
+                position,
+                formal_arguments.len(),
+            ));
+        };
+
+        let value = if position < left_param_count {
+            if let Variable(name, _) = argument {
+                entries.push(LocalEntry::Define(
+                    name.to_owned(),
+                    // left params are δ-reducable by the actual value found in matching_type
+                    actual_left_params[position].to_owned(),
+                    *domain,
+                ));
+            }
+            actual_left_params[position].to_owned()
+        } else {
+            match argument {
+                Variable(name, _) => {
+                    entries.push(LocalEntry::Assume(name.to_owned(), *domain))
+                }
+                // subpattern
+                Application(_, _) => {
+                    let nested_type = Cic::normalize_term(environment, &domain);
+                    let (_, nested) =
+                        pattern_telescope(environment, argument, &nested_type)?;
+                    entries.extend(nested);
+                }
+                _ => return Err(LofError::type_check_error(argument)),
+            }
+            argument.to_owned()
+        };
+        constr_type = substitute_and_lift(&codomain, &binder, &value);
+    }
+
+    if let Product(_, _, _) = constr_type {
+        return Err(LofError::type_check_error(&format!(
+            "Pattern {:?} doesnt fully apply constructor {}",
+            pattern, constr_name
+        )));
+    }
+    Ok((constr_name, entries))
+}
+//
+//########################### EXPRESSIONS TYPE CHECKING
 
 /// Given the values of an inductive type definition, returns the corresponding eliminator
 /// Reference that guided this implementation is Inductive Families by Peter Dybjer

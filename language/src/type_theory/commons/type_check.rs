@@ -8,7 +8,7 @@ use crate::{
         },
         environment::Environment,
         grammars::traits::LocallyNameless,
-        interface::{Interactive, Kernel, Refiner, TypeTheory},
+        interface::{Interactive, Kernel, TypeTheory},
     },
 };
 
@@ -51,12 +51,11 @@ pub fn type_check_abstraction<
     })
 }
 
-/// Generic abstraction type checking. Implements classic ABS type checking
-/// rule of Γ ⊢ λa:A.b : A->B, where a is `var_name`, A is `var_type`, b is
-/// `body`, and B is the returned type.
-/// This function does support inference and requires implementation of `Refiner`
-pub fn i_type_check_abstraction<
-    T: TypeTheory + Kernel + Refiner,
+/// Generic abstraction type checking for systems that carry De Bruijn indices.
+/// Implements classic ABS type checking rule of Γ ⊢ λa:A.b : Πa:A.B, where a
+/// is `var_name`, A is `var_type`, b is `body`, and B is the type of the body
+pub fn ln_type_check_abstraction<
+    T: TypeTheory + Kernel,
     C: Fn(String, T::Type, T::Type) -> T::Type,
 >(
     environment: &mut Environment<T>,
@@ -74,17 +73,10 @@ where
     let opened_body = body.open(var_name);
     environment.with_local_assumption(var_name, var_type, |local_env| {
         let body_type = T::type_check_term(&opened_body, local_env)?;
-        let type_cons = T::type_collect_unifications(var_type, local_env)?;
-        let body_cons = T::term_collect_unifications(&opened_body, local_env)?;
-        let constraints = [type_cons, body_cons].concat();
-        let substitution = T::solve_unifications(constraints, local_env)?;
-
-        let var_type = T::type_apply_unifier(var_type, &substitution);
-        let body_type = T::type_apply_unifier(&body_type, &substitution);
 
         Ok(constructor(
             var_name.to_string(),
-            var_type,
+            var_type.to_owned(),
             body_type.close(var_name),
         ))
     })
@@ -94,7 +86,7 @@ where
 /// quantified body is opened so its references to the bound variable stop
 /// depending on the depth they are read at. Nothing is closed afterwards
 /// because what comes back is the body's sort, which binds nothing.
-pub fn i_type_check_fo_universal<T: TypeTheory + Kernel + Refiner>(
+pub fn ln_type_check_fo_universal<T: TypeTheory + Kernel>(
     environment: &mut Environment<T>,
     var_name: &str,
     var_type: &T::Type,
@@ -146,38 +138,39 @@ pub fn type_check_application<
     }
 }
 
-/// Generic application type checking. Implements classic APP type checking
-/// rule of Γ ⊢ f x : T of unary function application.
-/// This function does supports both unification-based type inference solving implicit
-/// types and functions with term-dependent types
-pub fn i_type_check_application<
-    T: TypeTheory + Kernel + Refiner,
+/// Generic application type checking. Implements the dependent APP type
+/// checking rule: Γ ⊢ f : Πx:A.B, Γ ⊢ a : A' and A' ≡ A imply Γ ⊢ f a : B[x := a].
+/// `normalize_type` is used to expose the product type of `left` and the
+/// argument type is compared using `T::type_judgemental_equality` (no inference)
+pub fn ln_type_check_application<
+    T: TypeTheory + Kernel,
     F: Fn(&T::Type) -> Option<(String, T::Type, T::Type)>,
-    R: Fn(&T::Term, &T::Term) -> T::Term,
+    N: Fn(&Environment<T>, &T::Type) -> T::Type,
     S: Fn(&T::Type, &str, &T::Term) -> T::Type,
 >(
     environment: &mut Environment<T>,
     left: &T::Term,
     right: &T::Term,
     unpack_fun_type: F,
-    repack_application: R,
+    normalize_type: N,
     substitute_type: S,
 ) -> Result<T::Type, LofError> {
-    let _arg_type = T::type_check_term(right, environment)?;
     let function_type = T::type_check_term(left, environment)?;
+    let function_type = normalize_type(environment, &function_type);
+    let arg_type = T::type_check_term(right, environment)?;
 
-    if let Some((var_name, _domain, codomain)) = unpack_fun_type(&function_type)
+    if let Some((var_name, domain, codomain)) = unpack_fun_type(&function_type)
     {
-        // note: at this stage `constraints` already contains the check _arg_type ≐ _domain
-        let constraints = T::term_collect_unifications(
-            &repack_application(left, right),
-            environment,
+        T::type_judgemental_equality(environment, &domain, &arg_type).map_err(
+            |_| {
+                LofError::type_mismatch(
+                    "function application",
+                    &domain,
+                    &arg_type,
+                )
+            },
         )?;
-        let substitution = T::solve_unifications(constraints, environment)?;
-
-        let codomain = substitute_type(&codomain, &var_name, right);
-        let codomain = T::type_apply_unifier(&codomain, &substitution);
-        Ok(codomain)
+        Ok(substitute_type(&codomain, &var_name, right))
     } else {
         Err(LofError::custom(format!(
             "Attempted application on non functional term of type: {:?}",
@@ -241,42 +234,50 @@ pub fn type_check_let<T: TypeTheory + Kernel>(
 //
 //########################### STATEMENTS TYPE CHECKING
 //
-/// Generic let definition type checking supporting type inference and
-/// open/closing of the bound variable within its scope
-pub fn i_type_check_let<T: TypeTheory + Kernel + Refiner>(
+/// Generic let definition type checking for systems that carry De Bruijn
+/// indices: the scope is opened and checked with the definition in context.
+/// `substitute_local` replaces the (now locally free) defined variable with
+/// its definition in the resulting type, which would otherwise escape its scope
+pub fn ln_type_check_let<
+    T: TypeTheory + Kernel,
+    S: Fn(&T::Type, &str, &T::Term) -> T::Type,
+>(
     environment: &mut Environment<T>,
     var_name: &str,
     var_type: &Option<T::Type>,
     body: &T::Term,
     scope: &T::Term,
+    substitute_local: S,
 ) -> Result<T::Type, LofError>
 where
     T::Term: LocallyNameless,
 {
     let body_type = T::type_check_term(body, environment)?;
-    let var_type = if var_type.is_none() {
-        body_type.to_owned()
-    } else {
-        var_type.to_owned().unwrap()
+    let var_type = match var_type {
+        None => body_type.to_owned(),
+        Some(var_type) => {
+            let _ = T::type_check_type(var_type, environment)?;
+            T::type_judgemental_equality(environment, var_type, &body_type)
+                .map_err(|_| {
+                    LofError::type_mismatch(
+                        format!("let binding `{}`", var_name),
+                        var_type,
+                        &body_type,
+                    )
+                })?;
+            var_type.to_owned()
+        }
     };
 
-    if T::type_judgemental_equality(environment, &var_type, &body_type).is_ok()
-    {
-        let opened_scope = scope.open(var_name);
-        Ok(environment.with_local_substitution(
-            var_name,
-            body,
-            &Some(var_type),
-            // type of a let is the type of the scope term as it reduces to that
-            |local_env| T::type_check_term(&opened_scope, local_env),
-        )?)
-    } else {
-        Err(LofError::type_mismatch(
-            format!("let binding `{}`", var_name),
-            &var_type,
-            &body_type,
-        ))
-    }
+    let opened_scope = scope.open(var_name);
+    let scope_type = environment.with_local_substitution(
+        var_name,
+        body,
+        &Some(var_type),
+        // type of a let is the type of the scope term as it reduces to that
+        |local_env| T::type_check_term(&opened_scope, local_env),
+    )?;
+    Ok(substitute_local(&scope_type, var_name, body))
 }
 
 /// Generic global definition type checking. Uses `T::type_check_type` on the variable type
@@ -368,8 +369,8 @@ pub fn type_check_function<
 /// Opening the argument telescope first replaces them with `Local`s, which
 /// carry no depth at all. What gets stored in the environment afterwards is
 /// the original closed form, since that is what the rest of the program sees.
-pub fn i_type_check_function<
-    T: TypeTheory + Kernel + Refiner,
+pub fn ln_type_check_function<
+    T: TypeTheory + Kernel,
     C: Fn(Vec<(String, T::Type)>, T::Type) -> T::Type,
     E: Fn((String, T::Type), T::Term) -> T::Term,
 >(
@@ -462,67 +463,24 @@ pub fn type_check_axiom<T: TypeTheory + Kernel>(
     Ok(predicate.to_owned())
 }
 
-/// Generic equality-based theorem type checking, supporting both term-based and
+/// Generic theorem type checking, supporting both term-based and
 /// tactic-based proofs.
-/// This variants uses type equality to compare the inhabited type against the
-/// target one (ie T::base_type_equality)
-pub fn eq_type_check_theorem<T: TypeTheory + Kernel + Interactive>(
-    environment: &mut Environment<T>,
-    theorem_name: &str,
-    formula: &T::Type,
-    proof: &Union<T::Term, Vec<Tactic<T::Term, T::Type>>>,
-) -> Result<T::Type, LofError> {
-    type_check_theorem_base(
-        environment,
-        theorem_name,
-        formula,
-        proof,
-        |proof_type, formula, environment| {
-            T::type_judgemental_equality(environment, proof_type, formula)
-                .is_ok()
-        },
-    )
-}
-/// Generic unification-based theorem type checking, supporting both term-based
-/// and tactic-based proofs.
-/// This variants uses type unification to compare the inhabited type against the
-/// target one (ie T::types_unify)
-pub fn u_type_check_theorem<T: TypeTheory + Kernel + Interactive + Refiner>(
-    environment: &mut Environment<T>,
-    theorem_name: &str,
-    formula: &T::Type,
-    proof: &Union<T::Term, Vec<Tactic<T::Term, T::Type>>>,
-) -> Result<T::Type, LofError> {
-    type_check_theorem_base(
-        environment,
-        theorem_name,
-        formula,
-        proof,
-        |proof_type, formula, environment| {
-            T::types_unify(environment, proof_type, formula).is_ok()
-        },
-    )
-}
-/// Base implementation for generic type checking of theorem proofs, parametric
-/// on `are_compatible` for types (equality, unification).
 /// Includes `theorem_name` in the context for future usage
-fn type_check_theorem_base<
-    T: TypeTheory + Kernel + Interactive,
-    P: FnMut(&T::Type, &T::Type, &mut Environment<T>) -> bool,
->(
+pub fn type_check_theorem<T: TypeTheory + Kernel + Interactive>(
     environment: &mut Environment<T>,
     theorem_name: &str,
     formula: &T::Type,
     proof: &Union<T::Term, Vec<Tactic<T::Term, T::Type>>>,
-    mut are_compatible: P,
 ) -> Result<T::Type, LofError> {
     let _ = T::type_check_type(formula, environment)?;
     match proof {
         L(proof_term) => {
             let proof_type = T::type_check_term(proof_term, environment)?;
-            if !are_compatible(&proof_type, formula, environment) {
+            if T::type_judgemental_equality(environment, formula, &proof_type)
+                .is_err()
+            {
                 return Err(LofError::type_mismatch(
-                    "proof checking of proven statement and target",
+                    format!("proof checking of theorem `{}`", theorem_name),
                     formula,
                     &proof_type,
                 ));
@@ -536,10 +494,11 @@ fn type_check_theorem_base<
             )?;
             // check that the proof proves the statement
             let proof_type = T::type_check_term(&proof, environment)?;
-            if !are_compatible(&proof_type, formula, environment) {
+            if T::type_judgemental_equality(environment, formula, &proof_type)
+                .is_err()
+            {
                 // TODO figure out what to do in this branch:
                 // this is a pratial proof are we sure we should fail if the goal isnt matched?
-                // proof_type might not be syntactically equal to formula but unify with it; should it fail or require refinement?
 
                 // return Err(format!(
                 //         "Theorem checking failed. Proof has type {:?} while stated type is {:?}",

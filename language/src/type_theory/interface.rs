@@ -144,76 +144,29 @@ pub trait Kernel: TypeTheory {
         Self: Sized;
 }
 
-pub trait TypeInference: TypeTheory {
-    fn type_unify(
-        type1: &Self::Type,
-        type2: &Self::Type,
-    ) -> Result<Substitution<Self::Type>, LofError>;
-
-    fn apply_so_substitution(
-        typ: &Self::Type,
-        mgu: &Substitution<Self::Type>,
-    ) -> Self::Type;
-}
-
-/// Refiner module, implements unification
+/// Refiner module, untrusted elaborator of pre-terms
 pub trait Refiner: TypeTheory {
-    /// Collects unification constraints necessary for `term`
-    fn term_collect_unifications(
-        term: &Self::Term,
-        environment: &mut Environment<Self>,
-    ) -> Result<Vec<(Self::Exp, Self::Exp)>, LofError>
+    /// Resolves all the holes in `exp`
+    fn refine_expression(
+        exp: &Self::Exp,
+        _environment: &mut Environment<Self>,
+    ) -> Result<Self::Exp, LofError>
     where
-        Self: Sized;
+        Self: Sized,
+    {
+        Ok(exp.to_owned())
+    }
 
-    /// Collects unification constraints necessary for `typee`
-    fn type_collect_unifications(
-        typee: &Self::Type,
-        environment: &mut Environment<Self>,
-    ) -> Result<Vec<(Self::Exp, Self::Exp)>, LofError>
+    /// Resolves all the holes in `stm`
+    fn refine_stm(
+        stm: &Stm<Self>,
+        _environment: &mut Environment<Self>,
+    ) -> Result<Stm<Self>, LofError>
     where
-        Self: Sized;
-
-    /// Algorithm to compute the MCU given a set of constraints.
-    /// Returns a substitution for all solvable meta variables or an error
-    fn solve_unifications(
-        constraints: Vec<(Self::Exp, Self::Exp)>,
-        environment: &mut Environment<Self>,
-    ) -> Result<Substitution<Self::Exp>, LofError>
-    where
-        Self: Sized;
-
-    /// Applies a given Substitution to `term`
-    fn term_apply_unifier(
-        term: &Self::Term,
-        substitution: &Substitution<Self::Exp>,
-    ) -> Self::Term;
-
-    /// Applies a given Substitution to `typee`
-    fn type_apply_unifier(
-        typee: &Self::Type,
-        substitution: &Substitution<Self::Exp>,
-    ) -> Self::Type;
-
-    /// Check if the two terms provided unify with one another
-    /// ie they are structurally equal, given a unifier for metavariables
-    fn terms_unify(
-        environment: &mut Environment<Self>,
-        term1: &Self::Term,
-        term2: &Self::Term,
-    ) -> Result<(), LofError>
-    where
-        Self: Sized;
-
-    /// Check if the two types provided unify with one another
-    /// ie they are structurally equal, given a unifier for metavariables
-    fn types_unify(
-        environment: &mut Environment<Self>,
-        type1: &Self::Type,
-        type2: &Self::Type,
-    ) -> Result<(), LofError>
-    where
-        Self: Sized;
+        Self: Sized,
+    {
+        Ok(stm.to_owned())
+    }
 }
 
 /// Reducer module, implements the execution of programs

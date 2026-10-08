@@ -3,11 +3,12 @@ use super::cic::CicTerm::{
 };
 use super::cic::{Cic, CicTerm};
 use crate::misc::simple_map;
-use crate::type_theory::cic::cic::{NameKind, PLACEHOLDER_DBI};
+use crate::type_theory::cic::cic::{NameKind, HOLE_INDEX, PLACEHOLDER_DBI};
 use crate::type_theory::cic::elaboration::index_variables_in_store;
 use crate::type_theory::commons::utils::{
     generic_multiarg_fun_type, ElabStore,
 };
+use std::collections::HashSet;
 use std::fmt;
 
 fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -47,6 +48,7 @@ fn term_formatter(term: &CicTerm, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Let(var_name, _, body, scope) => {
             write!(f, "let {} := {} in\n{}", var_name, body, scope)
         }
+        Meta(index) if *index == HOLE_INDEX => write!(f, "?"),
         Meta(index) => write!(f, "?[{}]", index),
     }
 }
@@ -368,61 +370,83 @@ pub fn open_term(body: &CicTerm, name: &str) -> CicTerm {
 /// Inverse of `open_term`: turns the locally free `name` back into the De
 /// Bruijn index of the binder being rebuilt around `body`.
 pub fn close_term(body: &CicTerm, name: &str) -> CicTerm {
-    fn solver(term: &CicTerm, name: &str, depth: i32) -> CicTerm {
+    close_term_as(body, name, name)
+}
+
+/// `close_term` that also renames the binder being rebuilt from `name` to
+/// `new_name`: the closed references, and any reference already bound to a
+/// binder called `name`, are renamed accordingly. Used to get rid of the
+/// unique names the refiner opens binders with
+pub fn close_term_as(body: &CicTerm, name: &str, new_name: &str) -> CicTerm {
+    fn solver(
+        term: &CicTerm,
+        name: &str,
+        new_name: &str,
+        depth: i32,
+    ) -> CicTerm {
+        let rename = |var_name: &str| {
+            if var_name == name {
+                new_name.to_string()
+            } else {
+                var_name.to_string()
+            }
+        };
         match term {
             Sort(_) | Meta(_) => term.clone(),
             Variable(_, NameKind::Const()) => term.clone(),
             Variable(var_name, NameKind::Bound(dbi)) => {
                 if *dbi >= depth {
                     // a binder is being put back in front of it
-                    Variable(var_name.to_string(), NameKind::Bound(dbi + 1))
+                    Variable(rename(var_name), NameKind::Bound(dbi + 1))
                 } else {
-                    term.clone()
+                    Variable(rename(var_name), NameKind::Bound(*dbi))
                 }
             }
             Variable(var_name, NameKind::Local()) => {
                 if var_name == name {
-                    Variable(var_name.to_string(), NameKind::Bound(depth))
+                    Variable(new_name.to_string(), NameKind::Bound(depth))
                 } else {
                     term.clone()
                 }
             }
             Application(left, right) => Application(
-                Box::new(solver(left, name, depth)),
-                Box::new(solver(right, name, depth)),
+                Box::new(solver(left, name, new_name, depth)),
+                Box::new(solver(right, name, new_name, depth)),
             ),
             Abstraction(var_name, domain, codomain) => Abstraction(
-                var_name.to_string(),
-                Box::new(solver(domain, name, depth)),
-                Box::new(solver(codomain, name, depth + 1)),
+                rename(var_name),
+                Box::new(solver(domain, name, new_name, depth)),
+                Box::new(solver(codomain, name, new_name, depth + 1)),
             ),
             Product(var_name, domain, codomain) => Product(
-                var_name.to_string(),
-                Box::new(solver(domain, name, depth)),
-                Box::new(solver(codomain, name, depth + 1)),
+                rename(var_name),
+                Box::new(solver(domain, name, new_name, depth)),
+                Box::new(solver(codomain, name, new_name, depth + 1)),
             ),
             Let(var_name, var_type, definition, scope) => Let(
-                var_name.to_string(),
+                rename(var_name),
                 Box::new(
-                    (**var_type).as_ref().map(|t| solver(t, name, depth + 1)),
+                    (**var_type)
+                        .as_ref()
+                        .map(|t| solver(t, name, new_name, depth + 1)),
                 ),
-                Box::new(solver(definition, name, depth)),
-                Box::new(solver(scope, name, depth + 1)),
+                Box::new(solver(definition, name, new_name, depth)),
+                Box::new(solver(scope, name, new_name, depth + 1)),
             ),
             Match(matched_term, branches) => Match(
-                Box::new(solver(matched_term, name, depth)),
+                Box::new(solver(matched_term, name, new_name, depth)),
                 simple_map(branches.clone(), |(pattern, branch_body)| {
                     let inner = depth + pattern_binder_count(&pattern);
                     (
-                        solver(&pattern, name, inner),
-                        solver(&branch_body, name, inner),
+                        solver(&pattern, name, new_name, inner),
+                        solver(&branch_body, name, new_name, inner),
                     )
                 }),
             ),
         }
     }
 
-    solver(body, name, 0)
+    solver(body, name, new_name, 0)
 }
 
 /// Given a `term` and a variable, returns a term where each instance of
@@ -625,9 +649,17 @@ pub fn mark_as_constant(term: CicTerm, var_name: &str) -> CicTerm {
     )
 }
 
-pub fn alpha_equivalent(actual: &CicTerm, expected: &CicTerm) -> bool {
+//########################### LOCALLY NAMELESS UTILITIES
+
+pub fn alpha_equivalent(
+    actual: &CicTerm,
+    expected: &CicTerm,
+    with_cumulativity: bool,
+) -> bool {
     match (actual, expected) {
-        (Sort(s1), Sort(s2)) => s1 == s2,
+        (Sort(s1), Sort(s2)) => {
+            s1 == s2 || (with_cumulativity && s1 == "PROP" && s2 == "TYPE")
+        }
         (Meta(i1), Meta(i2)) => i1 == i2,
         (
             Variable(_, NameKind::Bound(i1)),
@@ -637,29 +669,104 @@ pub fn alpha_equivalent(actual: &CicTerm, expected: &CicTerm) -> bool {
         | (_, Variable(_, NameKind::Bound(_))) => false,
         (Variable(n1, _), Variable(n2, _)) => n1 == n2,
         (Abstraction(_, d1, b1), Abstraction(_, d2, b2)) => {
-            alpha_equivalent(d1, d2) && alpha_equivalent(b1, b2)
+            alpha_equivalent(d1, d2, with_cumulativity)
+                && alpha_equivalent(b1, b2, with_cumulativity)
         }
         (Product(_, d1, c1), Product(_, d2, c2)) => {
-            alpha_equivalent(d1, d2) && alpha_equivalent(c1, c2)
+            alpha_equivalent(d1, d2, with_cumulativity)
+                && alpha_equivalent(c1, c2, with_cumulativity)
         }
         (Application(f1, a1), Application(f2, a2)) => {
-            alpha_equivalent(f1, f2) && alpha_equivalent(a1, a2)
+            alpha_equivalent(f1, f2, with_cumulativity)
+                && alpha_equivalent(a1, a2, with_cumulativity)
         }
         (Let(_, _, v1, s1), Let(_, _, v2, s2)) => {
-            alpha_equivalent(v1, v2) && alpha_equivalent(s1, s2)
+            alpha_equivalent(v1, v2, with_cumulativity)
+                && alpha_equivalent(s1, s2, with_cumulativity)
         }
         (Match(m1, branches1), Match(m2, branches2)) => {
-            alpha_equivalent(m1, m2)
+            alpha_equivalent(m1, m2, with_cumulativity)
                 && branches1.len() == branches2.len()
                 && branches1.iter().zip(branches2.iter()).all(
                     |((p1, b1), (p2, b2))| {
-                        alpha_equivalent(p1, p2) && alpha_equivalent(b1, b2)
+                        alpha_equivalent(p1, p2, with_cumulativity)
+                            && alpha_equivalent(b1, b2, with_cumulativity)
                     },
                 )
         }
         _ => false,
     }
 }
+
+/// Returns the immediate subterms of `term`
+pub fn subterms(term: &CicTerm) -> Vec<&CicTerm> {
+    match term {
+        Sort(_) | Variable(_, _) | Meta(_) => vec![],
+        Abstraction(_, l, r) | Product(_, l, r) | Application(l, r) => {
+            vec![l, r]
+        }
+        Let(_, var_type, body, scope) => {
+            (**var_type).iter().chain([&**body, &**scope]).collect()
+        }
+        Match(matched_term, branches) => std::iter::once(&**matched_term)
+            .chain(branches.iter().flat_map(|(pattern, body)| [pattern, body]))
+            .collect(),
+    }
+}
+
+/// Rebuilds `term` with `f` applied to each of its immediate subterms
+pub fn map_subterms<F: Fn(&CicTerm) -> CicTerm>(
+    term: &CicTerm,
+    f: F,
+) -> CicTerm {
+    match term {
+        Sort(_) | Variable(_, _) | Meta(_) => term.clone(),
+        Application(l, r) => Application(Box::new(f(l)), Box::new(f(r))),
+        Abstraction(n, d, b) => {
+            Abstraction(n.to_string(), Box::new(f(d)), Box::new(f(b)))
+        }
+        Product(n, d, b) => {
+            Product(n.to_string(), Box::new(f(d)), Box::new(f(b)))
+        }
+        Let(n, t, v, s) => Let(
+            n.to_string(),
+            Box::new((**t).as_ref().map(&f)),
+            Box::new(f(v)),
+            Box::new(f(s)),
+        ),
+        Match(m, branches) => Match(
+            Box::new(f(m)),
+            branches.iter().map(|(p, b)| (f(p), f(b))).collect(),
+        ),
+    }
+}
+
+/// Returns the names of all the locally free variables occurring in `term`
+pub fn free_locals(term: &CicTerm) -> HashSet<String> {
+    match term {
+        Variable(name, NameKind::Local()) => HashSet::from([name.to_string()]),
+        _ => subterms(term).into_iter().flat_map(free_locals).collect(),
+    }
+}
+
+/// Returns `true` iff the metavariable `index` occurs in `term`
+pub fn meta_occurs(index: i32, term: &CicTerm) -> bool {
+    match term {
+        Meta(other) => *other == index,
+        _ => subterms(term).into_iter().any(|t| meta_occurs(index, t)),
+    }
+}
+
+/// Replaces the locally free variable `name` with `value` inside `term`
+pub fn substitute_local(
+    term: &CicTerm,
+    name: &str,
+    value: &CicTerm,
+) -> CicTerm {
+    substitute_and_lift(&close_term(term, name), name, value)
+}
+
+//########################### LOCALLY NAMELESS UTILITIES
 
 /// Given an inductive type (family) name, return the name
 /// of the respective eliminator
