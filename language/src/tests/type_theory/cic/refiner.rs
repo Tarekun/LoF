@@ -238,6 +238,40 @@ fn test_undeclared_metavariables_are_rejected() {
     );
 }
 
+#[test]
+fn test_refined_binders_get_their_names_back() {
+    let mut env = inductive_env();
+    // λ A:TYPE. λ x:?. x : ΠA:TYPE. Πx:?. ?   with the hole solved by `A`
+    // thanks to the annotation below
+    let term = CicTerm::Let(
+        "f".to_string(),
+        Box::new(Some(Product(
+            "A".to_string(),
+            Box::new(typee()),
+            Box::new(Product("x".to_string(), Box::new(bound("A", 0)), Box::new(bound("A", 1)))),
+        ))),
+        Box::new(Abstraction(
+            "A".to_string(),
+            Box::new(typee()),
+            Box::new(Abstraction("x".to_string(), Box::new(Meta(HOLE_INDEX)), Box::new(bound("x", 0)))),
+        )),
+        Box::new(constant("z")),
+    );
+    let (refined, refined_type) = refine_and_check(&mut env, &term).unwrap();
+    assert_eq!(refined_type, constant("Nat"));
+    match refined {
+        CicTerm::Let(_, _, definition, _) => assert_eq!(
+            *definition,
+            Abstraction(
+                "A".to_string(),
+                Box::new(typee()),
+                Box::new(Abstraction("x".to_string(), Box::new(bound("A", 0)), Box::new(bound("x", 0)))),
+            ),
+            "a hole solved with a local variable must become the right De Bruijn index"
+        ),
+        other => panic!("unexpected refined term {:?}", other),
+    }
+}
 
 #[test]
 fn test_refine_statements() {
