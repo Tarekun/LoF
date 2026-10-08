@@ -639,3 +639,186 @@ mod single_constructor_eta {
         );
     }
 }
+
+/// A branch body may refer to *any* of the variables its pattern binds, not
+/// only one of them.
+///
+/// `substitute_pattern_variables` used to bind them by applying the
+/// index-based `substitute` once per variable. Each such call removes one
+/// binder and decrements every index that pointed past it, so all but one
+/// variable came out pointing at the wrong thing. The telescope is
+/// substituted in a single pass now (`substitute_telescope`).
+mod multi_binder_pattern_substitution {
+    use super::*;
+    use crate::type_theory::cic::cic::CicTerm::{self, Match};
+    use crate::type_theory::environment::Environment;
+
+    fn apply(function: CicTerm, arguments: Vec<CicTerm>) -> CicTerm {
+        arguments.into_iter().fold(function, |acc, argument| {
+            Application(Box::new(acc), Box::new(argument))
+        })
+    }
+
+    fn global(name: &str) -> CicTerm {
+        Variable(name.to_string(), NameKind::Const())
+    }
+
+    /// `Pair := mk(Nat -> Nat -> Pair)` over the usual `Nat`
+    fn pair_environment() -> Environment<Cic> {
+        let mut env = Cic::default_environment();
+        let type_sort = Sort("TYPE".to_string());
+        let nat = global("Nat");
+        let pair = global("Pair");
+
+        env.add_to_context("Nat", &type_sort);
+        env.add_to_context("z", &nat);
+        env.add_to_context(
+            "s",
+            &Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(nat.clone()),
+            ),
+        );
+        env.add_to_inductive_store(
+            "Nat",
+            vec![
+                ("z".to_string(), nat.clone()),
+                (
+                    "s".to_string(),
+                    Product(
+                        "_".to_string(),
+                        Box::new(nat.clone()),
+                        Box::new(nat.clone()),
+                    ),
+                ),
+            ],
+            0,
+        );
+
+        let mk_type = Product(
+            "_".to_string(),
+            Box::new(nat.clone()),
+            Box::new(Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(pair.clone()),
+            )),
+        );
+        env.add_to_context("Pair", &type_sort);
+        env.add_to_context("mk", &mk_type);
+        env.add_to_inductive_store(
+            "Pair",
+            vec![("mk".to_string(), mk_type)],
+            0,
+        );
+
+        env
+    }
+
+    /// `match mk(z, s(z)) with | mk(a, b) => <body>`, elaborated the way the
+    /// elaborator does it: the pattern opens a two-binder telescope, so `a`
+    /// is at index 1 and `b` - the innermost - at index 0.
+    fn projection_match(body: CicTerm) -> CicTerm {
+        let first = Variable("a".to_string(), NameKind::Bound(1));
+        let second = Variable("b".to_string(), NameKind::Bound(0));
+
+        Match(
+            Box::new(apply(
+                global("mk"),
+                vec![global("z"), apply(global("s"), vec![global("z")])],
+            )),
+            vec![(apply(global("mk"), vec![first, second]), body)],
+        )
+    }
+
+    #[test]
+    fn test_the_innermost_pattern_variable_is_bound() {
+        let env = pair_environment();
+        let second = Variable("b".to_string(), NameKind::Bound(0));
+
+        assert_eq!(
+            one_step_reduction(&env, &projection_match(second)),
+            apply(global("s"), vec![global("z")]),
+            "a branch returning its pattern's last variable must compute to the matching argument"
+        );
+    }
+
+    #[test]
+    fn test_an_outer_pattern_variable_is_bound_too() {
+        let env = pair_environment();
+        let first = Variable("a".to_string(), NameKind::Bound(1));
+
+        assert_eq!(
+            one_step_reduction(&env, &projection_match(first)),
+            global("z"),
+            "a branch returning its pattern's *first* variable must compute to the matching argument, not leave that variable dangling"
+        );
+    }
+
+    /// A three-binder telescope whose body uses the *outermost* variable,
+    /// which is the shape `pv_cons` has in transport_list_vec.lof: its
+    /// `pack(Tp, n, v)` pattern returns a term mentioning all three, and
+    /// the leading type parameter is the one that used to come out loose.
+    #[test]
+    fn test_a_three_binder_pattern_binds_all_of_them() {
+        let mut env = pair_environment();
+        let type_sort = Sort("TYPE".to_string());
+        let triple = global("Triple");
+        let nat = global("Nat");
+        // Triple := tri(TYPE -> Nat -> Nat -> Triple)
+        let tri_type = Product(
+            "_".to_string(),
+            Box::new(type_sort.clone()),
+            Box::new(Product(
+                "_".to_string(),
+                Box::new(nat.clone()),
+                Box::new(Product(
+                    "_".to_string(),
+                    Box::new(nat.clone()),
+                    Box::new(triple.clone()),
+                )),
+            )),
+        );
+        env.add_to_context("Triple", &type_sort);
+        env.add_to_context("tri", &tri_type);
+        env.add_to_inductive_store(
+            "Triple",
+            vec![("tri".to_string(), tri_type)],
+            0,
+        );
+
+        // match tri(Nat, z, s(z)) with
+        // | tri(T, x, y) => trip(T, y, x)   -- every binder used, reordered
+        let pattern = apply(
+            global("tri"),
+            vec![
+                Variable("T".to_string(), NameKind::Bound(2)),
+                Variable("x".to_string(), NameKind::Bound(1)),
+                Variable("y".to_string(), NameKind::Bound(0)),
+            ],
+        );
+        let body = apply(
+            global("trip"),
+            vec![
+                Variable("T".to_string(), NameKind::Bound(2)),
+                Variable("y".to_string(), NameKind::Bound(0)),
+                Variable("x".to_string(), NameKind::Bound(1)),
+            ],
+        );
+        let one = apply(global("s"), vec![global("z")]);
+        let term = Match(
+            Box::new(apply(
+                global("tri"),
+                vec![nat.clone(), global("z"), one.clone()],
+            )),
+            vec![(pattern, body)],
+        );
+
+        assert_eq!(
+            one_step_reduction(&env, &term),
+            apply(global("trip"), vec![nat, one, global("z")]),
+            "every pattern variable must be replaced by the argument it matched, whatever order the body mentions them in"
+        );
+    }
+}

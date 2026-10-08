@@ -1,0 +1,48 @@
+# Regression test: a `match` branch may refer to *any* of the variables its
+# pattern binds, not only one of them.
+#
+# `substitute_pattern_variables` used to bind them by applying the
+# index-based `substitute` once per variable. Each such call removes a
+# single binder and decrements every index that pointed past it, so
+# whichever way the telescope was walked, all but one variable came out
+# pointing at the wrong thing: `fst` below reduced to a loose De Bruijn
+# reference rather than to `z`, and `fst_is_z` was *rejected*. The whole
+# telescope is substituted in one pass now (`substitute_telescope`).
+#
+# Both projections are proved by reflexivity, so each only checks if its
+# branch body reduces to the argument the pattern actually matched. `snd`
+# is the control: it returns the innermost variable, the one the old
+# one-at-a-time substitution happened to get right.
+#
+# This is also what `pv_cons` needs in transport_list_vec.lof, whose
+# `pack(Tp, n, v)` pattern uses all three of its binders.
+#
+# See also tests/type_theory/cic/evaluation.rs ::
+# multi_binder_pattern_substitution.
+
+inductive Nat: TYPE {
+  | z: Nat
+  | s: Nat -> Nat
+}
+inductive Pair : TYPE {
+  | mk : Nat -> Nat -> Pair
+}
+inductive Eq (T:TYPE, x:T) : T -> PROP {
+  | refl: Eq(T, x, x)
+}
+
+fun fst (p: Pair) : Nat {
+  match p with
+  | mk(a, b) => a,
+}
+
+fun snd (p: Pair) : Nat {
+  match p with
+  | mk(a, b) => b,
+}
+
+theorem fst_is_z : Eq(Nat, fst(mk(z, s(z))), z) :=
+  (refl(Nat, z))
+
+theorem snd_is_s_z : Eq(Nat, snd(mk(z, s(z))), s(z)) :=
+  (refl(Nat, s(z)))
