@@ -8,7 +8,7 @@ use crate::{
         },
         environment::Environment,
         grammars::traits::LocallyNameless,
-        interface::{Interactive, Kernel, TypeTheory},
+        interface::{Interactive, Kernel, Reducer, TypeTheory},
     },
 };
 
@@ -143,7 +143,7 @@ pub fn type_check_application<
 /// `normalize_type` is used to expose the product type of `left` and the
 /// argument type is compared using `T::type_judgemental_equality` (no inference)
 pub fn ln_type_check_application<
-    T: TypeTheory + Kernel,
+    T: TypeTheory + Kernel + Reducer,
     F: Fn(&T::Type) -> Option<(String, T::Type, T::Type)>,
     N: Fn(&Environment<T>, &T::Type) -> T::Type,
     S: Fn(&T::Type, &str, &T::Term) -> T::Type,
@@ -170,7 +170,16 @@ pub fn ln_type_check_application<
                 )
             },
         )?;
-        Ok(substitute_type(&codomain, &var_name, right))
+        // The argument goes in *normalized*, which is what β-reduction
+        // itself does (`reduce_application` normalizes before
+        // substituting). Reduction is not a congruence on a stuck
+        // `match`'s branch bodies - descending into them would unfold a
+        // recursive definition forever - so an un-normalized argument
+        // that lands in one is never revisited, and two convertible types
+        // come out with different normal forms depending on whether they
+        // were built by an application or by a β-step.
+        let argument = T::normalize_term(environment, right);
+        Ok(substitute_type(&codomain, &var_name, &argument))
     } else {
         Err(LofError::custom(format!(
             "Attempted application on non functional term of type: {:?}",
