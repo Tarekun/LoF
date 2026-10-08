@@ -5,13 +5,12 @@ use super::cic::CicTerm::{
 use crate::error::LofError;
 use crate::type_theory::cic::cic::{Cic, NameKind};
 use crate::type_theory::cic::cic_utils::{
-    application_args, get_applied_function, get_arg_types, is_constant,
-    open_term, pattern_binder_names, substitute, substitute_meta,
+    application_args, get_applied_function, is_constant, substitute,
+    substitute_meta,
 };
-use crate::type_theory::cic::type_check::type_constr_vars;
 use crate::type_theory::commons::unification::{ucs, Substitution};
 use crate::type_theory::environment::Environment;
-use crate::type_theory::interface::{Kernel, Reducer};
+use crate::type_theory::interface::Reducer;
 use std::collections::VecDeque;
 
 fn is_substitutable(term: &CicTerm) -> Option<String> {
@@ -253,139 +252,6 @@ fn solve_unifications_unnormalized(
             term.clone()
         }
     }))
-}
-
-pub fn cic_collect_unifications(
-    term: &CicTerm,
-    environment: &mut Environment<Cic>,
-) -> Result<Vec<(CicTerm, CicTerm)>, LofError> {
-    match term {
-        Abstraction(var_name, var_type, body) => {
-            let type_cons = cic_collect_unifications(var_type, environment)?;
-            let opened_body = open_term(body, var_name);
-            let body_cons = environment.with_local_assumption(
-                var_name,
-                var_type,
-                |local_env| cic_collect_unifications(&opened_body, local_env),
-            )?;
-
-            Ok([type_cons, body_cons].concat())
-        }
-        Application(fun, arg) => {
-            let fun_cons = cic_collect_unifications(fun, environment)?;
-            let arg_cons = cic_collect_unifications(arg, environment)?;
-
-            let arg_type = Cic::type_check_term(arg, environment)?;
-            let fun_type = Cic::type_check_term(fun, environment)?;
-            let first_arg_type = &get_arg_types(&fun_type)[0];
-
-            Ok([
-                fun_cons,
-                vec![(first_arg_type.to_owned(), arg_type)],
-                arg_cons,
-            ]
-            .concat())
-        }
-        Product(var_name, domain, codomain) => {
-            let domain_cons = cic_collect_unifications(domain, environment)?;
-            let opened_codomain = open_term(codomain, var_name);
-            let codomain_cons = environment.with_local_assumption(
-                var_name,
-                domain,
-                |local_env| {
-                    cic_collect_unifications(&opened_codomain, local_env)
-                },
-            )?;
-
-            Ok([domain_cons, codomain_cons].concat())
-        }
-        Let(var_name, opt_type, body, scope) => {
-            let type_cons = match &**opt_type {
-                Some(var_type) => {
-                    cic_collect_unifications(var_type, environment)?
-                }
-                // TODO im pretty sure this should introduce the opt_type=body_type constraint
-                None => vec![],
-            };
-            let body_cons = cic_collect_unifications(body, environment)?;
-            let opened_scope = open_term(scope, var_name);
-            let scope_cons = environment.with_local_substitution(
-                var_name,
-                body,
-                &(**opt_type).to_owned(),
-                |local_env| cic_collect_unifications(&opened_scope, local_env),
-            )?;
-
-            Ok([type_cons, body_cons, scope_cons].concat())
-        }
-        // TODO im pretty sure this branch should introduce constraints between the matched
-        // term type and the produced pattern + all of the branches results
-        Match(matched_term, branches) => {
-            let matched_cons =
-                cic_collect_unifications(matched_term, environment)?;
-            let mut branch_cons = vec![];
-            for (pattern, body) in branches {
-                let constructor = get_applied_function(pattern);
-                let constr_type =
-                    Cic::type_check_term(&constructor, environment)?;
-                let pattern_assumptions =
-                    type_constr_vars(environment, pattern, &constr_type)?;
-                // a branch sits under one binder per pattern variable, so it
-                // gets opened once per binder - innermost last, mirroring
-                // `type_check_match`
-                let branch_binders = pattern_binder_names(pattern);
-                let opened_assumptions: Vec<(String, CicTerm)> =
-                    pattern_assumptions
-                        .iter()
-                        .map(|(assumption_name, assumption_type)| {
-                            let opened_type = branch_binders.iter().rev().fold(
-                                assumption_type.to_owned(),
-                                |opened, binder_name| {
-                                    open_term(&opened, binder_name)
-                                },
-                            );
-                            (assumption_name.to_owned(), opened_type)
-                        })
-                        .collect();
-                let opened_body = branch_binders
-                    .iter()
-                    .rev()
-                    .fold(body.to_owned(), |opened, binder_name| {
-                        open_term(&opened, binder_name)
-                    });
-                let body_cons = environment.with_local_assumptions(
-                    &opened_assumptions,
-                    |local_env| {
-                        cic_collect_unifications(&opened_body, local_env)
-                    },
-                )?;
-                branch_cons.extend(body_cons);
-            }
-
-            Ok([matched_cons, branch_cons].concat())
-        }
-        _ => Ok(vec![]),
-    }
-}
-pub fn cic_apply_unifier(
-    exp: &CicTerm,
-    substitution: &Substitution<CicTerm>,
-) -> CicTerm {
-    let mut solved_exp = exp.to_owned();
-    for index in substitution.names() {
-        // TODO: this now applies both first and second order substitution
-        // review if its actually what i want implemented here
-        let value = substitution.get(index).unwrap();
-        solved_exp = if let Some(meta_idx) = index.strip_prefix("metavariable_")
-        {
-            substitute_meta(&solved_exp, &meta_idx.parse().unwrap(), value)
-        } else if let Some(var_name) = index.strip_prefix("variable_") {
-            substitute(&solved_exp, var_name, value)
-        } else {
-            solved_exp
-        };
-    }
-    solved_exp
 }
 
 #[cfg(test)]
