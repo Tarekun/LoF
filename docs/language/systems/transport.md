@@ -210,25 +210,43 @@ the transported proof uses no axiom.
 Transport is a language feature, but making it work exposed gaps in the
 kernel that had never been exercised - nothing in the codebase had used a
 generated eliminator before, so no proof by induction had ever been checked.
-Some of these were found here and fixed on `main` separately (ι-reduction
-for generated eliminators, reduction under binders, a stuck `match` as a
-normal form, pattern variables as binding occurrences, and the
-locally-nameless `NameKind` representation that makes α-equivalence
-structural); this feature consumes them. The rest are the following:
+Several were found here and have since been fixed on `main` in their own
+right, and this feature simply consumes them: ι-reduction for generated
+eliminators, reduction under binders, a stuck `match` as a normal form,
+pattern variables as binding occurrences, the locally-nameless `NameKind`
+representation that makes α-equivalence structural, naming an indexed
+family's anonymous ariety binders, normalizing a function's type before
+unpacking its `Π`, and the split that moved hole solving out of the kernel
+into the refiner (which removed the exponential application checker along
+with the kernel's constraint collection). The rest are the following:
 
-- **Generated eliminators kept their binder names.** `inductive_eliminator`
-  renamed every constructor argument to `nr_i`/`r_i` and left an indexed
-  family's anonymous ariety binders as `_`, while the argument *types* it
-  copied still referred to the original names. Since the finished
-  eliminator type is resolved by name (`index_variables`, which refuses to
-  bind `_`), both left dangling constants behind: `e_Vec`'s motive came out
-  as `Π_:Nat. Vec(T, _) -> TYPE`, so applying any indexed family's
-  eliminator failed with a spurious conflicting-substitution error. An
-  argument now keeps its declared name where it has one, and only a genuinely
-  anonymous binder gets a generated one.
-- **Substitution round-trips through unification.** Solved substitutions
-  keyed by an ordinary variable (rather than a metavariable) were fed to a
-  metavariable-only substitution function, panicking on the key.
+- **A generated eliminator keeps its constructor argument names.**
+  `inductive_eliminator` renames every constructor argument to
+  `nr_i`/`r_i`, while the argument *types* it copies alongside still refer
+  to the original names. Since the finished eliminator type is resolved by
+  name (`index_variables`), that strands those references as constants:
+  `vcons : ∀n:Nat. T -> Vec(T,n) -> Vec(T,s(n))` gave a case mentioning a
+  `Vec(T, n)` whose `n` is bound by nothing, so applying any indexed
+  family's eliminator failed with a spurious conflicting-substitution
+  error. An argument now keeps its declared name where it has one, and
+  only a genuinely anonymous binder gets a generated one.
+- **A match pattern's binders are substituted all at once.**
+  `substitute_pattern_variables` applied the index-based `substitute` once
+  per pattern variable. That primitive removes a *single* binder and
+  decrements everything pointing past it, so applied per entry it keeps
+  shifting the arguments earlier calls already spliced in and leaves
+  behind every binder whose index never lined up with the current depth.
+  `pv_cons`'s `pack(Tp, n, v)` pattern therefore reduced to a body whose
+  type parameter was a loose De Bruijn reference. `substitute_telescope`
+  does the whole telescope in one pass.
+- **An application's argument is substituted in normal form.** Reduction
+  is not a congruence on a stuck `match`'s branch bodies and cannot be -
+  descending into them would unfold a recursive definition forever - so a
+  term that lands in one is never revisited and `normalize_term` returns a
+  fixed point that is not a normal form. β-reduction normalizes an
+  argument before substituting it, so the kernel's application rule has to
+  as well, or the same type comes out with two different normal forms
+  depending on which built it.
 - **Eta for single-constructor inductives.** A `match` or `e_<Type>` whose
   target is an opaque value of a one-constructor type was permanently
   stuck. It now eta-expands into `C(params.., t.0, .., t.k-1)`, the fields
@@ -241,23 +259,12 @@ structural); this feature consumes them. The rest are the following:
   The middle one is soundness, not caution: `Eq` is single-constructor, and
   eta for it would say every proof of `Eq(T,x,y)` is `refl`, ie hand out
   UIP/axiom K.
-- **Application type checking is no longer exponential.** Checking an
-  application collected unification constraints over the whole `f x` term,
-  and constraint collection on an application itself type checks that
-  application's function - the two were mutually recursive, so cost doubled
-  per argument. Only the node's own constraint (the argument's type against
-  the domain) is collected now; both sides have just been type checked in
-  their own right. A six-argument curried application nested three deep
-  went from 27 million type-check calls to a few hundred, and the whole
-  test suite from 20s to 15s while doing strictly more work.
-- **Un-reduced function and scrutinee types.** A dependent eliminator's
-  result type is literally `motive(target, proof)`, so a term whose type
-  comes from one arrives as a beta-redex rather than a `Pi` or an inductive
-  instance. Application checking, `match` checking and constraint
-  collection now normalize on that fallback path.
 - **Theorem proof terms are retained.** `evaluate_theorem` discarded them,
   so an already-proved theorem's witness could not be retrieved by name -
-  which transport fundamentally needs.
+  which transport fundamentally needs. A tactic-mode proof only has a
+  concrete term once `type_check_interactive_proof` has resolved it, so
+  `type_check_theorem` records it rather than leaving it to
+  `evaluate_theorem`.
 
 ## Limitations
 
