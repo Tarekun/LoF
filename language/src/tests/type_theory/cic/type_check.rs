@@ -5,6 +5,90 @@ use crate::{config::Config, parser::api::LofParser, runtime::program::ProgramNod
 }, environment::Environment}};
 use crate::parser::api::Statement::{Fun, Inductive};
 use crate::type_theory::interface::Kernel;
+
+/// kernel invariants that dont belong to a specific construct
+mod kernel {
+    use super::*;
+
+    #[test]
+    fn test_kernel_rejects_metavariables() {
+        let mut test_env = Cic::default_environment();
+        test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
+        assert!(
+            Cic::type_check_term(&Meta(0), &mut test_env).is_err(),
+            "the kernel must not accept metavariables"
+        );
+        assert!(
+            Cic::type_check_term(
+                &Abstraction(
+                    "n".to_string(),
+                    Box::new(Meta(0)),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(0))),
+                ),
+                &mut test_env
+            )
+            .is_err(),
+            "the kernel must not accept terms containing holes"
+        );
+    }
+
+    #[test]
+    fn test_kernel_judgemental_equality() {
+        let mut test_env = Cic::default_environment();
+        let prop = Sort("PROP".to_string());
+        let typee = Sort("TYPE".to_string());
+        test_env.add_to_context("Nat", &typee);
+        test_env.add_to_context("P", &prop);
+        let nat = Variable("Nat".to_string(), NameKind::Const());
+        let arrow = |domain: CicTerm, codomain: CicTerm, name: &str| {
+            Product(name.to_string(), Box::new(domain), Box::new(codomain))
+        };
+        // takes_type : (Nat -> TYPE) -> Nat
+        test_env.add_to_context(
+            "takes_type",
+            &arrow(arrow(nat.clone(), typee.clone(), "x"), nat.clone(), "_"),
+        );
+        // takes_prop : PROP -> Nat
+        test_env.add_to_context("takes_prop", &arrow(prop.clone(), nat.clone(), "_"));
+        let apply = |f: &str, arg: CicTerm| {
+            Application(
+                Box::new(Variable(f.to_string(), NameKind::Const())),
+                Box::new(arg),
+            )
+        };
+        let prop_family = Abstraction(
+            "n".to_string(),
+            Box::new(nat.clone()),
+            Box::new(Variable("P".to_string(), NameKind::Const())),
+        );
+
+        assert_eq!(
+            Cic::type_check_term(&apply("takes_type", prop_family), &mut test_env),
+            Ok(nat.clone()),
+            "PROP ≤ TYPE cumulativity must be accepted in product codomains, whatever the binder names"
+        );
+        assert!(
+            Cic::type_check_term(&apply("takes_prop", nat.clone()), &mut test_env)
+                .is_err(),
+            "TYPE is not PROP"
+        );
+        assert!(
+            Cic::type_check_term(
+                &apply(
+                    "takes_type",
+                    Abstraction(
+                        "n".to_string(),
+                        Box::new(nat.clone()),
+                        Box::new(Variable("n".to_string(), NameKind::Bound(0))),
+                    )
+                ),
+                &mut test_env
+            )
+            .is_err(),
+            "a function Nat -> Nat is not a type family Nat -> TYPE"
+        );
+    }
+}
 use crate::type_theory::interface::{Stm, TypeTheory};
 
 fn var(name: &str) -> CicTerm {
@@ -268,64 +352,6 @@ mod abstraction {
         );
     }
 
-    #[test]
-    fn test_abstraction_inference() {
-        let nat = Variable("Nat".to_string(), NameKind::Const());
-        let mut test_env = Cic::default_environment();
-        test_env
-            .add_to_context("Nat", &Sort("TYPE".to_string()));
-        test_env.add_to_context(
-            "s", 
-            &Product(
-                "_".to_string(),
-                Box::new(nat.clone()),
-                Box::new(nat.clone())
-            )
-        );
-        // id : ? -> ?
-        test_env.add_to_context(
-            "id", 
-            &Product(
-                "x".to_string(),
-                Box::new(Meta(1)),
-                Box::new(Meta(1))
-            )
-        );
-
-        assert_eq!(
-            Cic::type_check_term(
-                // λ n:?. s n
-                &Abstraction(
-                    "n".to_string(), 
-                    Box::new(Meta(0)), 
-                    Box::new(Application(
-                        Box::new(Variable("s".to_string(), NameKind::Const())), 
-                        Box::new(Variable("n".to_string(), NameKind::Bound(0)))
-                    ))
-                ), 
-                &mut test_env
-            ),
-            Ok(Product("n".to_string(), Box::new(nat.clone()), Box::new(nat.clone()))),
-            "Type checking cant inference the type of argument applied to a function Nat->Nat"
-        );
-
-        assert_eq!(
-            Cic::type_check_term(
-                // λ n:Nat. id n
-                &Abstraction(
-                    "n".to_string(), 
-                    Box::new(nat.clone()), 
-                    Box::new(Application(
-                        Box::new(Variable("id".to_string(), NameKind::Const())), 
-                        Box::new(Variable("n".to_string(), NameKind::Bound(0)))
-                    ))
-                ), 
-                &mut test_env
-            ),
-            Ok(Product("n".to_string(), Box::new(nat.clone()), Box::new(nat.clone()))),
-            "Type checking cant inference the output type of a function Nat->Nat"
-        );
-    }
 }
 
 mod product {
@@ -542,71 +568,6 @@ mod application {
         );
     }
 
-    #[test]
-    fn test_application_inference() {
-        let list = Variable("List".to_string(), NameKind::Const());
-        let nat = Variable("Nat".to_string(), NameKind::Const());
-        let mut test_env = Cic::default_environment();
-        test_env
-            .add_to_context("Nat", &Sort("TYPE".to_string()));
-
-        test_env.add_to_context(
-            "List", 
-            &Product(
-                "T".to_string(),
-                Box::new(Sort("TYPE".to_string())),
-                Box::new(Sort("TYPE".to_string()))
-            )
-        );
-        test_env.add_to_context(
-            "cons", 
-            &Product(
-                "T".to_string(),
-                Box::new(Sort("TYPE".to_string())),
-                Box::new(Product(
-                    "e".to_string(),
-                    Box::new(Variable("T".to_string(), NameKind::Bound(0))),
-                    Box::new(Product(
-                        "l".to_string(),
-                        Box::new(Application(
-                            Box::new(list.clone()),
-                            Box::new(Variable("T".to_string(), NameKind::Bound(0))),
-                        )),
-                        Box::new(Application(
-                            Box::new(list.clone()),
-                            Box::new(Variable("T".to_string(), NameKind::Bound(0))),
-                        ))
-                    ))
-                ))
-            )
-        );
-        test_env.add_to_context("elem", &nat.clone());
-        test_env.add_to_context("li", &Application(
-            Box::new(list.clone()),
-            Box::new(nat.clone()),
-        ));
-
-        assert_eq!(
-            Cic::type_check_term(
-                &Application(
-                    Box::new(Application(
-                        Box::new(Application(
-                            Box::new(Variable("cons".to_string(), NameKind::Const())), 
-                            Box::new(Meta(10))
-                        )),
-                        Box::new(Variable("elem".to_string(), NameKind::Const()))
-                    )), 
-                    Box::new(Variable("li".to_string(), NameKind::Const()))
-                ),
-                &mut test_env
-            ),
-            Ok(Application(
-                Box::new(list.clone()),
-                Box::new(nat.clone()),
-            )),
-            "vediamo un po"
-        );    
-    }
 }
 
 mod let_expr {
@@ -617,6 +578,7 @@ mod let_expr {
         let mut test_env = Cic::default_environment();
         let nat = Variable("Nat".to_string(), NameKind::Const());
         let zero = Variable("z".to_string(), NameKind::Const());
+        test_env.add_to_context("Nat", &Sort("TYPE".to_string()));
         test_env.add_to_context("z", &nat);
 
         assert!(
@@ -625,7 +587,7 @@ mod let_expr {
                     "n".to_string(),
                     Box::new(Some(nat.clone())),
                     Box::new(zero.clone()),
-                    Box::new(Variable("n".to_string(), NameKind::Bound(1))),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(0))),
                 ),
                 &mut test_env
             ).is_ok(),
@@ -637,7 +599,7 @@ mod let_expr {
                     "n".to_string(),
                     Box::new(None),
                     Box::new(zero.clone()),
-                    Box::new(Variable("n".to_string(), NameKind::Bound(1))),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(0))),
                 ),
                 &mut test_env
             ).is_ok(),
@@ -649,7 +611,7 @@ mod let_expr {
                     "n".to_string(),
                     Box::new(Some(Variable("UnboundType".to_string(), NameKind::Const()))),
                     Box::new(zero.clone()),
-                    Box::new(Variable("n".to_string(), NameKind::Bound(1))),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(0))),
                 ),
                 &mut test_env
             ).is_err(),
@@ -661,7 +623,7 @@ mod let_expr {
                     "n".to_string(),
                     Box::new(Some(nat.clone())),
                     Box::new(Variable("unbound_term".to_string(), NameKind::Bound(1))),
-                    Box::new(Variable("n".to_string(), NameKind::Bound(1))),
+                    Box::new(Variable("n".to_string(), NameKind::Bound(0))),
                 ),
                 &mut test_env
             ).is_err(),
@@ -793,27 +755,6 @@ mod pattern_match {
         //     .is_ok(),
         //     "match type checking doesnt support unification in pattern"
         // );
-    }
-
-    #[test]
-    fn test_match_inference() {
-        let mut test_env = packed_env();
-
-        let tt = var("true");
-        let matched = app("nil", vec![var("Bool")]);
-        let matc = Match(
-            Box::new(matched),
-            vec![
-                (app("nil", vec![Meta(0)]), tt.clone()),
-                (app("cons", vec![Meta(0), var("h"), var("l")]), tt.clone()),
-            ],
-        );
-
-        assert_eq!(
-            Cic::type_check_term(&matc, &mut test_env),
-            Ok(Variable("Bool".to_string(), NameKind::Const())),
-            "Match type checking fails when pattern make use of metavariables"
-        );
     }
 
     #[test]

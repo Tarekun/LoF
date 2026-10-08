@@ -8,8 +8,8 @@ use crate::parser::api::{Expression, LofStatement, Tactic};
 use crate::runtime::program::Schedule;
 use crate::type_theory::commons::evaluation::generic_term_normalization;
 use crate::type_theory::commons::type_check::{
-    eq_type_check_theorem, type_check_abstraction, type_check_application,
-    type_check_auto, type_check_axiom, type_check_global, type_check_let,
+    type_check_abstraction, type_check_application, type_check_auto,
+    type_check_axiom, type_check_global, type_check_let, type_check_theorem,
     type_check_variable,
 };
 use crate::type_theory::environment::Environment;
@@ -179,7 +179,7 @@ impl Kernel for Fol {
                 is_rec,
             ),
             Theorem(theorem_name, formula, proof) => {
-                eq_type_check_theorem::<Fol>(
+                type_check_theorem::<Fol>(
                     environment,
                     theorem_name,
                     formula,
