@@ -456,19 +456,19 @@ mod unit_tests {
 
         // test complex CIC expressions parsing and type checking
         test_scripts_run::<Cic>(
-            "../library/tests/expressions",
+            "../test_artifacts/lof/expressions",
             Config::new(TypeSystem::Cic),
             "CIC complex expressions failed",
         );
         // test CIC proof checking
         test_scripts_run::<Cic>(
-            "../library/tests/proofs",
+            "../test_artifacts/lof/proofs",
             Config::new(TypeSystem::Cic),
             "CIC proofs execution failed",
         );
         // test FOL logic programming
         test_scripts_run::<Fol>(
-            "../library/tests/loprog",
+            "../test_artifacts/lof/loprog",
             Config::new(TypeSystem::Fol),
             "FOL solve execution failed",
         );

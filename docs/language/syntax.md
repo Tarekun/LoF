@@ -10,7 +10,7 @@ A `#` starts a comment that runs to the end of the line.
 # This is a comment
 ```
 
-At the top level, a comment on its own line is parsed as a standalone `Statement::Comment()` node. But comments are not only a whole-line, top-level construct: `#...` is skipped anywhere the parser accepts whitespace (`ws0`/`ws1` in `language/src/parser/commons.rs`), which is most of the surface syntax — between arguments, inside `match` arms, between binders, etc. So comments can appear nested inside composite expressions, not just as standalone lines, e.g. (`library/tests/expressions/match.lof`):
+At the top level, a comment on its own line is parsed as a standalone `Statement::Comment()` node. But comments are not only a whole-line, top-level construct: `#...` is skipped anywhere the parser accepts whitespace (`ws0`/`ws1` in `language/src/parser/commons.rs`), which is most of the surface syntax — between arguments, inside `match` arms, between binders, etc. So comments can appear nested inside composite expressions, not just as standalone lines, e.g. (`test_artifacts/lof/expressions/match.lof`):
 
 ```
 match n with
@@ -214,7 +214,7 @@ theorem name : Formula :=
   qed.
 ```
 
-Example (`library/tests/proofs/basic_tactics.lof`):
+Example (`test_artifacts/lof/proofs/basic_tactics.lof`):
 ```
 theorem zero_plus_one_term : Eq(Nat, plus(z, s(z)), s(z)) := (refl(Nat, s(z)))
 
@@ -252,7 +252,7 @@ Logic programming query — asks whether `formula` holds, optionally computing w
 solve formula
 ```
 
-Multiple comma-separated goals are also accepted (`solve formula1, formula2, …`). Example (from `library/tests/loprog/nat.lof`):
+Multiple comma-separated goals are also accepted (`solve formula1, formula2, …`). Example (from `test_artifacts/lof/loprog/nat.lof`):
 ```
 solve NatEq(plus(s(z), r), s(s(s(z))))
 ```
