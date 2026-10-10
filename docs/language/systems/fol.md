@@ -85,7 +85,7 @@ These are the automation entry points:
 - `auto formula` — instructs the engine to automatically prove `formula`. During type checking, only validates the formula is well-formed; the actual proof search happens in evaluation via the FOL→SUP compilation path.
 - `solve formula1 formula2 …` — logic programming query. Checks each formula is well-formed.
 
-Function/predicate application uses parenthesized, comma-separated syntax (`f(a, b, c)`), not space-juxtaposition. For example, from `library/tests/loprog/nat.lof`:
+Function/predicate application uses parenthesized, comma-separated syntax (`f(a, b, c)`), not space-juxtaposition. For example, from `test_artifacts/lof/loprog/nat.lof`:
 
 ```
 axiom ax1 : \forall n : Nat. NatEq(plus(z, n), n);
