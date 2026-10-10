@@ -30,9 +30,10 @@ pub trait Complement {
 
 /// Substitution by explicitly provided variable name
 pub trait NamedSubstitution<T> {
-    /// Returns a copy of `self` where every occurance of `target_name`
-    /// is replaced by `arg`
-    fn substitute_name(&self, target_name: &str, arg: &T) -> Self;
+    /// Replaces in place every occurance of `target_name` in `self`
+    /// with `arg`. Takes `&mut self` and updates expression in place
+    /// for efficiency, but note that this is an imperative operation
+    fn substitute_name(&mut self, target_name: &str, arg: &T);
 }
 
 /// Trait for expression reduction. Requires the implementation of

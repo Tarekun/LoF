@@ -493,6 +493,16 @@ fn test_make_multiarg_app() {
     );
 }
 
+/// Returns `term` where each instance of `target_name` is substituted with `arg`
+fn substituted<A, T: NamedSubstitution<A>>(
+    mut term: T,
+    target_name: &str,
+    arg: &A,
+) -> T {
+    term.substitute_name(target_name, arg);
+    term
+}
+
 #[test]
 fn test_term_substitution() {
     let (x, k) = (var("x"), var("k"));
@@ -510,46 +520,52 @@ fn test_term_substitution() {
     };
 
     assert_eq!(
-        x.substitute_name("x", &k),
+        substituted(x.clone(), "x", &k),
         k,
         "Target variable isnt substituted"
     );
     assert_eq!(
-        var("y").substitute_name("x", &k),
+        substituted(var("y"), "x", &k),
         var("y"),
         "Other variable is substituted"
     );
     assert_eq!(
-        app(x.clone(), Tuple(vec![x.clone(), var("y")]))
-            .substitute_name("x", &k),
+        substituted(app(x.clone(), Tuple(vec![x.clone(), var("y")])), "x", &k),
         app(k.clone(), Tuple(vec![k.clone(), var("y")])),
         "Substitution doesnt reach applications and tuples"
     );
     assert_eq!(
-        Abstraction("y".to_string(), Box::new(nat_of(&x)), Box::new(x.clone()))
-            .substitute_name("x", &k),
+        substituted(
+            Abstraction(
+                "y".to_string(),
+                Box::new(nat_of(&x)),
+                Box::new(x.clone())
+            ),
+            "x",
+            &k
+        ),
         Abstraction("y".to_string(), Box::new(nat_of(&k)), Box::new(k.clone())),
         "Substitution doesnt reach abstraction type and body"
     );
     let shadowing =
         Abstraction("x".to_string(), Box::new(nat_of(&x)), Box::new(x.clone()));
     assert_eq!(
-        shadowing.substitute_name("x", &k),
+        substituted(shadowing.clone(), "x", &k),
         shadowing,
         "Substitution goes through an abstraction binding the same name"
     );
     assert_eq!(
-        let_term("y", Some(nat_of(&x)), &x, &x).substitute_name("x", &k),
+        substituted(let_term("y", Some(nat_of(&x)), &x, &x), "x", &k),
         let_term("y", Some(nat_of(&k)), &k, &k),
         "Substitution doesnt reach let type, body and scope"
     );
     assert_eq!(
-        let_term("y", None, &x, &x).substitute_name("x", &k),
+        substituted(let_term("y", None, &x, &x), "x", &k),
         let_term("y", None, &k, &k),
         "Substitution breaks untyped let definitions"
     );
     assert_eq!(
-        let_term("x", None, &x, &x).substitute_name("x", &k),
+        substituted(let_term("x", None, &x, &x), "x", &k),
         let_term("x", None, &k, &x),
         "Substitution goes through the scope of a let binding the same name"
     );
@@ -567,20 +583,23 @@ fn test_formula_substitution() {
     };
 
     assert_eq!(
-        body(&x).substitute_name("x", &k),
+        substituted(body(&x), "x", &k),
         body(&k),
         "Substitution doesnt reach every connective"
     );
     for quantify in [forall, exist] {
         assert_eq!(
-            quantify("y", pred("Vec", vec![x.clone()]), body(&x))
-                .substitute_name("x", &k),
+            substituted(
+                quantify("y", pred("Vec", vec![x.clone()]), body(&x)),
+                "x",
+                &k
+            ),
             quantify("y", pred("Vec", vec![k.clone()]), body(&k)),
             "Substitution doesnt reach quantifier type and body"
         );
         let shadowing = quantify("x", nat.clone(), body(&x));
         assert_eq!(
-            shadowing.substitute_name("x", &k),
+            substituted(shadowing.clone(), "x", &k),
             shadowing,
             "Substitution goes through a quantifier binding the same name"
         );

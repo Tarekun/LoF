@@ -209,12 +209,25 @@ fn test_lookups() {
     );
 }
 
+/// Returns `term` where each instance of `target_name` is substituted with `arg`
+fn substituted<A, T: NamedSubstitution<A>>(
+    mut term: T,
+    target_name: &str,
+    arg: &A,
+) -> T {
+    term.substitute_name(target_name, arg);
+    term
+}
+
 #[test]
 fn test_substitution() {
     // uniform substitution of atoms
     assert_eq!(
-        arrow(atom("A"), atom("B"))
-            .substitute_name("A", &Conjunction(vec![atom("B"), atom("C")])),
+        substituted(
+            arrow(atom("A"), atom("B")),
+            "A",
+            &Conjunction(vec![atom("B"), atom("C")])
+        ),
         arrow(Conjunction(vec![atom("B"), atom("C")]), atom("B"))
     );
 
@@ -228,7 +241,7 @@ fn test_substitution() {
         Box::new(var("x")),
     );
     assert_eq!(
-        term.substitute_name("x", &var("y")),
+        substituted(term, "x", &var("y")),
         Application(
             Box::new(Abstraction(
                 "x".to_string(),
@@ -246,7 +259,7 @@ fn test_substitution() {
         Box::new(var("x")),
     );
     assert_eq!(
-        term.substitute_name("x", &var("y")),
+        substituted(term, "x", &var("y")),
         Let(
             "x".to_string(),
             Box::new(None),
@@ -260,7 +273,7 @@ fn test_substitution() {
     let term =
         Abstraction("x".to_string(), Box::new(atom("A")), Box::new(var("A")));
     assert_eq!(
-        term.substitute_name("A", &atom("B")),
+        substituted(term, "A", &atom("B")),
         Abstraction("x".to_string(), Box::new(atom("B")), Box::new(var("A"))),
         "Formula substitution in terms touches term variables"
     );

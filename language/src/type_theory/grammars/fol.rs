@@ -172,61 +172,36 @@ impl FolTerm {
 }
 
 impl NamedSubstitution<FolTerm> for FolTerm {
-    /// Returns a new term identical to `self` where each instance of
-    /// `target_name` is substituted with `arg`
-    fn substitute_name(&self, target_name: &str, arg: &FolTerm) -> FolTerm {
+    fn substitute_name(&mut self, target_name: &str, arg: &FolTerm) {
         match self {
             Variable(var_name) => {
                 if var_name == target_name {
-                    arg.clone()
-                } else {
-                    self.clone()
+                    *self = arg.to_owned();
                 }
             }
             Abstraction(var_name, var_type, body) => {
                 // the name is overridden in `body`'s scope
                 if var_name != target_name {
-                    Abstraction(
-                        var_name.to_string(),
-                        Box::new(var_type.substitute_name(target_name, arg)),
-                        Box::new(body.substitute_name(target_name, arg)),
-                    )
-                } else {
-                    self.to_owned()
+                    var_type.substitute_name(target_name, arg);
+                    body.substitute_name(target_name, arg);
                 }
             }
-            Application(left, right) => Application(
-                Box::new(left.substitute_name(target_name, arg)),
-                Box::new(right.substitute_name(target_name, arg)),
-            ),
-            Tuple(terms) => Tuple(simple_map(terms.to_owned(), |term| {
-                term.substitute_name(target_name, arg)
-            })),
+            Application(left, right) => {
+                left.substitute_name(target_name, arg);
+                right.substitute_name(target_name, arg);
+            }
+            Tuple(terms) => terms
+                .iter_mut()
+                .for_each(|t| t.substitute_name(target_name, arg)),
             Let(var_name, var_type, body, scope) => {
-                let var_type = if var_type.is_some() {
-                    Some(
-                        (**var_type)
-                            .as_ref()
-                            .unwrap()
-                            .substitute_name(target_name, arg),
-                    )
-                } else {
-                    None
-                };
-                let body = body.substitute_name(target_name, arg);
+                if let Some(var_type) = &mut **var_type {
+                    var_type.substitute_name(target_name, arg);
+                }
+                body.substitute_name(target_name, arg);
                 // the name is overridden in `body`'s scope
-                let scope = if var_name != target_name {
-                    scope.substitute_name(target_name, arg)
-                } else {
-                    (**scope).to_owned()
-                };
-
-                Let(
-                    var_name.to_string(),
-                    Box::new(var_type),
-                    Box::new(body),
-                    Box::new(scope),
-                )
+                if var_name != target_name {
+                    scope.substitute_name(target_name, arg);
+                }
             }
         }
     }
@@ -253,55 +228,25 @@ impl FolFormula {
 }
 
 impl NamedSubstitution<FolTerm> for FolFormula {
-    /// Returns a new formula identical to `self` where each instance of
-    /// `target_name` is substituted with `arg`
-    fn substitute_name(&self, target_name: &str, arg: &FolTerm) -> FolFormula {
+    fn substitute_name(&mut self, target_name: &str, arg: &FolTerm) {
         match self {
-            Predicate(name, args) => Predicate(
-                name.to_string(),
-                simple_map(args.to_owned(), |term| {
-                    term.substitute_name(target_name, arg)
-                }),
-            ),
-            Arrow(left, right) => Arrow(
-                Box::new(left.substitute_name(target_name, arg)),
-                Box::new(right.substitute_name(target_name, arg)),
-            ),
-            Not(formula) => {
-                Not(Box::new(formula.substitute_name(target_name, arg)))
+            Predicate(_, args) => args
+                .iter_mut()
+                .for_each(|t| t.substitute_name(target_name, arg)),
+            Arrow(left, right) => {
+                left.substitute_name(target_name, arg);
+                right.substitute_name(target_name, arg);
             }
-            Conjunction(formulas) => {
-                Conjunction(simple_map(formulas.to_owned(), |formula| {
-                    formula.substitute_name(target_name, arg)
-                }))
-            }
-            Disjunction(formulas) => {
-                Disjunction(simple_map(formulas.to_owned(), |formula| {
-                    formula.substitute_name(target_name, arg)
-                }))
-            }
-            ForAll(var_name, var_type, body) => {
+            Not(formula) => formula.substitute_name(target_name, arg),
+            Conjunction(formulas) | Disjunction(formulas) => formulas
+                .iter_mut()
+                .for_each(|f| f.substitute_name(target_name, arg)),
+            ForAll(var_name, var_type, body)
+            | Exist(var_name, var_type, body) => {
                 // the name is overridden in `body`'s scope
                 if var_name != target_name {
-                    ForAll(
-                        var_name.to_string(),
-                        Box::new(var_type.substitute_name(target_name, arg)),
-                        Box::new(body.substitute_name(target_name, arg)),
-                    )
-                } else {
-                    self.to_owned()
-                }
-            }
-            Exist(var_name, var_type, body) => {
-                // the name is overridden in `body`'s scope
-                if var_name != target_name {
-                    Exist(
-                        var_name.to_string(),
-                        Box::new(var_type.substitute_name(target_name, arg)),
-                        Box::new(body.substitute_name(target_name, arg)),
-                    )
-                } else {
-                    self.to_owned()
+                    var_type.substitute_name(target_name, arg);
+                    body.substitute_name(target_name, arg);
                 }
             }
         }
@@ -515,7 +460,8 @@ impl FolFormula {
                         &format!("sw_{}", witness_idx),
                         &args,
                     );
-                    let ψ = ψ.substitute_name(var_name, &skolem_witness);
+                    let mut ψ = (**ψ).clone();
+                    ψ.substitute_name(var_name, &skolem_witness);
                     solver(&ψ, args, witness_idx + 1)
                 }
                 ForAll(var_name, var_type, ψ) => {

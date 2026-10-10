@@ -297,125 +297,79 @@ impl PropTerm {
 }
 
 impl NamedSubstitution<PropTerm> for PropTerm {
-    /// Returns a new term identical to `self` where each instance of
-    /// `target_name` is substituted with `arg`
-    fn substitute_name(&self, target_name: &str, arg: &PropTerm) -> PropTerm {
+    fn substitute_name(&mut self, target_name: &str, arg: &PropTerm) {
         match self {
             Variable(var_name) => {
                 if var_name == target_name {
-                    arg.clone()
-                } else {
-                    self.clone()
+                    *self = arg.clone();
                 }
             }
-            Abstraction(var_name, var_type, body) => {
+            Abstraction(var_name, _, body) => {
                 // the name is overridden in `body`'s scope
                 if var_name != target_name {
-                    Abstraction(
-                        var_name.to_string(),
-                        var_type.to_owned(),
-                        Box::new(body.substitute_name(target_name, arg)),
-                    )
-                } else {
-                    self.to_owned()
+                    body.substitute_name(target_name, arg);
                 }
             }
-            Application(left, right) => Application(
-                Box::new(left.substitute_name(target_name, arg)),
-                Box::new(right.substitute_name(target_name, arg)),
-            ),
-            Tuple(terms) => Tuple(
-                terms
-                    .iter()
-                    .map(|term| term.substitute_name(target_name, arg))
-                    .collect(),
-            ),
-            Let(var_name, var_type, body, scope) => {
-                let body = body.substitute_name(target_name, arg);
+            Application(left, right) => {
+                left.substitute_name(target_name, arg);
+                right.substitute_name(target_name, arg);
+            }
+            Tuple(terms) => terms
+                .iter_mut()
+                .for_each(|t| t.substitute_name(target_name, arg)),
+            Let(var_name, _, body, scope) => {
+                body.substitute_name(target_name, arg);
                 // the name is overridden in `body`'s scope
-                let scope = if var_name != target_name {
-                    scope.substitute_name(target_name, arg)
-                } else {
-                    (**scope).to_owned()
-                };
-
-                Let(
-                    var_name.to_string(),
-                    var_type.to_owned(),
-                    Box::new(body),
-                    Box::new(scope),
-                )
+                if var_name != target_name {
+                    scope.substitute_name(target_name, arg);
+                }
             }
         }
     }
 }
 
 impl NamedSubstitution<PropFormula> for PropTerm {
-    /// Returns a new term identical to `self` where each instance of the
-    /// atom `target_name` in type annotations is substituted with `arg`
-    fn substitute_name(
-        &self,
-        target_name: &str,
-        arg: &PropFormula,
-    ) -> PropTerm {
+    fn substitute_name(&mut self, target_name: &str, arg: &PropFormula) {
         match self {
-            Variable(_) => self.to_owned(),
-            Abstraction(var_name, var_type, body) => Abstraction(
-                var_name.to_string(),
-                Box::new(var_type.substitute_name(target_name, arg)),
-                Box::new(body.substitute_name(target_name, arg)),
-            ),
-            Application(left, right) => Application(
-                Box::new(left.substitute_name(target_name, arg)),
-                Box::new(right.substitute_name(target_name, arg)),
-            ),
-            Tuple(terms) => Tuple(
-                terms
-                    .iter()
-                    .map(|term| term.substitute_name(target_name, arg))
-                    .collect(),
-            ),
-            Let(var_name, var_type, body, scope) => Let(
-                var_name.to_string(),
-                Box::new(
-                    (**var_type)
-                        .as_ref()
-                        .map(|t| t.substitute_name(target_name, arg)),
-                ),
-                Box::new(body.substitute_name(target_name, arg)),
-                Box::new(scope.substitute_name(target_name, arg)),
-            ),
+            Variable(_) => {}
+            Abstraction(_, var_type, body) => {
+                var_type.substitute_name(target_name, arg);
+                body.substitute_name(target_name, arg);
+            }
+            Application(left, right) => {
+                left.substitute_name(target_name, arg);
+                right.substitute_name(target_name, arg);
+            }
+            Tuple(terms) => terms
+                .iter_mut()
+                .for_each(|t| t.substitute_name(target_name, arg)),
+            Let(_, var_type, body, scope) => {
+                if let Some(var_type) = &mut **var_type {
+                    var_type.substitute_name(target_name, arg);
+                }
+                body.substitute_name(target_name, arg);
+                scope.substitute_name(target_name, arg);
+            }
         }
     }
 }
 
 impl NamedSubstitution<PropFormula> for PropFormula {
-    /// Returns a new formula identical to `self` where each instance of the
-    /// atom `target_name` is substituted with `arg` (uniform substitution)
-    fn substitute_name(
-        &self,
-        target_name: &str,
-        arg: &PropFormula,
-    ) -> PropFormula {
-        let sub =
-            |f: &PropFormula| Box::new(f.substitute_name(target_name, arg));
-        let sub_all = |fs: &[PropFormula]| {
-            fs.iter()
-                .map(|f| f.substitute_name(target_name, arg))
-                .collect()
-        };
+    fn substitute_name(&mut self, target_name: &str, arg: &PropFormula) {
         match self {
             Atom(name) => {
                 if name == target_name {
-                    arg.to_owned()
-                } else {
-                    self.to_owned()
+                    *self = arg.clone();
                 }
             }
-            Not(psi) => Not(sub(psi)),
-            Conjunction(fs) => Conjunction(sub_all(fs)),
-            Disjunction(fs) => Disjunction(sub_all(fs)),
-            Arrow(l, r) => Arrow(sub(l), sub(r)),
+            Not(psi) => psi.substitute_name(target_name, arg),
+            Conjunction(fs) | Disjunction(fs) => fs
+                .iter_mut()
+                .for_each(|f| f.substitute_name(target_name, arg)),
+            Arrow(l, r) => {
+                l.substitute_name(target_name, arg);
+                r.substitute_name(target_name, arg);
+            }
         }
     }
 }

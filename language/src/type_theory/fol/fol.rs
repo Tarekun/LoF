@@ -204,7 +204,9 @@ impl Reducer for Fol {
         var_name: &str,
         body: &Self::Term,
     ) -> Self::Term {
-        term.substitute_name(var_name, body)
+        let mut term = term.clone();
+        term.substitute_name(var_name, body);
+        term
     }
 
     fn normalize_expression(
