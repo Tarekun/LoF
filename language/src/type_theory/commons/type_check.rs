@@ -70,14 +70,16 @@ where
 {
     let _ = T::type_check_type(var_type, environment)?;
     // opening var_name to a free variable inside body
-    let opened_body = body.open(var_name);
+    let mut opened_body = body.to_owned();
+    opened_body.open(var_name);
     environment.with_local_assumption(var_name, var_type, |local_env| {
-        let body_type = T::type_check_term(&opened_body, local_env)?;
+        let mut body_type = T::type_check_term(&opened_body, local_env)?;
+        body_type.close(var_name);
 
         Ok(constructor(
             var_name.to_string(),
             var_type.to_owned(),
-            body_type.close(var_name),
+            body_type,
         ))
     })
 }
@@ -97,7 +99,8 @@ where
 {
     let _ = T::type_check_type(var_type, environment)?;
     // opening var_name to a free variable inside predicate
-    let opened_predicate = predicate.open(var_name);
+    let mut opened_predicate = predicate.to_owned();
+    opened_predicate.open(var_name);
     environment.with_local_assumption(var_name, var_type, |local_env| {
         T::type_check_type(&opened_predicate, local_env)
     })
@@ -269,7 +272,8 @@ where
         }
     };
 
-    let opened_scope = scope.open(var_name);
+    let mut opened_scope = scope.to_owned();
+    opened_scope.open(var_name);
     let scope_type = environment.with_local_substitution(
         var_name,
         body,
@@ -394,26 +398,18 @@ where
     // and in the body and return type of the function
     let mut assumptions: Vec<(String, T::Type)> = vec![];
     for (arg_name, arg_type) in args {
-        let opened_type = assumptions
-            .iter()
-            .rev()
-            .fold(arg_type.to_owned(), |opened, (earlier_arg, _)| {
-                opened.open(earlier_arg)
-            });
+        let mut opened_type = arg_type.to_owned();
+        for (earlier_arg, _) in assumptions.iter().rev() {
+            opened_type.open(earlier_arg);
+        }
         assumptions.push((arg_name.to_owned(), opened_type));
     }
-    let opened_out_type = args
-        .iter()
-        .rev()
-        .fold(out_type.to_owned(), |opened, (arg_name, _)| {
-            opened.open(arg_name)
-        });
-    let opened_body = args
-        .iter()
-        .rev()
-        .fold(body.to_owned(), |opened, (arg_name, _)| {
-            opened.open(arg_name)
-        });
+    let mut opened_out_type = out_type.to_owned();
+    let mut opened_body = body.to_owned();
+    for (arg_name, _) in args.iter().rev() {
+        opened_out_type.open(arg_name);
+        opened_body.open(arg_name);
+    }
 
     if *is_rec {
         // the recursive reference is not one of the binders the body was

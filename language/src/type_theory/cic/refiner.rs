@@ -111,7 +111,9 @@ impl RefinerState {
     /// user facing `name`. The solved metavariables are instantiated first,
     /// since their solutions might mention `local`
     fn close_binder(&self, term: &CicTerm, local: &str, name: &str) -> CicTerm {
-        close_term_as(&self.metas.instantiate(term), local, name)
+        let mut term = self.metas.instantiate(term);
+        close_term_as(&mut term, local, name);
+        term
     }
 
     /// Instantiates the solutions in `term`. Fails if any metavariable is
@@ -210,7 +212,9 @@ pub fn infer(
             let assumption = [Assume(local.clone(), var_type.clone())];
             let (body, body_type) =
                 with_entries(environment, state, &assumption, |env, st| {
-                    infer(env, st, &open_term(body, &local))
+                    let mut body = (**body).clone();
+                    open_term(&mut body, &local);
+                    infer(env, st, &body)
                 })?;
 
             Ok((
@@ -232,7 +236,9 @@ pub fn infer(
             let assumption = [Assume(local.clone(), domain.clone())];
             let (codomain, codomain_sort) =
                 with_entries(environment, state, &assumption, |env, st| {
-                    infer_sort(env, st, &open_term(codomain, &local))
+                    let mut codomain = (**codomain).clone();
+                    open_term(&mut codomain, &local);
+                    infer_sort(env, st, &codomain)
                 })?;
 
             Ok((
@@ -293,7 +299,9 @@ pub fn infer(
                 [Define(local.clone(), value.clone(), value_type.clone())];
             let (scope, scope_type) =
                 with_entries(environment, state, &definition, |env, st| {
-                    infer(env, st, &open_term(scope, &local))
+                    let mut scope = (**scope).clone();
+                    open_term(&mut scope, &local);
+                    infer(env, st, &scope)
                 })?;
 
             Ok((
@@ -409,8 +417,11 @@ pub fn check(
             let assumption = [Assume(local.clone(), var_type.clone())];
             let body =
                 with_entries(environment, state, &assumption, |env, st| {
-                    let codomain = open_term(codomain, &local);
-                    check(env, st, &open_term(body, &local), &codomain, origin)
+                    let mut codomain = (**codomain).clone();
+                    open_term(&mut codomain, &local);
+                    let mut body = (**body).clone();
+                    open_term(&mut body, &local);
+                    check(env, st, &body, &codomain, origin)
                 })?;
 
             Ok(Abstraction(

@@ -304,72 +304,61 @@ fn pattern_binder_count(pattern: &CicTerm) -> i32 {
     pattern_binder_names(pattern).len() as i32
 }
 
-/// Replaces every occurrence of the binder `body` is the body of with a
-/// locally free reference called `name`, ie the `open` of a locally nameless
-/// representation.
-pub fn open_term(body: &CicTerm, name: &str) -> CicTerm {
-    fn solver(term: &CicTerm, name: &str, depth: i32) -> CicTerm {
+/// Replaces in place every occurrence of the binder `body` is the body of
+/// with a locally free reference called `name`, ie the `open` of a locally
+/// nameless representation.
+pub fn open_term(body: &mut CicTerm, name: &str) {
+    fn solver(term: &mut CicTerm, name: &str, depth: i32) {
         match term {
-            Sort(_) | Meta(_) => term.clone(),
-            Variable(_, NameKind::Const()) | Variable(_, NameKind::Local()) => {
-                term.clone()
-            }
-            Variable(var_name, NameKind::Bound(dbi)) => {
+            Sort(_)
+            | Meta(_)
+            | Variable(_, NameKind::Const())
+            | Variable(_, NameKind::Local()) => {}
+            Variable(_, NameKind::Bound(dbi)) => {
                 if *dbi == depth {
                     // shi to open
-                    Variable(name.to_string(), NameKind::Local())
+                    *term = Variable(name.to_string(), NameKind::Local());
                 } else if *dbi > depth {
                     // refers past the binder being opened, and that binder is
                     // now gone from the telescope, so it moves one closer.
-                    Variable(var_name.to_string(), NameKind::Bound(dbi - 1))
-                } else {
-                    // bound by a binder inside `term`, untouched
-                    Variable(var_name.to_string(), NameKind::Bound(*dbi))
+                    *dbi -= 1;
                 }
+                // otherwise bound by a binder inside `term`, untouched
             }
-            Application(left, right) => Application(
-                Box::new(solver(left, name, depth)),
-                Box::new(solver(right, name, depth)),
-            ),
-            Abstraction(var_name, domain, codomain) => Abstraction(
-                var_name.to_string(),
-                Box::new(solver(domain, name, depth)),
-                Box::new(solver(codomain, name, depth + 1)),
-            ),
-            Product(var_name, domain, codomain) => Product(
-                var_name.to_string(),
-                Box::new(solver(domain, name, depth)),
-                Box::new(solver(codomain, name, depth + 1)),
-            ),
-            Let(var_name, var_type, definition, scope) => Let(
-                var_name.to_string(),
-                Box::new(
-                    (**var_type).as_ref().map(|t| solver(t, name, depth + 1)),
-                ),
-                Box::new(solver(definition, name, depth)),
-                Box::new(solver(scope, name, depth + 1)),
-            ),
-            Match(matched_term, branches) => Match(
-                Box::new(solver(matched_term, name, depth)),
-                simple_map(branches.clone(), |(pattern, branch_body)| {
+            Application(left, right) => {
+                solver(left, name, depth);
+                solver(right, name, depth);
+            }
+            Abstraction(_, domain, codomain) | Product(_, domain, codomain) => {
+                solver(domain, name, depth);
+                solver(codomain, name, depth + 1);
+            }
+            Let(_, var_type, definition, scope) => {
+                if let Some(var_type) = &mut **var_type {
+                    solver(var_type, name, depth + 1);
+                }
+                solver(definition, name, depth);
+                solver(scope, name, depth + 1);
+            }
+            Match(matched_term, branches) => {
+                solver(matched_term, name, depth);
+                for (pattern, branch_body) in branches.iter_mut() {
                     // a pattern opens one binder per variable it introduces,
                     // and the branch was elaborated under all of them
-                    let inner = depth + pattern_binder_count(&pattern);
-                    (
-                        solver(&pattern, name, inner),
-                        solver(&branch_body, name, inner),
-                    )
-                }),
-            ),
+                    let inner = depth + pattern_binder_count(pattern);
+                    solver(pattern, name, inner);
+                    solver(branch_body, name, inner);
+                }
+            }
         }
     }
 
     solver(body, name, 0)
 }
 
-/// Inverse of `open_term`: turns the locally free `name` back into the De
-/// Bruijn index of the binder being rebuilt around `body`.
-pub fn close_term(body: &CicTerm, name: &str) -> CicTerm {
+/// Inverse of `open_term`: turns in place the locally free `name` back into
+/// the De Bruijn index of the binder being rebuilt around `body`.
+pub fn close_term(body: &mut CicTerm, name: &str) {
     close_term_as(body, name, name)
 }
 
@@ -377,72 +366,54 @@ pub fn close_term(body: &CicTerm, name: &str) -> CicTerm {
 /// `new_name`: the closed references, and any reference already bound to a
 /// binder called `name`, are renamed accordingly. Used to get rid of the
 /// unique names the refiner opens binders with
-pub fn close_term_as(body: &CicTerm, name: &str, new_name: &str) -> CicTerm {
-    fn solver(
-        term: &CicTerm,
-        name: &str,
-        new_name: &str,
-        depth: i32,
-    ) -> CicTerm {
-        let rename = |var_name: &str| {
+pub fn close_term_as(body: &mut CicTerm, name: &str, new_name: &str) {
+    fn solver(term: &mut CicTerm, name: &str, new_name: &str, depth: i32) {
+        let rename = |var_name: &mut String| {
             if var_name == name {
-                new_name.to_string()
-            } else {
-                var_name.to_string()
+                var_name.replace_range(.., new_name);
             }
         };
         match term {
-            Sort(_) | Meta(_) => term.clone(),
-            Variable(_, NameKind::Const()) => term.clone(),
+            Sort(_) | Meta(_) | Variable(_, NameKind::Const()) => {}
             Variable(var_name, NameKind::Bound(dbi)) => {
                 if *dbi >= depth {
                     // a binder is being put back in front of it
-                    Variable(rename(var_name), NameKind::Bound(dbi + 1))
-                } else {
-                    Variable(rename(var_name), NameKind::Bound(*dbi))
+                    *dbi += 1;
                 }
+                rename(var_name);
             }
-            Variable(var_name, NameKind::Local()) => {
+            Variable(var_name, kind @ NameKind::Local()) => {
                 if var_name == name {
-                    Variable(new_name.to_string(), NameKind::Bound(depth))
-                } else {
-                    term.clone()
+                    var_name.replace_range(.., new_name);
+                    *kind = NameKind::Bound(depth);
                 }
             }
-            Application(left, right) => Application(
-                Box::new(solver(left, name, new_name, depth)),
-                Box::new(solver(right, name, new_name, depth)),
-            ),
-            Abstraction(var_name, domain, codomain) => Abstraction(
-                rename(var_name),
-                Box::new(solver(domain, name, new_name, depth)),
-                Box::new(solver(codomain, name, new_name, depth + 1)),
-            ),
-            Product(var_name, domain, codomain) => Product(
-                rename(var_name),
-                Box::new(solver(domain, name, new_name, depth)),
-                Box::new(solver(codomain, name, new_name, depth + 1)),
-            ),
-            Let(var_name, var_type, definition, scope) => Let(
-                rename(var_name),
-                Box::new(
-                    (**var_type)
-                        .as_ref()
-                        .map(|t| solver(t, name, new_name, depth + 1)),
-                ),
-                Box::new(solver(definition, name, new_name, depth)),
-                Box::new(solver(scope, name, new_name, depth + 1)),
-            ),
-            Match(matched_term, branches) => Match(
-                Box::new(solver(matched_term, name, new_name, depth)),
-                simple_map(branches.clone(), |(pattern, branch_body)| {
-                    let inner = depth + pattern_binder_count(&pattern);
-                    (
-                        solver(&pattern, name, new_name, inner),
-                        solver(&branch_body, name, new_name, inner),
-                    )
-                }),
-            ),
+            Application(left, right) => {
+                solver(left, name, new_name, depth);
+                solver(right, name, new_name, depth);
+            }
+            Abstraction(var_name, domain, codomain)
+            | Product(var_name, domain, codomain) => {
+                rename(var_name);
+                solver(domain, name, new_name, depth);
+                solver(codomain, name, new_name, depth + 1);
+            }
+            Let(var_name, var_type, definition, scope) => {
+                rename(var_name);
+                if let Some(var_type) = &mut **var_type {
+                    solver(var_type, name, new_name, depth + 1);
+                }
+                solver(definition, name, new_name, depth);
+                solver(scope, name, new_name, depth + 1);
+            }
+            Match(matched_term, branches) => {
+                solver(matched_term, name, new_name, depth);
+                for (pattern, branch_body) in branches.iter_mut() {
+                    let inner = depth + pattern_binder_count(pattern);
+                    solver(pattern, name, new_name, inner);
+                    solver(branch_body, name, new_name, inner);
+                }
+            }
         }
     }
 
@@ -763,7 +734,9 @@ pub fn substitute_local(
     name: &str,
     value: &CicTerm,
 ) -> CicTerm {
-    substitute_and_lift(&close_term(term, name), name, value)
+    let mut closed = term.clone();
+    close_term(&mut closed, name);
+    substitute_and_lift(&closed, name, value)
 }
 
 //########################### LOCALLY NAMELESS UTILITIES
@@ -820,7 +793,9 @@ mod unit_tests {
         );
 
         // opening innermost first peels the whole telescope
-        let opened = open_term(&open_term(&body, "P"), "T");
+        let mut opened = body.clone();
+        open_term(&mut opened, "P");
+        open_term(&mut opened, "T");
         let expected_opened = Product(
             "t".to_string(),
             Box::new(Variable("T".to_string(), NameKind::Local())),
@@ -844,11 +819,10 @@ mod unit_tests {
         );
 
         // and closing in the mirror order must give back exactly the original
-        assert_eq!(
-            close_term(&close_term(&opened, "T"), "P"),
-            body,
-            "close must be the inverse of open"
-        );
+        let mut closed = opened.clone();
+        close_term(&mut closed, "T");
+        close_term(&mut closed, "P");
+        assert_eq!(closed, body, "close must be the inverse of open");
     }
 
     #[test]

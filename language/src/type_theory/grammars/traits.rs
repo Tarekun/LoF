@@ -87,13 +87,14 @@ pub trait ReductionEq<T: TypeTheory>: Reduction<T> + SyntacticalEq {
 /// Locally nameless representation of binders: bound variables are De
 /// Bruijn indices while free ones are names
 pub trait LocallyNameless {
-    /// Opens instances of `name` within `self`, marking them as (locally)
-    /// free variables instead of bounded with a De Bruijn index
-    fn open(&self, name: &str) -> Self;
+    /// Opens in place instances of `name` within `self`, marking them as
+    /// (locally) free variables instead of bounded with a De Bruijn index
+    fn open(&mut self, name: &str);
 
-    /// Rebuilds a binder around `self`, turning the locally free `name` back
-    /// into a bound variant and updating De Bruijn indeces. Inverse of `open`
-    fn close(&self, name: &str) -> Self;
+    /// Rebuilds in place a binder around `self`, turning the locally free
+    /// `name` back into a bound variant and updating De Bruijn indeces.
+    /// Inverse of `open`
+    fn close(&mut self, name: &str);
 }
 
 pub trait ToCnfTerm {
@@ -111,6 +112,8 @@ pub trait Unification<T> {
     /// returns an error with a message on why terms don't unify
     fn unifies(&self, other: &Self) -> Result<Substitution<T>, LofError>;
 
-    /// Applies `substitution` to `self` in place
+    /// Applies `substitution` to `self` in place. Takes `&mut self` and
+    /// updates expression in place for efficiency, but note that this
+    /// is an imperative operation
     fn apply_substitution(&mut self, substitution: &Substitution<T>);
 }

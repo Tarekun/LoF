@@ -148,10 +148,11 @@ pub fn open_branch<F: FnMut(&str) -> String>(
         .map(|name| rename(name))
         .collect();
     // innermost binder (the last one) has index 0, so it's opened first
-    let (pattern, body) = locals.iter().rev().fold(
-        (pattern.to_owned(), body.to_owned()),
-        |(pattern, body), local| (pattern.open(local), body.open(local)),
-    );
+    let (mut pattern, mut body) = (pattern.to_owned(), body.to_owned());
+    for local in locals.iter().rev() {
+        pattern.open(local);
+        body.open(local);
+    }
     (pattern, body, locals)
 }
 
@@ -503,21 +504,18 @@ pub fn type_check_inductive(
     // hand back at any depth without reindexing.
     let mut opened_params: Vec<(String, CicTerm)> = vec![];
     for (param_name, param_type) in params {
-        let opened_type = opened_params
-            .iter()
-            .rev()
-            .fold(param_type.clone(), |opened, (earlier_param, _)| {
-                opened.open(earlier_param)
-            });
+        let mut opened_type = param_type.clone();
+        for (earlier_param, _) in opened_params.iter().rev() {
+            opened_type.open(earlier_param);
+        }
         opened_params.push((param_name.to_owned(), opened_type));
     }
     let open_under_params = |typee: &CicTerm| {
-        params
-            .iter()
-            .rev()
-            .fold(typee.to_owned(), |opened, (param_name, _)| {
-                opened.open(param_name)
-            })
+        let mut opened = typee.to_owned();
+        for (param_name, _) in params.iter().rev() {
+            opened.open(param_name);
+        }
+        opened
     };
 
     let inductive_assumptions: Vec<(String, CicTerm)> = 

@@ -92,10 +92,10 @@ impl AlphaEquiv for CicTerm {
     }
 }
 impl LocallyNameless for CicTerm {
-    fn open(&self, name: &str) -> Self {
+    fn open(&mut self, name: &str) {
         open_term(self, name)
     }
-    fn close(&self, name: &str) -> Self {
+    fn close(&mut self, name: &str) {
         close_term(self, name)
     }
 }
