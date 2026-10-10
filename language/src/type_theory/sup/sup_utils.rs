@@ -489,11 +489,11 @@ mod tests {
         // f(X, a, a) is heavier than g(X, X), but X occurs more in g
         let left = f(vec![x.clone(), a.clone(), a.clone()]);
         let right = g(vec![x.clone(), x.clone()]);
+        let (mut left_σ, mut right_σ) = (left.clone(), right.clone());
+        left_σ.apply_substitution(&σ);
+        right_σ.apply_substitution(&σ);
         assert_eq!(
-            kbo_terms(
-                &left.apply_substitution(&σ),
-                &right.apply_substitution(&σ)
-            ),
+            kbo_terms(&left_σ, &right_σ),
             Less,
             "f(h(h(a)), a, a) isnt less than g(h(h(a)), h(h(a)))"
         );

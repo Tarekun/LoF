@@ -124,7 +124,8 @@ fn sld_derive(
         return on_success(solution);
     };
 
-    let goal = goal.apply_substitution(subst);
+    let mut goal = goal.clone();
+    goal.apply_substitution(subst);
 
     for clause in program {
         let candidate = freshen_clause(clause);

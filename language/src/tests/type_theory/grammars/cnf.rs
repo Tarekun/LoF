@@ -497,13 +497,17 @@ fn test_apply_substitution() {
         )
     };
 
+    let mut unbound = var("y");
+    unbound.apply_substitution(&substitution);
     assert_eq!(
-        var("y").apply_substitution(&substitution),
+        unbound,
         var("y"),
         "Unbound variable changed by the substitution"
     );
+    let mut bound = formula(var("x"));
+    bound.apply_substitution(&substitution);
     assert_eq!(
-        formula(var("x")).apply_substitution(&substitution),
+        bound,
         formula(constant("k")),
         "Substitution wasnt applied to every term of the formula"
     );

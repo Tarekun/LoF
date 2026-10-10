@@ -366,17 +366,16 @@ impl Unification<CnfTerm> for CnfTerm {
         terms_unify_with_base(self, other, &mut Substitution::empty())
     }
 
-    fn apply_substitution(&self, substitution: &Substitution<CnfTerm>) -> Self {
+    fn apply_substitution(&mut self, substitution: &Substitution<CnfTerm>) {
         match self {
             Variable(var_name) => {
-                substitution.get(var_name).unwrap_or(self).clone()
+                if let Some(term) = substitution.get(var_name) {
+                    *self = term.clone();
+                }
             }
-            Application(fun_name, args) => Application(
-                fun_name.to_string(),
-                args.iter()
-                    .map(|t| t.apply_substitution(substitution))
-                    .collect(),
-            ),
+            Application(_, args) => args
+                .iter_mut()
+                .for_each(|t| t.apply_substitution(substitution)),
         }
     }
 }
@@ -442,32 +441,23 @@ impl Unification<CnfTerm> for CnfFormula {
         }))
     }
 
-    fn apply_substitution(
-        &self,
-        substitution: &Substitution<CnfTerm>,
-    ) -> CnfFormula {
+    fn apply_substitution(&mut self, substitution: &Substitution<CnfTerm>) {
         match self {
-            Atom(pred_name, args) => Atom(
-                pred_name.to_string(),
-                args.iter()
-                    .map(|t| t.apply_substitution(substitution))
-                    .collect(),
-            ),
-            Equality(l, r) => Equality(
-                l.apply_substitution(substitution),
-                r.apply_substitution(substitution),
-            ),
-            Not(f) => Not(Box::new(f.apply_substitution(substitution))),
-            Clause(lits) => Clause(
-                lits.iter()
-                    .map(|l| l.apply_substitution(substitution))
-                    .collect(),
-            ),
-            ForAll(var_name, var_type, body) => ForAll(
-                var_name.to_string(),
-                Box::new(var_type.apply_substitution(substitution)),
-                Box::new(body.apply_substitution(substitution)),
-            ),
+            Atom(_, args) => args
+                .iter_mut()
+                .for_each(|t| t.apply_substitution(substitution)),
+            Equality(l, r) => {
+                l.apply_substitution(substitution);
+                r.apply_substitution(substitution);
+            }
+            Not(f) => f.apply_substitution(substitution),
+            Clause(lits) => lits
+                .iter_mut()
+                .for_each(|l| l.apply_substitution(substitution)),
+            ForAll(_, var_type, body) => {
+                var_type.apply_substitution(substitution);
+                body.apply_substitution(substitution);
+            }
         }
     }
 }

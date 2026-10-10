@@ -111,6 +111,6 @@ pub trait Unification<T> {
     /// returns an error with a message on why terms don't unify
     fn unifies(&self, other: &Self) -> Result<Substitution<T>, LofError>;
 
-    /// Returns a copy of `self` with the `substitution` applied
-    fn apply_substitution(&self, substitution: &Substitution<T>) -> Self;
+    /// Applies `substitution` to `self` in place
+    fn apply_substitution(&mut self, substitution: &Substitution<T>);
 }

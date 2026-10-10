@@ -36,7 +36,8 @@ fn rewrite_term(term: &CnfTerm, from: &CnfTerm, to: &CnfTerm) -> CnfTerm {
         // every variable of `to` must be bound, or the rewrite would
         // introduce new variables
         Some(σ) if is_bound(to, &σ) => {
-            let rewritten = to.apply_substitution(&σ);
+            let mut rewritten = to.clone();
+            rewritten.apply_substitution(&σ);
             if Sup::compare_terms(&term, &rewritten) == Greater {
                 rewritten
             } else {
@@ -163,9 +164,9 @@ pub fn resolution(
                             new_clause.extend(d_selected);
                             new_clause.extend($d_others.clone());
 
-                            newly_derived.push(
-                                Clause(new_clause).apply_substitution(&mgu),
-                            );
+                            let mut new_clause = Clause(new_clause);
+                            new_clause.apply_substitution(&mgu);
+                            newly_derived.push(new_clause);
                             full_mgu.merge(mgu);
                         }
                     }
@@ -207,7 +208,9 @@ pub fn factoring(
                 new_clause.remove(j);
                 new_clause.extend(literals.clone());
 
-                newly_derived.push(Clause(new_clause).apply_substitution(&mgu));
+                let mut new_clause = Clause(new_clause);
+                new_clause.apply_substitution(&mgu);
+                newly_derived.push(new_clause);
                 full_mgu.merge(mgu);
             }
         }
@@ -236,8 +239,9 @@ pub fn eq_resolution(
                         new_clause.remove(i);
                         new_clause.extend(lits.clone());
 
-                        newly_derived
-                            .push(Clause(new_clause).apply_substitution(&mgu));
+                        let mut new_clause = Clause(new_clause);
+                        new_clause.apply_substitution(&mgu);
+                        newly_derived.push(new_clause);
                         full_mgu.merge(mgu);
                     }
                 }
@@ -283,8 +287,9 @@ pub fn eq_factoring(
                         $t_prime.to_owned(),
                     ))));
 
-                    newly_derived
-                        .push(Clause(new_clause).apply_substitution(&mgu));
+                    let mut new_clause = Clause(new_clause);
+                    new_clause.apply_substitution(&mgu);
+                    newly_derived.push(new_clause);
                     full_mgu.merge(mgu);
                 }
                 _ => {}
@@ -343,8 +348,10 @@ pub fn superposition(
             if let Some((matched, mgu)) = unification_pair {
                 // matched term must not be a variable
                 if !matches!(matched, Variable(_)) {
-                    let other = $other.apply_substitution(&mgu);
-                    let target = target.apply_substitution(&mgu);
+                    let mut other = $other.clone();
+                    other.apply_substitution(&mgu);
+                    let mut target = target.clone();
+                    target.apply_substitution(&mgu);
                     let other = other.substitute_formula(&target, &arg);
                     let mut new_clause = vec![];
                     new_clause.push(other);
@@ -357,9 +364,9 @@ pub fn superposition(
                     d_selected_clones.remove($j);
                     new_clause.extend(d_selected_clones);
 
-                    derived.push(
-                        Clause(new_clause).apply_substitution(&mgu),
-                    );
+                    let mut new_clause = Clause(new_clause);
+                    new_clause.apply_substitution(&mgu);
+                    derived.push(new_clause);
                     total_mgu.merge(mgu);
                 }
             }
