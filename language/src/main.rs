@@ -27,6 +27,7 @@ pub mod type_theory {
     pub mod environment;
     pub mod interface;
     pub mod algorithms {
+        pub mod cdcl;
         pub mod dpll;
         pub mod saturation;
         pub mod sld;
